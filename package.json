@@ -1,0 +1,47 @@
+{
+  "name": "led-rental-mcp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "chatbot": "node --loader ts-node/esm src/tools/kakao-chatbot.ts",
+    "dev-chatbot": "nodemon --exec \"node --loader ts-node/esm src/tools/kakao-chatbot.ts\"",
+    "railway-start": "node --loader ts-node/esm src/tools/kakao-chatbot.ts",
+    "test": "node --loader ts-node/esm test/test-calculate.ts",
+    "test-excel": "node --loader ts-node/esm test/test-excel.ts",
+    "test-simple": "node test/test-simple.js",
+    "test-enhanced": "node --loader ts-node/esm test/test-enhanced-excel.ts",
+    "test-notion": "node --loader ts-node/esm test/test-notion.ts",
+    "test-integrated": "node --loader ts-node/esm test/test-integrated.ts",
+    "test-multi-led": "node --loader ts-node/esm test/test-multi-led.ts",
+    "test-corrected": "node --loader ts-node/esm test/test-corrected-calculation.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.15.1",
+    "@notionhq/client": "^4.0.1",
+    "axios": "^1.10.0",
+    "body-parser": "^2.2.0",
+    "dotenv": "^17.2.0",
+    "exceljs": "^4.4.0",
+    "express": "^5.1.0",
+    "pdf-lib": "^1.17.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.13",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
