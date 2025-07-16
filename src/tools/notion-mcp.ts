@@ -53,6 +53,20 @@ export const notionMCPTool = {
         const [width, height] = size.split('x').map(Number);
         return (width / 500) * (height / 500);
       };
+
+      // LED 모듈 수량 계산 함수 (기존 함수 수정)
+      const calculateTotalModuleCount = (data: NotionData): number => {
+        let totalCount = 0;
+        for (let i = 1; i <= 5; i++) {
+          const ledKey = `led${i}` as keyof NotionData;
+          const ledData = data[ledKey] as LEDSpec | undefined;
+          if (ledData && ledData.size) {
+            const [width, height] = ledData.size.split('x').map(Number);
+            totalCount += (width / 500) * (height / 500);
+          }
+        }
+        return totalCount;
+      };
       
       // Notion 페이지 생성
       const response = await notion.pages.create({
@@ -272,6 +286,10 @@ export const notionMCPTool = {
             number: data.led5?.operatorDays || null
           },
           
+          "총 LED 모듈 수량": {
+            number: calculateTotalModuleCount(data)
+          },
+
           // 견적 정보
           "견적 금액": {
             number: data.totalQuoteAmount || null
