@@ -47,6 +47,13 @@ export const notionMCPTool = {
     try {
       console.log('Notion 저장 시작:', data);
       
+      // LED 모듈 수량 계산 함수
+      const calculateModuleCount = (size: string): number => {
+        if (!size) return 0;
+        const [width, height] = size.split('x').map(Number);
+        return (width / 500) * (height / 500);
+      };
+      
       // Notion 페이지 생성
       const response = await notion.pages.create({
         parent: { database_id: databaseId! },
@@ -63,13 +70,9 @@ export const notionMCPTool = {
           },
           
           "고객사": {
-            rich_text: [
-              {
-                text: {
-                  content: data.customerName || ""
-                }
-              }
-            ]
+            select: {
+              name: data.customerName || "메쎄이상"
+            }
           },
           
           "고객담당자": {
@@ -96,6 +99,13 @@ export const notionMCPTool = {
                 }
               }
             ]
+          },
+          
+          // 상태 관리
+          "행사 상태": {
+            select: {
+              name: "견적 요청"
+            }
           },
           
           // 일정 정보
@@ -127,16 +137,7 @@ export const notionMCPTool = {
             } : null
           },
           
-          // LED 정보
-          "LED 총 개수": {
-            number: this.countLEDs(data)
-          },
-          
-          "LED 모듈 총 개수": {
-            number: data.totalModuleCount || 0
-          },
-          
-          // LED 상세 정보
+          // LED1 정보
           "LED1 크기": {
             rich_text: [
               {
@@ -147,18 +148,23 @@ export const notionMCPTool = {
             ]
           },
           
-          "LED1 무대높이": {
+          "LED1 무대 높이": {
             number: data.led1?.stageHeight || null
           },
           
-          "LED1 오퍼레이터": {
+          "LED1 모듈 수량": {
+            number: data.led1?.size ? calculateModuleCount(data.led1.size) : null
+          },
+          
+          "LED1 오퍼레이터 필요": {
             checkbox: data.led1?.needOperator || false
           },
           
           "LED1 오퍼레이터 일수": {
-            number: data.led1?.operatorDays || 0
+            number: data.led1?.operatorDays || null
           },
           
+          // LED2 정보
           "LED2 크기": {
             rich_text: [
               {
@@ -169,18 +175,23 @@ export const notionMCPTool = {
             ]
           },
           
-          "LED2 무대높이": {
+          "LED2 무대 높이": {
             number: data.led2?.stageHeight || null
           },
           
-          "LED2 오퍼레이터": {
+          "LED2 모듈 수량": {
+            number: data.led2?.size ? calculateModuleCount(data.led2.size) : null
+          },
+          
+          "LED2 오퍼레이터 필요": {
             checkbox: data.led2?.needOperator || false
           },
           
           "LED2 오퍼레이터 일수": {
-            number: data.led2?.operatorDays || 0
+            number: data.led2?.operatorDays || null
           },
           
+          // LED3 정보
           "LED3 크기": {
             rich_text: [
               {
@@ -191,18 +202,23 @@ export const notionMCPTool = {
             ]
           },
           
-          "LED3 무대높이": {
+          "LED3 무대 높이": {
             number: data.led3?.stageHeight || null
           },
           
-          "LED3 오퍼레이터": {
+          "LED3 모듈 수량": {
+            number: data.led3?.size ? calculateModuleCount(data.led3.size) : null
+          },
+          
+          "LED3 오퍼레이터 필요": {
             checkbox: data.led3?.needOperator || false
           },
           
           "LED3 오퍼레이터 일수": {
-            number: data.led3?.operatorDays || 0
+            number: data.led3?.operatorDays || null
           },
           
+          // LED4 정보
           "LED4 크기": {
             rich_text: [
               {
@@ -213,18 +229,23 @@ export const notionMCPTool = {
             ]
           },
           
-          "LED4 무대높이": {
+          "LED4 무대 높이": {
             number: data.led4?.stageHeight || null
           },
           
-          "LED4 오퍼레이터": {
+          "LED4 모듈 수량": {
+            number: data.led4?.size ? calculateModuleCount(data.led4.size) : null
+          },
+          
+          "LED4 오퍼레이터 필요": {
             checkbox: data.led4?.needOperator || false
           },
           
           "LED4 오퍼레이터 일수": {
-            number: data.led4?.operatorDays || 0
+            number: data.led4?.operatorDays || null
           },
           
+          // LED5 정보
           "LED5 크기": {
             rich_text: [
               {
@@ -235,74 +256,53 @@ export const notionMCPTool = {
             ]
           },
           
-          "LED5 무대높이": {
+          "LED5 무대 높이": {
             number: data.led5?.stageHeight || null
           },
           
-          "LED5 오퍼레이터": {
+          "LED5 모듈 수량": {
+            number: data.led5?.size ? calculateModuleCount(data.led5.size) : null
+          },
+          
+          "LED5 오퍼레이터 필요": {
             checkbox: data.led5?.needOperator || false
           },
           
           "LED5 오퍼레이터 일수": {
-            number: data.led5?.operatorDays || 0
+            number: data.led5?.operatorDays || null
           },
           
           // 견적 정보
-          "총 견적 금액": {
-            number: data.totalQuoteAmount || 0
+          "견적 금액": {
+            number: data.totalQuoteAmount || null
           },
           
           "LED 모듈 비용": {
-            number: data.ledModuleCost || 0
+            number: data.ledModuleCost || null
           },
           
           "지지구조물 비용": {
-            number: data.structureCost || 0
+            number: data.structureCost || null
           },
           
-          "컨트롤러 비용": {
-            number: data.controllerCost || 0
+          "컨트롤러 및 스위치 비용": {
+            number: data.controllerCost || null
           },
           
           "파워 비용": {
-            number: data.powerCost || 0
+            number: data.powerCost || null
           },
           
-          "설치철거 비용": {
-            number: data.installationCost || 0
+          "설치철거인력 비용": {
+            number: data.installationCost || null
           },
           
           "오퍼레이터 비용": {
-            number: data.operatorCost || 0
+            number: data.operatorCost || null
           },
           
           "운반 비용": {
-            number: data.transportCost || 0
-          },
-          
-          // 상태 관리
-          "견적 상태": {
-            select: {
-              name: "견적 완료"
-            }
-          },
-          
-          "알림 상태": {
-            select: {
-              name: "관리자 확인 필요"
-            }
-          },
-          
-          "우선순위": {
-            select: {
-              name: data.totalQuoteAmount > 20000000 ? "긴급" : "일반"
-            }
-          },
-          
-          "생성일시": {
-            date: {
-              start: new Date().toISOString()
-            }
+            number: data.transportCost || null
           }
         }
       });
@@ -318,19 +318,6 @@ export const notionMCPTool = {
       console.error('Notion 저장 실패:', error);
       throw error;
     }
-  },
-  
-  // LED 개수 계산
-  countLEDs(data: NotionData): number {
-    let count = 0;
-    for (let i = 1; i <= 5; i++) {
-      const ledKey = `led${i}` as keyof NotionData;
-      const ledData = data[ledKey] as LEDSpec | undefined;
-      if (ledData && ledData.size) {
-        count++;
-      }
-    }
-    return count;
   },
   
   // 관리자 알림 댓글 추가
