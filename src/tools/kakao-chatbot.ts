@@ -176,6 +176,19 @@ function validateStageHeight(input: string): { valid: boolean; height?: number; 
   }
   
   const cleanInput = input.replace(/\s/g, '').toLowerCase();
+  
+  // 버튼 클릭 텍스트 직접 처리
+  const buttonValues: { [key: string]: number } = {
+    '600mm': 600,
+    '800mm': 800,
+    '1000mm': 1000,
+    '1200mm': 1200
+  };
+  
+  if (buttonValues[cleanInput]) {
+    return { valid: true, height: buttonValues[cleanInput] };
+  }
+  
   const patterns = [
     /^(\d+)$/,
     /^(\d+)mm$/,
@@ -329,6 +342,9 @@ async function processUserMessage(message: string, session: UserSession) {
     
     case 'get_operator_needs':
       return handleOperatorNeeds(message, session);
+    
+    case 'get_operator_days':
+      return handleOperatorDays(message, session);
     
     case 'get_event_period':
       return handleEventPeriod(message, session);
@@ -617,8 +633,52 @@ function handleOperatorNeeds(message: string, session: UserSession) {
   const needsOperator = message.includes('네') || message.includes('필요');
   
   session.data.ledSpecs[currentLedIndex].needOperator = needsOperator;
-  session.data.ledSpecs[currentLedIndex].operatorDays = needsOperator ? 4 : 0;
   
+  if (needsOperator) {
+    session.step = 'get_operator_days';
+    return {
+      text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 필요\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?\n\n일반적으로 행사 기간 + 리허설 1일입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      quickReplies: [
+        { label: '1일', action: 'message', messageText: '1일' },
+        { label: '2일', action: 'message', messageText: '2일' },
+        { label: '3일', action: 'message', messageText: '3일' },
+        { label: '4일', action: 'message', messageText: '4일' },
+        { label: '5일', action: 'message', messageText: '5일' }
+      ]
+    };
+  } else {
+    session.data.ledSpecs[currentLedIndex].operatorDays = 0;
+    return handleNextLEDOrContinue(session);
+  }
+}
+
+// 오퍼레이터 일수 처리
+function handleOperatorDays(message: string, session: UserSession) {
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const dayMatch = message.match(/(\d+)/);
+  
+  if (dayMatch) {
+    const days = parseInt(dayMatch[1]);
+    if (days >= 1 && days <= 10) {
+      session.data.ledSpecs[currentLedIndex].operatorDays = days;
+      return handleNextLEDOrContinue(session);
+    }
+  }
+  
+  return {
+    text: '❌ 올바른 일수를 입력해주세요.\n\n1일~10일 사이로 입력해주세요.',
+    quickReplies: [
+      { label: '1일', action: 'message', messageText: '1일' },
+      { label: '2일', action: 'message', messageText: '2일' },
+      { label: '3일', action: 'message', messageText: '3일' },
+      { label: '4일', action: 'message', messageText: '4일' },
+      { label: '5일', action: 'message', messageText: '5일' }
+    ]
+  };
+}
+
+// 다음 LED 또는 계속 진행
+function handleNextLEDOrContinue(session: UserSession) {
   if (session.currentLED < session.ledCount) {
     session.currentLED++;
     session.step = 'get_led_specs';
@@ -638,7 +698,8 @@ function handleOperatorNeeds(message: string, session: UserSession) {
     const ledSummary = session.data.ledSpecs.map((led, index) => {
       const [w, h] = led.size.split('x').map(Number);
       const moduleCount = (w / 500) * (h / 500);
-      return `LED${index + 1}: ${led.size} (${led.stageHeight}mm 높이, ${moduleCount}개 모듈${led.needOperator ? ', 오퍼레이터 필요' : ''})`;
+      const operatorText = led.needOperator ? `, 오퍼레이터 ${led.operatorDays}일` : '';
+      return `LED${index + 1}: ${led.size} (${led.stageHeight}mm 높이, ${moduleCount}개 모듈${operatorText})`;
     }).join('\n');
     
     return {
@@ -667,6 +728,29 @@ function handleEventPeriod(message: string, session: UserSession) {
       quickReplies: []
     };
   }
+}
+
+// 날짜 계산 함수
+function calculateScheduleDates(startDate: string, endDate: string) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  // 설치 일정: 시작일 하루 전
+  const installDate = new Date(start);
+  installDate.setDate(installDate.getDate() - 1);
+  
+  // 리허설 일정: 시작일 하루 전 (설치일과 같음)
+  const rehearsalDate = new Date(installDate);
+  
+  // 철거 일정: 마지막 날
+  const dismantleDate = new Date(end);
+  
+  return {
+    eventSchedule: `${startDate} ~ ${endDate}`,
+    installSchedule: installDate.toISOString().split('T')[0],
+    rehearsalSchedule: rehearsalDate.toISOString().split('T')[0],
+    dismantleSchedule: dismantleDate.toISOString().split('T')[0]
+  };
 }
 
 // 담당자 이름 처리
@@ -752,12 +836,17 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
       // 견적 계산 (내부 계산용)
       const quote = calculateMultiLEDQuote(session.data.ledSpecs);
       
+      // 일정 계산
+      const schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
+      
       // Notion에 저장할 데이터 준비
       const notionData = {
         eventName: session.data.eventName,
         customerName: session.data.customerName,
-        eventStartDate: session.data.eventStartDate,
-        eventEndDate: session.data.eventEndDate,
+        eventSchedule: schedules.eventSchedule,
+        installSchedule: schedules.installSchedule,
+        rehearsalSchedule: schedules.rehearsalSchedule,
+        dismantleSchedule: schedules.dismantleSchedule,
         venue: session.data.venue,
         contactName: session.data.contactName,
         contactTitle: session.data.contactTitle,
