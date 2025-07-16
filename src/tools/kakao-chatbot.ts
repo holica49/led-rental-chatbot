@@ -2,9 +2,24 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import { calculateMultiLEDQuote } from './calculate-quote.js';
 import { notionMCPTool } from './notion-mcp.js';
-import NotionMentionService from '../../services/notionMentionService.js';
 
 const app = express();
+
+// 🆕 NotionMentionService 동적 로드
+let NotionMentionService: any = null;
+
+async function loadNotionMentionService() {
+  try {
+    const module = await import('../../services/notionMentionService.js');
+    NotionMentionService = module.default;
+    console.log('✅ NotionMentionService 로드 완료');
+  } catch (error) {
+    console.error('❌ NotionMentionService 로드 실패 (무시하고 계속):', error);
+  }
+}
+
+// 서버 시작 시 로드
+loadNotionMentionService();
 
 // ngrok 헤더 처리 미들웨어
 app.use((req, res, next) => {
@@ -58,8 +73,73 @@ const userSessions: { [key: string]: UserSession } = {};
 app.get('/test', (req, res) => {
   res.json({
     message: "서버가 정상 작동 중입니다!",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    notionMentionService: NotionMentionService ? '로드됨' : '로드안됨'
   });
+});
+
+// 🆕 테스트 언급 API
+app.get('/test-mention', async (req, res) => {
+  try {
+    if (!NotionMentionService) {
+      return res.json({ 
+        success: false, 
+        message: 'NotionMentionService가 로드되지 않았습니다.' 
+      });
+    }
+
+    const mentionService = new NotionMentionService();
+    const managers = mentionService.getActiveManagers();
+    
+    if (managers.length === 0) {
+      return res.json({ 
+        success: false, 
+        message: '활성화된 담당자가 없습니다.' 
+      });
+    }
+
+    // 테스트 언급 실행
+    const result = await mentionService.sendTestMention();
+    
+    res.json({ 
+      success: true, 
+      message: `${managers.length}명의 담당자에게 테스트 언급 완료`,
+      managers: managers.map(m => m.name)
+    });
+    
+  } catch (error) {
+    console.error('테스트 언급 실패:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// 🆕 담당자 관리 API
+app.get('/managers', async (req, res) => {
+  try {
+    if (!NotionMentionService) {
+      return res.json({ 
+        success: false, 
+        message: 'NotionMentionService가 로드되지 않았습니다.' 
+      });
+    }
+
+    const mentionService = new NotionMentionService();
+    const managers = mentionService.getActiveManagers();
+    
+    res.json({ 
+      success: true, 
+      managers: managers 
+    });
+    
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
 });
 
 // 카카오 스킬 서버 엔드포인트
@@ -830,7 +910,7 @@ function handleContactPhone(message: string, session: UserSession) {
   }
 }
 
-// 최종 확인 처리
+// 최종 확인 처리 (🆕 언급 기능 통합)
 async function handleFinalConfirmation(message: string, session: UserSession) {
   if (message.includes('네') || message.includes('전달')) {
     try {
@@ -869,21 +949,31 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
       
       // Notion에 저장
       const notionResult = await notionMCPTool.handler(notionData);
-
-      const mentionService = new NotionMentionService();
-      await mentionService.addMentionComment(notionResult.id, {  // ✅ 이제 notionResult 사용 가능
-        eventName: notionData.eventName,
-        customerName: notionData.customerName,
-        contactName: notionData.contactName,
-        contactTitle: notionData.contactTitle,
-        contactPhone: notionData.contactPhone,
-        eventPeriod: notionData.eventSchedule,
-        venue: notionData.venue,
-        totalAmount: notionData.totalQuoteAmount,
-        ledSpecs: session.data.ledSpecs,
-        operatorDays: notionData.operatorDays
-      });
-
+      
+      // 🆕 담당자 언급 추가 (안전한 방식)
+      if (NotionMentionService) {
+        try {
+          const mentionService = new NotionMentionService();
+          await mentionService.addMentionComment(notionResult.id, {
+            eventName: notionData.eventName,
+            customerName: notionData.customerName,
+            contactName: notionData.contactName,
+            contactTitle: notionData.contactTitle,
+            contactPhone: notionData.contactPhone,
+            eventPeriod: notionData.eventSchedule,
+            venue: notionData.venue,
+            totalAmount: notionData.totalQuoteAmount,
+            ledSpecs: session.data.ledSpecs,
+            operatorDays: session.data.ledSpecs.reduce((sum, led) => sum + led.operatorDays, 0)
+          });
+          console.log('✅ 허지성님 언급 완료');
+        } catch (mentionError) {
+          console.error('❌ 담당자 언급 실패 (무시하고 계속):', mentionError);
+        }
+      } else {
+        console.log('⚠️ NotionMentionService를 사용할 수 없음');
+      }
+      
       // 세션 초기화
       session.step = 'start';
       session.data = { ledSpecs: [] };
@@ -927,17 +1017,7 @@ function handleDefault(session: UserSession) {
 }
 
 const PORT = process.env.PORT || 3000;
-// 테스트 API 추가
-app.get('/test-mention', async (req, res) => {
-  try {
-    const mentionService = new NotionMentionService();
-    const result = await mentionService.sendTestMention();
-    res.json({ success: true, message: '테스트 언급 완료' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 app.listen(PORT, () => {
   console.log(`개선된 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
+  console.log(`NotionMentionService 상태: ${NotionMentionService ? '로드됨' : '로드안됨'}`);
 });
