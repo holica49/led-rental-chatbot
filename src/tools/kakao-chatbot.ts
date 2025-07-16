@@ -69,12 +69,38 @@ interface UserSession {
 // 사용자 세션 관리
 const userSessions: { [key: string]: UserSession } = {};
 
-// 간단한 테스트 엔드포인트
-app.get('/test', (req, res) => {
+// 테스트 API 수정
+app.get('/test', async (req, res) => {
+  let notionMentionServiceStatus = '로드안됨';
+  
+  try {
+    const module = await import('../../services/notionMentionService.js');
+    const NotionMentionService = module.default;
+    
+    if (NotionMentionService) {
+      notionMentionServiceStatus = '로드성공';
+      
+      // 간단한 테스트
+      const service = new NotionMentionService();
+      const activeManagers = service.getActiveManagers();
+      
+      return res.json({
+        message: "서버가 정상 작동 중입니다!",
+        timestamp: new Date().toISOString(),
+        notionMentionService: notionMentionServiceStatus,
+        activeManagers: activeManagers.length,
+        managersConfig: process.env.MANAGERS_CONFIG ? '설정됨' : '설정안됨'
+      });
+    }
+  } catch (error) {
+    console.error('NotionMentionService 로드 실패:', error);
+    notionMentionServiceStatus = `로드실패: ${error.message}`;
+  }
+  
   res.json({
     message: "서버가 정상 작동 중입니다!",
     timestamp: new Date().toISOString(),
-    notionMentionService: NotionMentionService ? '로드됨' : '로드안됨'
+    notionMentionService: notionMentionServiceStatus
   });
 });
 

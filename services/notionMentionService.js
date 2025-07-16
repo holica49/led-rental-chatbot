@@ -1,7 +1,7 @@
-// services/notificationService.js
-const axios = require('axios');
+// services/notionMentionService.js - ES 모듈 버전
+import axios from 'axios';
 
-class NotificationService {
+class NotionMentionService {
   constructor() {
     this.managers = JSON.parse(process.env.MANAGERS_CONFIG || '{"managers":[]}').managers;
     this.kakaoApiKey = process.env.KAKAO_API_KEY;
@@ -19,15 +19,14 @@ class NotificationService {
       
       console.log(`${activeManagers.length}명의 담당자에게 알림 발송 시작`);
       
-      // 병렬로 알림 전송
+      // Notion 언급만 실행 (카카오톡은 나중에 추가)
       const results = await Promise.allSettled([
-        this.sendNotionMentions(activeManagers, eventData),
-        this.sendKakaoMessages(activeManagers, eventData)
+        this.sendNotionMentions(activeManagers, eventData)
       ]);
       
       // 결과 로깅
       results.forEach((result, index) => {
-        const type = index === 0 ? 'Notion 언급' : '카카오톡 알림';
+        const type = 'Notion 언급';
         if (result.status === 'fulfilled') {
           console.log(`✅ ${type} 전송 성공`);
         } else {
@@ -62,50 +61,43 @@ class NotificationService {
       // 댓글 내용 구성
       const commentBlocks = [
         {
-          type: 'paragraph',
-          paragraph: {
-            rich_text: [
-              {
-                type: 'text',
-                text: { content: '🚨 새로운 견적 요청이 접수되었습니다!\n\n' }
-              },
-              {
-                type: 'text',
-                text: { content: `📋 행사명: ${eventData.eventName}\n` }
-              },
-              {
-                type: 'text',
-                text: { content: `🏢 고객사: ${eventData.customerName}\n` }
-              },
-              {
-                type: 'text',
-                text: { content: `📅 행사기간: ${eventData.eventPeriod}\n` }
-              },
-              {
-                type: 'text',
-                text: { content: `🎪 행사장: ${eventData.venue}\n` }
-              },
-              {
-                type: 'text',
-                text: { content: `💰 견적금액: ${eventData.totalAmount?.toLocaleString() || '계산중'}원\n\n` }
-              },
-              {
-                type: 'text',
-                text: { content: '담당자 확인 부탁드립니다: ' }
-              },
-              ...mentions.map((mention, index) => ({
-                ...mention,
-                annotations: { bold: true }
-              }))
-            ]
-          }
-        }
+          type: 'text',
+          text: { content: '🚨 새로운 견적 요청이 접수되었습니다!\n\n' }
+        },
+        {
+          type: 'text',
+          text: { content: `📋 행사명: ${eventData.eventName}\n` }
+        },
+        {
+          type: 'text',
+          text: { content: `🏢 고객사: ${eventData.customerName}\n` }
+        },
+        {
+          type: 'text',
+          text: { content: `📅 행사기간: ${eventData.eventPeriod}\n` }
+        },
+        {
+          type: 'text',
+          text: { content: `🎪 행사장: ${eventData.venue}\n` }
+        },
+        {
+          type: 'text',
+          text: { content: `💰 견적금액: ${eventData.totalAmount?.toLocaleString() || '계산중'}원\n\n` }
+        },
+        {
+          type: 'text',
+          text: { content: '담당자 확인 부탁드립니다: ' }
+        },
+        ...mentions.map((mention, index) => ({
+          ...mention,
+          annotations: { bold: true }
+        }))
       ];
       
       // Notion 페이지에 댓글 추가
       await notion.comments.create({
         parent: { page_id: eventData.notionPageId },
-        rich_text: commentBlocks[0].paragraph.rich_text
+        rich_text: commentBlocks
       });
       
       console.log('✅ Notion 언급 댓글 추가 완료');
@@ -117,163 +109,201 @@ class NotificationService {
   }
 
   /**
-   * 카카오톡 알림톡/채널 메시지 전송
+   * 특정 페이지에 언급 댓글 추가
    */
-  async sendKakaoMessages(managers, eventData) {
+  async addMentionComment(pageId, eventData) {
     try {
-      const messagePromises = managers.map(manager => 
-        this.sendKakaoMessageToManager(manager, eventData)
-      );
+      console.log(`📝 Notion 페이지 ${pageId}에 담당자 언급 댓글 추가 시작`);
       
-      const results = await Promise.allSettled(messagePromises);
+      // 활성화된 담당자만 필터링
+      const activeManagers = this.managers.filter(manager => manager.isActive);
       
-      // 결과 확인
-      const successCount = results.filter(r => r.status === 'fulfilled').length;
-      const failCount = results.filter(r => r.status === 'rejected').length;
+      if (activeManagers.length === 0) {
+        console.warn('⚠️ 활성화된 담당자가 없습니다.');
+        return false;
+      }
       
-      console.log(`✅ 카카오톡 메시지 전송 완료: 성공 ${successCount}건, 실패 ${failCount}건`);
+      // 댓글 내용 구성
+      const commentContent = this.buildCommentContent(activeManagers, eventData);
       
-      if (failCount > 0) {
-        results.forEach((result, index) => {
-          if (result.status === 'rejected') {
-            console.error(`❌ ${managers[index].name} 전송 실패:`, result.reason);
-          }
+      // Notion 댓글 추가
+      const { Client } = await import('@notionhq/client');
+      const notion = new Client({ auth: process.env.NOTION_API_KEY });
+      
+      const comment = await notion.comments.create({
+        parent: { page_id: pageId },
+        rich_text: commentContent
+      });
+      
+      console.log(`✅ Notion 언급 댓글 추가 완료 (${activeManagers.length}명 언급)`);
+      return comment;
+      
+    } catch (error) {
+      console.error('❌ Notion 언급 댓글 추가 실패:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 댓글 내용 구성 (담당자 언급 포함)
+   */
+  buildCommentContent(managers, eventData) {
+    const richTextContent = [];
+    
+    // 알림 제목
+    richTextContent.push({
+      type: 'text',
+      text: { content: '🚨 새로운 견적 요청이 접수되었습니다!\n\n' },
+      annotations: { bold: true, color: 'red' }
+    });
+    
+    // 행사 정보
+    const eventInfo = [
+      { label: '📋 행사명', value: eventData.eventName },
+      { label: '🏢 고객사', value: eventData.customerName },
+      { label: '👤 담당자', value: `${eventData.contactName} (${eventData.contactTitle})` },
+      { label: '📞 연락처', value: eventData.contactPhone },
+      { label: '📅 행사기간', value: eventData.eventPeriod },
+      { label: '🎪 행사장', value: eventData.venue },
+      { label: '💰 견적금액', value: `${eventData.totalAmount?.toLocaleString() || '계산중'}원` }
+    ];
+    
+    eventInfo.forEach(info => {
+      richTextContent.push({
+        type: 'text',
+        text: { content: `${info.label}: ` },
+        annotations: { bold: true }
+      });
+      richTextContent.push({
+        type: 'text',
+        text: { content: `${info.value}\n` }
+      });
+    });
+    
+    // LED 사양 정보
+    if (eventData.ledSpecs && eventData.ledSpecs.length > 0) {
+      richTextContent.push({
+        type: 'text',
+        text: { content: '\n📺 LED 사양:\n' },
+        annotations: { bold: true }
+      });
+      
+      eventData.ledSpecs.forEach((spec, index) => {
+        richTextContent.push({
+          type: 'text',
+          text: { content: `${index + 1}. ${spec.size} (${spec.modules}모듈, 무대높이: ${spec.stageHeight}m)\n` }
+        });
+      });
+    }
+    
+    // 구분선
+    richTextContent.push({
+      type: 'text',
+      text: { content: '\n' + '─'.repeat(30) + '\n' }
+    });
+    
+    // 담당자 언급
+    richTextContent.push({
+      type: 'text',
+      text: { content: '담당자 확인 요청: ' },
+      annotations: { bold: true, color: 'blue' }
+    });
+    
+    // 각 담당자를 언급
+    managers.forEach((manager, index) => {
+      // 담당자 언급
+      richTextContent.push({
+        type: 'mention',
+        mention: {
+          type: 'user',
+          user: { id: manager.notionId }
+        },
+        annotations: { bold: true }
+      });
+      
+      // 부서 정보 추가
+      if (manager.department) {
+        richTextContent.push({
+          type: 'text',
+          text: { content: `(${manager.department})` }
         });
       }
       
-      return true;
-    } catch (error) {
-      console.error('❌ 카카오톡 메시지 전송 실패:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 개별 담당자에게 카카오톡 메시지 전송
-   */
-  async sendKakaoMessageToManager(manager, eventData) {
-    try {
-      // 알림톡 전송 시도
-      const alimtalkResult = await this.sendAlimtalk(manager, eventData);
-      if (alimtalkResult) {
-        console.log(`✅ ${manager.name}님에게 알림톡 전송 성공`);
-        return true;
+      // 구분자 추가 (마지막이 아닌 경우)
+      if (index < managers.length - 1) {
+        richTextContent.push({
+          type: 'text',
+          text: { content: ', ' }
+        });
       }
-      
-      // 알림톡 실패 시 채널톡 전송
-      const channelResult = await this.sendChannelTalk(manager, eventData);
-      if (channelResult) {
-        console.log(`✅ ${manager.name}님에게 채널톡 전송 성공`);
-        return true;
-      }
-      
-      throw new Error('알림톡, 채널톡 모두 전송 실패');
-    } catch (error) {
-      console.error(`❌ ${manager.name}님 카카오톡 전송 실패:`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * 카카오톡 알림톡 전송
-   */
-  async sendAlimtalk(manager, eventData) {
-    try {
-      const messageData = {
-        plusFriendId: this.kakaoSenderKey,
-        templateCode: this.kakaoTemplateCode,
-        messages: [{
-          to: manager.phone,
-          content: {
-            담당자명: manager.name,
-            행사명: eventData.eventName,
-            고객사: eventData.customerName,
-            행사기간: eventData.eventPeriod,
-            행사장: eventData.venue,
-            견적금액: eventData.totalAmount?.toLocaleString() || '계산중',
-            노션링크: eventData.notionPageUrl || 'Notion에서 확인'
-          }
-        }]
-      };
-      
-      const response = await axios.post(
-        'https://alimtalk-api.bizmsg.kr/v2/sender/send',
-        messageData,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.kakaoApiKey}`
-          }
-        }
-      );
-      
-      return response.data.code === '0000';
-    } catch (error) {
-      console.error('알림톡 전송 실패:', error.response?.data || error.message);
-      return false;
-    }
-  }
-
-  /**
-   * 카카오톡 채널톡 전송 (알림톡 실패 시 백업)
-   */
-  async sendChannelTalk(manager, eventData) {
-    try {
-      const message = `🚨 새로운 견적 요청 알림
-
-안녕하세요, ${manager.name}님!
-
-📋 행사명: ${eventData.eventName}
-🏢 고객사: ${eventData.customerName}
-📅 행사기간: ${eventData.eventPeriod}
-🎪 행사장: ${eventData.venue}
-💰 견적금액: ${eventData.totalAmount?.toLocaleString() || '계산중'}원
-
-자세한 내용은 Notion에서 확인해주세요.`;
-
-      const messageData = {
-        plusFriendId: this.kakaoSenderKey,
-        messages: [{
-          to: manager.phone,
-          content: {
-            text: message
-          }
-        }]
-      };
-      
-      const response = await axios.post(
-        'https://friendtalk-api.bizmsg.kr/v2/sender/send',
-        messageData,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.kakaoApiKey}`
-          }
-        }
-      );
-      
-      return response.data.code === '0000';
-    } catch (error) {
-      console.error('채널톡 전송 실패:', error.response?.data || error.message);
-      return false;
-    }
-  }
-
-  /**
-   * 테스트 메시지 전송
-   */
-  async sendTestNotification() {
-    const testData = {
-      eventName: '테스트 행사',
-      customerName: '테스트 고객사',
-      eventPeriod: '2024-01-15 ~ 2024-01-17',
-      venue: '테스트 행사장',
-      totalAmount: 1500000,
-      notionPageId: 'test-page-id',
-      notionPageUrl: 'https://notion.so/test-page'
-    };
+    });
     
-    return await this.sendQuoteRequestNotification(testData);
+    // 마감 안내
+    richTextContent.push({
+      type: 'text',
+      text: { content: '\n\n⏰ 빠른 확인 부탁드립니다!' },
+      annotations: { bold: true, color: 'orange' }
+    });
+    
+    return richTextContent;
+  }
+
+  /**
+   * 활성 담당자 목록 조회
+   */
+  getActiveManagers() {
+    return this.managers.filter(manager => manager.isActive);
+  }
+
+  /**
+   * 테스트 언급 (개발용)
+   */
+  async sendTestMention() {
+    try {
+      console.log('🧪 테스트 언급 시작');
+      
+      const testEventData = {
+        eventName: '테스트 행사',
+        customerName: '테스트 고객사',
+        contactName: '김테스트',
+        contactTitle: '대리',
+        contactPhone: '010-1234-5678',
+        eventPeriod: '2024-01-15 ~ 2024-01-17',
+        venue: '테스트 행사장',
+        totalAmount: 1500000,
+        ledSpecs: [
+          { size: '4m x 3m', modules: 12, stageHeight: 1.5 },
+          { size: '6m x 4m', modules: 24, stageHeight: 2.0 }
+        ]
+      };
+      
+      // 최근 페이지 찾기
+      const { Client } = await import('@notionhq/client');
+      const notion = new Client({ auth: process.env.NOTION_API_KEY });
+      
+      const response = await notion.databases.query({
+        database_id: process.env.NOTION_DATABASE_ID,
+        page_size: 1,
+        sorts: [
+          {
+            timestamp: 'created_time',
+            direction: 'descending'
+          }
+        ]
+      });
+      
+      if (response.results.length > 0) {
+        const pageId = response.results[0].id;
+        const result = await this.addMentionComment(pageId, testEventData);
+        return result;
+      } else {
+        throw new Error('테스트할 페이지가 없습니다.');
+      }
+      
+    } catch (error) {
+      console.error('❌ 테스트 언급 실패:', error);
+      throw error;
+    }
   }
 }
 
