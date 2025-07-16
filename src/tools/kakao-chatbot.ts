@@ -26,14 +26,18 @@ app.use((req, res, next) => {
   }
 });
 
-// 개선된 사용자 세션 인터페이스
+// 사용자 세션 인터페이스
 interface UserSession {
   step: string;
   data: {
     eventName?: string;
     venue?: string;
     customerName?: string;
-    eventDate?: string;
+    eventStartDate?: string;
+    eventEndDate?: string;
+    contactName?: string;
+    contactTitle?: string;
+    contactPhone?: string;
     ledSpecs: Array<{
       size: string;
       stageHeight?: number;
@@ -64,7 +68,6 @@ app.post('/skill', async (req, res) => {
     
     const { userRequest, bot, action } = req.body;
     
-    // userRequest가 없는 경우 기본값 설정
     const userId = userRequest?.user?.id || 'default_user';
     const userMessage = userRequest?.utterance || '안녕하세요';
     
@@ -99,7 +102,6 @@ app.post('/skill', async (req, res) => {
       }
     };
     
-    // quickReplies가 있으면 추가
     if (response.quickReplies && response.quickReplies.length > 0) {
       result.template.quickReplies = response.quickReplies;
     }
@@ -124,20 +126,19 @@ app.post('/skill', async (req, res) => {
   }
 });
 
-// 개선된 LED 크기 검증 함수
+// LED 크기 검증 함수
 function validateAndNormalizeLEDSize(input: string): { valid: boolean; size?: string; error?: string } {
   if (!input || typeof input !== 'string') {
     return { valid: false, error: 'LED 크기를 입력해주세요.' };
   }
   
-  // 다양한 형식 지원: 5000x3000, 5000*3000, 5000×3000, 5000 x 3000 등
   const cleanInput = input.replace(/\s/g, '').toLowerCase();
   const patterns = [
-    /^(\d+)[x×*](\d+)$/,           // 5000x3000, 5000*3000, 5000×3000
-    /^(\d+)[x×*]\s*(\d+)$/,       // 5000x 3000
-    /^(\d+)\s*[x×*]\s*(\d+)$/,    // 5000 x 3000
-    /^(\d+)[x×*](\d+)mm$/,        // 5000x3000mm
-    /^(\d+)mm[x×*](\d+)mm$/       // 5000mmx3000mm
+    /^(\d+)[x×*](\d+)$/,
+    /^(\d+)[x×*]\s*(\d+)$/,
+    /^(\d+)\s*[x×*]\s*(\d+)$/,
+    /^(\d+)[x×*](\d+)mm$/,
+    /^(\d+)mm[x×*](\d+)mm$/
   ];
   
   for (const pattern of patterns) {
@@ -168,7 +169,7 @@ function validateAndNormalizeLEDSize(input: string): { valid: boolean; size?: st
   };
 }
 
-// 무대 높이 검증 함수
+// 무대 높이 검증 함수 (버튼 클릭 버그 수정)
 function validateStageHeight(input: string): { valid: boolean; height?: number; error?: string } {
   if (!input || typeof input !== 'string') {
     return { valid: false, error: '무대 높이를 입력해주세요.' };
@@ -176,11 +177,11 @@ function validateStageHeight(input: string): { valid: boolean; height?: number; 
   
   const cleanInput = input.replace(/\s/g, '').toLowerCase();
   const patterns = [
-    /^(\d+)$/,           // 600
-    /^(\d+)mm$/,         // 600mm
-    /^(\d+)cm$/,         // 60cm
-    /^(\d+)m$/,          // 0.6m
-    /^(\d+\.\d+)m$/      // 0.6m
+    /^(\d+)$/,
+    /^(\d+)mm$/,
+    /^(\d+)cm$/,
+    /^(\d+)m$/,
+    /^(\d+\.\d+)m$/
   ];
   
   for (const pattern of patterns) {
@@ -188,11 +189,10 @@ function validateStageHeight(input: string): { valid: boolean; height?: number; 
     if (match) {
       let height = parseFloat(match[1]);
       
-      // 단위 변환
       if (cleanInput.includes('cm')) {
-        height = height * 10; // cm to mm
+        height = height * 10;
       } else if (cleanInput.includes('m')) {
-        height = height * 1000; // m to mm
+        height = height * 1000;
       }
       
       if (height < 100 || height > 10000) {
@@ -212,9 +212,93 @@ function validateStageHeight(input: string): { valid: boolean; height?: number; 
   };
 }
 
-// 개선된 메시지 처리 함수
+// 행사 기간 검증 함수
+function validateEventPeriod(input: string): { valid: boolean; startDate?: string; endDate?: string; error?: string } {
+  if (!input || typeof input !== 'string') {
+    return { valid: false, error: '행사 기간을 입력해주세요.' };
+  }
+  
+  const cleanInput = input.replace(/\s/g, '');
+  const patterns = [
+    /^(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})$/,
+    /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/,
+    /^(\d{4}-\d{2}-\d{2})부터(\d{4}-\d{2}-\d{2})까지$/,
+    /^(\d{4}-\d{2}-\d{2})에서(\d{4}-\d{2}-\d{2})$/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = cleanInput.match(pattern);
+    if (match) {
+      const [, startDate, endDate] = match;
+      
+      // 날짜 형식 검증
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      if (!datePattern.test(startDate) || !datePattern.test(endDate)) {
+        continue;
+      }
+      
+      // 날짜 유효성 검증
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return { valid: false, error: '유효하지 않은 날짜입니다.' };
+      }
+      
+      if (start > end) {
+        return { valid: false, error: '시작일이 종료일보다 늦을 수 없습니다.' };
+      }
+      
+      return { valid: true, startDate, endDate };
+    }
+  }
+  
+  return { 
+    valid: false, 
+    error: '행사 기간 형식이 올바르지 않습니다.\n예시: 2025-07-09 ~ 2025-07-11' 
+  };
+}
+
+// 전화번호 검증 함수
+function validatePhoneNumber(input: string): { valid: boolean; phone?: string; error?: string } {
+  if (!input || typeof input !== 'string') {
+    return { valid: false, error: '전화번호를 입력해주세요.' };
+  }
+  
+  const cleanInput = input.replace(/[-\s]/g, '');
+  const patterns = [
+    /^010\d{8}$/,
+    /^02\d{7,8}$/,
+    /^0[3-9]\d{8,9}$/,
+    /^070\d{8}$/
+  ];
+  
+  for (const pattern of patterns) {
+    if (pattern.test(cleanInput)) {
+      // 전화번호 포맷팅
+      if (cleanInput.startsWith('010')) {
+        return { valid: true, phone: cleanInput.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3') };
+      } else if (cleanInput.startsWith('02')) {
+        if (cleanInput.length === 9) {
+          return { valid: true, phone: cleanInput.replace(/(\d{2})(\d{3})(\d{4})/, '$1-$2-$3') };
+        } else {
+          return { valid: true, phone: cleanInput.replace(/(\d{2})(\d{4})(\d{4})/, '$1-$2-$3') };
+        }
+      } else {
+        return { valid: true, phone: cleanInput.replace(/(\d{3})(\d{3,4})(\d{4})/, '$1-$2-$3') };
+      }
+    }
+  }
+  
+  return { 
+    valid: false, 
+    error: '올바른 전화번호 형식이 아닙니다.\n예시: 010-1234-5678, 02-1234-5678' 
+  };
+}
+
+// 메시지 처리 함수
 async function processUserMessage(message: string, session: UserSession) {
-  // 수정 요청 처리
+  // 수정 요청 처리 (개선된 버전)
   if (isModificationRequest(message)) {
     return handleModificationRequest(message, session);
   }
@@ -246,37 +330,45 @@ async function processUserMessage(message: string, session: UserSession) {
     case 'get_operator_needs':
       return handleOperatorNeeds(message, session);
     
-    case 'get_dates':
-      return handleDates(message, session);
+    case 'get_event_period':
+      return handleEventPeriod(message, session);
     
-    case 'confirm_quote':
-      return handleQuoteConfirmation(message, session);
+    case 'get_contact_name':
+      return handleContactName(message, session);
+    
+    case 'get_contact_title':
+      return handleContactTitle(message, session);
+    
+    case 'get_contact_phone':
+      return handleContactPhone(message, session);
+    
+    case 'final_confirmation':
+      return handleFinalConfirmation(message, session);
     
     default:
       return handleDefault(session);
   }
 }
 
-// 수정 요청 감지
+// 수정 요청 감지 (개선된 버전)
 function isModificationRequest(message: string): boolean {
   const modificationKeywords = [
     '수정', '바꾸', '변경', '다시', '틀렸', '잘못', '돌아가', '이전',
-    '고쳐', '바꿔', '뒤로', '취소', '처음부터'
+    '고쳐', '바꿔', '뒤로', '취소', '행사 정보 수정', 'LED 개수 수정'
   ];
   return modificationKeywords.some(keyword => message.includes(keyword));
 }
 
 // 초기화 요청 감지
 function isResetRequest(message: string): boolean {
-  const resetKeywords = ['처음부터', '초기화', '새로', '다시 시작'];
+  const resetKeywords = ['처음부터', '처음부터 시작', '초기화', '새로', '다시 시작'];
   return resetKeywords.some(keyword => message.includes(keyword));
 }
 
-// 수정 요청 처리
+// 수정 요청 처리 (버그 수정 버전)
 function handleModificationRequest(message: string, session: UserSession) {
-  const step = session.step;
-  
-  if (step === 'get_event_info') {
+  // 구체적인 수정 요청 처리
+  if (message.includes('행사 정보 수정')) {
     session.step = 'get_event_info';
     return {
       text: '행사 정보를 다시 입력해주세요.\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀',
@@ -284,8 +376,32 @@ function handleModificationRequest(message: string, session: UserSession) {
     };
   }
   
-  if (step === 'get_led_count') {
+  if (message.includes('LED 개수 수정')) {
     session.step = 'get_led_count';
+    session.data.ledSpecs = [];
+    return {
+      text: 'LED 개수를 다시 선택해주세요.\n\n몇 개소의 LED가 필요하신가요?',
+      quickReplies: [
+        { label: '1개소', action: 'message', messageText: '1' },
+        { label: '2개소', action: 'message', messageText: '2' },
+        { label: '3개소', action: 'message', messageText: '3' },
+        { label: '4개소', action: 'message', messageText: '4' },
+        { label: '5개소', action: 'message', messageText: '5' }
+      ]
+    };
+  }
+  
+  // 일반적인 수정 요청
+  const step = session.step;
+  
+  if (step === 'get_event_info') {
+    return {
+      text: '행사 정보를 다시 입력해주세요.\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀',
+      quickReplies: []
+    };
+  }
+  
+  if (step === 'get_led_count') {
     return {
       text: 'LED 개수를 다시 선택해주세요.\n\n몇 개소의 LED가 필요하신가요?',
       quickReplies: [
@@ -299,7 +415,6 @@ function handleModificationRequest(message: string, session: UserSession) {
   }
   
   if (step === 'get_led_specs' && session.data.ledSpecs.length > 0) {
-    // 마지막 LED 정보 삭제
     session.data.ledSpecs.pop();
     session.currentLED = session.data.ledSpecs.length + 1;
     
@@ -313,7 +428,6 @@ function handleModificationRequest(message: string, session: UserSession) {
     };
   }
   
-  // 일반적인 수정 요청
   return {
     text: '어떤 정보를 수정하시겠습니까?',
     quickReplies: [
@@ -438,7 +552,6 @@ function handleLEDSpecs(message: string, session: UserSession) {
   const validation = validateAndNormalizeLEDSize(message);
   
   if (validation.valid && validation.size) {
-    // LED 사양 임시 저장
     session.data.ledSpecs.push({
       size: validation.size,
       needOperator: false,
@@ -468,12 +581,11 @@ function handleLEDSpecs(message: string, session: UserSession) {
   }
 }
 
-// 무대 높이 처리
+// 무대 높이 처리 (버그 수정 버전)
 function handleStageHeight(message: string, session: UserSession) {
   const validation = validateStageHeight(message);
   
   if (validation.valid && validation.height !== undefined) {
-    // 현재 LED에 무대 높이 추가
     const currentLedIndex = session.data.ledSpecs.length - 1;
     session.data.ledSpecs[currentLedIndex].stageHeight = validation.height;
     
@@ -520,7 +632,7 @@ function handleOperatorNeeds(message: string, session: UserSession) {
       ]
     };
   } else {
-    session.step = 'get_dates';
+    session.step = 'get_event_period';
     
     // LED 설정 요약 생성
     const ledSummary = session.data.ledSpecs.map((led, index) => {
@@ -530,23 +642,88 @@ function handleOperatorNeeds(message: string, session: UserSession) {
     }).join('\n');
     
     return {
-      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${ledSummary}\n\n📅 행사 날짜를 알려주세요.\n예: 2025-07-09\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${ledSummary}\n\n📅 행사 기간을 알려주세요.\n시작일과 종료일을 모두 입력해주세요.\n\n예시: 2025-07-09 ~ 2025-07-11\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: []
     };
   }
 }
 
-// 날짜 처리
-function handleDates(message: string, session: UserSession) {
-  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-  if (datePattern.test(message)) {
-    session.data.eventDate = message;
-    session.step = 'confirm_quote';
+// 행사 기간 처리
+function handleEventPeriod(message: string, session: UserSession) {
+  const validation = validateEventPeriod(message);
+  
+  if (validation.valid && validation.startDate && validation.endDate) {
+    session.data.eventStartDate = validation.startDate;
+    session.data.eventEndDate = validation.endDate;
+    session.step = 'get_contact_name';
     
-    // 견적 계산
-    const quote = calculateMultiLEDQuote(session.data.ledSpecs);
+    return {
+      text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate}\n\n👤 담당자님의 성함을 알려주세요.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      quickReplies: []
+    };
+  } else {
+    return {
+      text: `❌ ${validation.error}\n\n다시 입력해주세요:\n\n✅ 올바른 형식:\n• 2025-07-09 ~ 2025-07-11\n• 2025-07-09 - 2025-07-11\n• 2025-07-09부터 2025-07-11까지\n\n💡 시작일과 종료일을 모두 입력해주세요.`,
+      quickReplies: []
+    };
+  }
+}
+
+// 담당자 이름 처리
+function handleContactName(message: string, session: UserSession) {
+  if (message && message.trim().length > 0) {
+    session.data.contactName = message.trim();
+    session.step = 'get_contact_title';
     
-    // 견적 요약 생성
+    return {
+      text: `✅ 담당자: ${session.data.contactName}님\n\n💼 직급을 알려주세요.\n\n예시: 과장, 대리, 팀장, 부장 등\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      quickReplies: [
+        { label: '과장', action: 'message', messageText: '과장' },
+        { label: '대리', action: 'message', messageText: '대리' },
+        { label: '팀장', action: 'message', messageText: '팀장' },
+        { label: '부장', action: 'message', messageText: '부장' }
+      ]
+    };
+  } else {
+    return {
+      text: '❌ 담당자 성함을 입력해주세요.\n\n예시: 김철수, 이영희 등',
+      quickReplies: []
+    };
+  }
+}
+
+// 담당자 직급 처리
+function handleContactTitle(message: string, session: UserSession) {
+  if (message && message.trim().length > 0) {
+    session.data.contactTitle = message.trim();
+    session.step = 'get_contact_phone';
+    
+    return {
+      text: `✅ 직급: ${session.data.contactTitle}\n\n📞 연락처를 알려주세요.\n\n예시: 010-1234-5678, 02-1234-5678\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      quickReplies: []
+    };
+  } else {
+    return {
+      text: '❌ 직급을 입력해주세요.\n\n예시: 과장, 대리, 팀장, 부장 등',
+      quickReplies: [
+        { label: '과장', action: 'message', messageText: '과장' },
+        { label: '대리', action: 'message', messageText: '대리' },
+        { label: '팀장', action: 'message', messageText: '팀장' },
+        { label: '부장', action: 'message', messageText: '부장' }
+      ]
+    };
+  }
+}
+
+// 담당자 연락처 처리
+function handleContactPhone(message: string, session: UserSession) {
+  const validation = validatePhoneNumber(message);
+  
+  if (validation.valid && validation.phone) {
+    session.data.contactPhone = validation.phone;
+    session.step = 'final_confirmation';
+    
+    // 최종 확인 요약 생성
     const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
       const [w, h] = led.size.split('x').map(Number);
       const moduleCount = (w / 500) * (h / 500);
@@ -554,50 +731,53 @@ function handleDates(message: string, session: UserSession) {
     }).join('\n');
     
     return {
-      text: `💰 견적 계산 완료!\n\n📋 ${session.data.eventName}\n📍 ${session.data.venue}\n📅 ${session.data.eventDate}\n\n🖥️ LED 사양:\n${ledSummary}\n\n💵 총 견적 금액: ${quote.total.toLocaleString()}원 (VAT 포함)\n\n이 견적으로 Notion에 저장하시겠습니까?`,
+      text: `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}\n\n👤 담당자 정보:\n• 성함: ${session.data.contactName}\n• 직급: ${session.data.contactTitle}\n• 연락처: ${session.data.contactPhone}\n\n🖥️ LED 사양:\n${ledSummary}\n\n담당자에게 전달드리겠습니다!`,
       quickReplies: [
-        { label: '네, 저장해주세요', action: 'message', messageText: '저장' },
-        { label: '수정하고 싶어요', action: 'message', messageText: '수정' },
-        { label: '처음부터 다시', action: 'message', messageText: '처음부터' }
+        { label: '네, 전달해주세요', action: 'message', messageText: '네' },
+        { label: '수정하고 싶어요', action: 'message', messageText: '수정' }
       ]
     };
   } else {
     return {
-      text: '❌ 날짜 형식이 올바르지 않습니다.\n\n✅ 올바른 형식: YYYY-MM-DD\n\n예시:\n• 2025-07-09\n• 2025-12-25\n• 2026-01-15\n\n💡 수정하려면 "수정"이라고 말씀해주세요.',
+      text: `❌ ${validation.error}\n\n다시 입력해주세요:\n\n✅ 올바른 형식:\n• 010-1234-5678\n• 02-1234-5678\n• 070-1234-5678\n\n💡 하이픈(-) 없이 입력하셔도 됩니다.`,
       quickReplies: []
     };
   }
 }
 
-// 견적 확인 처리
-async function handleQuoteConfirmation(message: string, session: UserSession) {
-  if (message.includes('저장') || message.includes('네')) {
-    // 견적 계산
-    const quote = calculateMultiLEDQuote(session.data.ledSpecs);
-    
-    // Notion에 저장할 데이터 준비
-    const notionData = {
-      eventName: session.data.eventName,
-      customerName: session.data.customerName,
-      eventDate: session.data.eventDate,
-      venue: session.data.venue,
-      customerContact: '010-0000-0000',
-      ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
-        acc[`led${index + 1}`] = led;
-        return acc;
-      }, {}),
-      totalQuoteAmount: quote.total,
-      totalModuleCount: quote.totalModuleCount,
-      ledModuleCost: quote.ledModules.price,
-      structureCost: quote.structure.totalPrice,
-      controllerCost: quote.controller.totalPrice,
-      powerCost: quote.power.totalPrice,
-      installationCost: quote.installation.totalPrice,
-      operatorCost: quote.operation.totalPrice,
-      transportCost: quote.transport.price
-    };
-    
+// 최종 확인 처리
+async function handleFinalConfirmation(message: string, session: UserSession) {
+  if (message.includes('네') || message.includes('전달')) {
     try {
+      // 견적 계산 (내부 계산용)
+      const quote = calculateMultiLEDQuote(session.data.ledSpecs);
+      
+      // Notion에 저장할 데이터 준비
+      const notionData = {
+        eventName: session.data.eventName,
+        customerName: session.data.customerName,
+        eventStartDate: session.data.eventStartDate,
+        eventEndDate: session.data.eventEndDate,
+        venue: session.data.venue,
+        contactName: session.data.contactName,
+        contactTitle: session.data.contactTitle,
+        contactPhone: session.data.contactPhone,
+        ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
+          acc[`led${index + 1}`] = led;
+          return acc;
+        }, {}),
+        totalQuoteAmount: quote.total,
+        totalModuleCount: quote.totalModuleCount,
+        ledModuleCost: quote.ledModules.price,
+        structureCost: quote.structure.totalPrice,
+        controllerCost: quote.controller.totalPrice,
+        powerCost: quote.power.totalPrice,
+        installationCost: quote.installation.totalPrice,
+        operatorCost: quote.operation.totalPrice,
+        transportCost: quote.transport.price
+      };
+      
+      // Notion에 저장
       await notionMCPTool.handler(notionData);
       
       // 세션 초기화
@@ -606,18 +786,21 @@ async function handleQuoteConfirmation(message: string, session: UserSession) {
       session.ledCount = 0;
       session.currentLED = 1;
       
+      let successMessage = `✅ 견적 요청이 성공적으로 접수되었습니다!\n\n📋 ${notionData.eventName}\n👤 담당자: ${notionData.contactName} ${notionData.contactTitle}\n📞 연락처: ${notionData.contactPhone}\n\n📝 담당자에게 전달되었으며, 곧 연락드리겠습니다!\n\n🔄 새로운 견적을 원하시면 "안녕하세요"라고 말씀해주세요.`;
+      
       return {
-        text: `✅ 견적이 성공적으로 저장되었습니다!\n\n📋 ${session.data.eventName}\n💰 총 견적: ${quote.total.toLocaleString()}원\n\n📝 Notion 데이터베이스에 저장되었으며,\n담당자가 곧 연락드리겠습니다!\n\n🔄 새로운 견적을 원하시면 "안녕하세요"라고 말씀해주세요.`,
+        text: successMessage,
         quickReplies: [
           { label: '새 견적 요청', action: 'message', messageText: '안녕하세요' },
           { label: '문의사항', action: 'message', messageText: '문의' }
         ]
       };
     } catch (error) {
+      console.error('견적 처리 실패:', error);
       return {
-        text: `❌ 저장 중 오류가 발생했습니다.\n\n다시 시도해주세요.\n\n오류가 계속되면 담당자에게 문의해주세요.`,
+        text: `❌ 견적 처리 중 오류가 발생했습니다.\n\n다시 시도해주세요.\n\n오류가 계속되면 담당자에게 문의해주세요.`,
         quickReplies: [
-          { label: '다시 시도', action: 'message', messageText: '저장' },
+          { label: '다시 시도', action: 'message', messageText: '네' },
           { label: '처음부터', action: 'message', messageText: '처음부터' }
         ]
       };
