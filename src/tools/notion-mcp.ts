@@ -117,7 +117,7 @@ export const notionMCPTool = {
           
           // 상태 관리
           "행사 상태": {
-            select: {
+            status: {
               name: "견적 요청"
             }
           },
