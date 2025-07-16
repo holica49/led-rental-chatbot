@@ -44,7 +44,7 @@ export interface NotionEvent {
   
   // 총 비용 정보
   totalQuoteAmount?: number;
-  totalModuleCount?: number;        // 🔥 새로 추가
+  totalModuleCount?: number;        
   ledModuleCost?: number;
   structureCost?: number;
   controllerCost?: number;

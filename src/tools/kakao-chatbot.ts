@@ -2,6 +2,7 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import { calculateMultiLEDQuote } from './calculate-quote.js';
 import { notionMCPTool } from './notion-mcp.js';
+import NotionMentionService from '../../services/notionMentionService.js';
 
 const app = express();
 
@@ -867,8 +868,22 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
       };
       
       // Notion에 저장
-      await notionMCPTool.handler(notionData);
-      
+      const notionResult = await notionMCPTool.handler(notionData);
+
+      const mentionService = new NotionMentionService();
+      await mentionService.addMentionComment(notionResult.id, {  // ✅ 이제 notionResult 사용 가능
+        eventName: notionData.eventName,
+        customerName: notionData.customerName,
+        contactName: notionData.contactName,
+        contactTitle: notionData.contactTitle,
+        contactPhone: notionData.contactPhone,
+        eventPeriod: notionData.eventSchedule,
+        venue: notionData.venue,
+        totalAmount: notionData.totalQuoteAmount,
+        ledSpecs: session.data.ledSpecs,
+        operatorDays: notionData.operatorDays
+      });
+
       // 세션 초기화
       session.step = 'start';
       session.data = { ledSpecs: [] };
@@ -912,6 +927,17 @@ function handleDefault(session: UserSession) {
 }
 
 const PORT = process.env.PORT || 3000;
+// 테스트 API 추가
+app.get('/test-mention', async (req, res) => {
+  try {
+    const mentionService = new NotionMentionService();
+    const result = await mentionService.sendTestMention();
+    res.json({ success: true, message: '테스트 언급 완료' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`개선된 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
 });
