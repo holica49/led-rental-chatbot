@@ -2,24 +2,9 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import { calculateMultiLEDQuote } from './calculate-quote.js';
 import { notionMCPTool } from './notion-mcp.js';
+import NotionMentionService from '../../services/notionMentionService.js';
 
 const app = express();
-
-// 🆕 NotionMentionService 동적 로드
-let NotionMentionService: any = null;
-
-async function loadNotionMentionService() {
-  try {
-    const module = await import('../../services/notionMentionService.js');
-    NotionMentionService = module.default;
-    console.log('✅ NotionMentionService 로드 완료');
-  } catch (error) {
-    console.error('❌ NotionMentionService 로드 실패 (무시하고 계속):', error);
-  }
-}
-
-// 서버 시작 시 로드
-loadNotionMentionService();
 
 // ngrok 헤더 처리 미들웨어
 app.use((req, res, next) => {
@@ -59,6 +44,8 @@ interface UserSession {
       stageHeight?: number;
       needOperator: boolean;
       operatorDays: number;
+      prompterConnection?: boolean;
+      relayConnection?: boolean;
     }>;
   };
   ledCount: number;
@@ -69,102 +56,22 @@ interface UserSession {
 // 사용자 세션 관리
 const userSessions: { [key: string]: UserSession } = {};
 
-// 테스트 API 수정
-app.get('/test', async (req, res) => {
-  let notionMentionServiceStatus = '로드안됨';
-  
-  try {
-    const module = await import('../../services/notionMentionService.js');
-    const NotionMentionService = module.default;
-    
-    if (NotionMentionService) {
-      notionMentionServiceStatus = '로드성공';
-      
-      // 간단한 테스트
-      const service = new NotionMentionService();
-      const activeManagers = service.getActiveManagers();
-      
-      return res.json({
-        message: "서버가 정상 작동 중입니다!",
-        timestamp: new Date().toISOString(),
-        notionMentionService: notionMentionServiceStatus,
-        activeManagers: activeManagers.length,
-        managersConfig: process.env.MANAGERS_CONFIG ? '설정됨' : '설정안됨'
-      });
-    }
-  } catch (error) {
-    console.error('NotionMentionService 로드 실패:', error);
-    notionMentionServiceStatus = `로드실패: ${error.message}`;
-  }
-  
+// 간단한 테스트 엔드포인트
+app.get('/test', (req, res) => {
   res.json({
     message: "서버가 정상 작동 중입니다!",
-    timestamp: new Date().toISOString(),
-    notionMentionService: notionMentionServiceStatus
+    timestamp: new Date().toISOString()
   });
 });
 
-// 🆕 테스트 언급 API
+// 테스트 언급 API
 app.get('/test-mention', async (req, res) => {
   try {
-    if (!NotionMentionService) {
-      return res.json({ 
-        success: false, 
-        message: 'NotionMentionService가 로드되지 않았습니다.' 
-      });
-    }
-
     const mentionService = new NotionMentionService();
-    const managers = mentionService.getActiveManagers();
-    
-    if (managers.length === 0) {
-      return res.json({ 
-        success: false, 
-        message: '활성화된 담당자가 없습니다.' 
-      });
-    }
-
-    // 테스트 언급 실행
     const result = await mentionService.sendTestMention();
-    
-    res.json({ 
-      success: true, 
-      message: `${managers.length}명의 담당자에게 테스트 언급 완료`,
-      managers: managers.map(m => m.name)
-    });
-    
+    res.json({ success: true, message: '테스트 언급 완료' });
   } catch (error) {
-    console.error('테스트 언급 실패:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-// 🆕 담당자 관리 API
-app.get('/managers', async (req, res) => {
-  try {
-    if (!NotionMentionService) {
-      return res.json({ 
-        success: false, 
-        message: 'NotionMentionService가 로드되지 않았습니다.' 
-      });
-    }
-
-    const mentionService = new NotionMentionService();
-    const managers = mentionService.getActiveManagers();
-    
-    res.json({ 
-      success: true, 
-      managers: managers 
-    });
-    
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -276,7 +183,7 @@ function validateAndNormalizeLEDSize(input: string): { valid: boolean; size?: st
   };
 }
 
-// 무대 높이 검증 함수 (버튼 클릭 버그 수정)
+// 무대 높이 검증 함수
 function validateStageHeight(input: string): { valid: boolean; height?: number; error?: string } {
   if (!input || typeof input !== 'string') {
     return { valid: false, error: '무대 높이를 입력해주세요.' };
@@ -418,7 +325,7 @@ function validatePhoneNumber(input: string): { valid: boolean; phone?: string; e
 
 // 메시지 처리 함수
 async function processUserMessage(message: string, session: UserSession) {
-  // 수정 요청 처리 (개선된 버전)
+  // 수정 요청 처리
   if (isModificationRequest(message)) {
     return handleModificationRequest(message, session);
   }
@@ -453,6 +360,12 @@ async function processUserMessage(message: string, session: UserSession) {
     case 'get_operator_days':
       return handleOperatorDays(message, session);
     
+    case 'get_prompter_connection':
+      return handlePrompterConnection(message, session);
+    
+    case 'get_relay_connection':
+      return handleRelayConnection(message, session);
+    
     case 'get_event_period':
       return handleEventPeriod(message, session);
     
@@ -473,7 +386,7 @@ async function processUserMessage(message: string, session: UserSession) {
   }
 }
 
-// 수정 요청 감지 (개선된 버전)
+// 수정 요청 감지
 function isModificationRequest(message: string): boolean {
   const modificationKeywords = [
     '수정', '바꾸', '변경', '다시', '틀렸', '잘못', '돌아가', '이전',
@@ -488,9 +401,8 @@ function isResetRequest(message: string): boolean {
   return resetKeywords.some(keyword => message.includes(keyword));
 }
 
-// 수정 요청 처리 (버그 수정 버전)
+// 수정 요청 처리
 function handleModificationRequest(message: string, session: UserSession) {
-  // 구체적인 수정 요청 처리
   if (message.includes('행사 정보 수정')) {
     session.step = 'get_event_info';
     return {
@@ -510,43 +422,6 @@ function handleModificationRequest(message: string, session: UserSession) {
         { label: '3개소', action: 'message', messageText: '3' },
         { label: '4개소', action: 'message', messageText: '4' },
         { label: '5개소', action: 'message', messageText: '5' }
-      ]
-    };
-  }
-  
-  // 일반적인 수정 요청
-  const step = session.step;
-  
-  if (step === 'get_event_info') {
-    return {
-      text: '행사 정보를 다시 입력해주세요.\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀',
-      quickReplies: []
-    };
-  }
-  
-  if (step === 'get_led_count') {
-    return {
-      text: 'LED 개수를 다시 선택해주세요.\n\n몇 개소의 LED가 필요하신가요?',
-      quickReplies: [
-        { label: '1개소', action: 'message', messageText: '1' },
-        { label: '2개소', action: 'message', messageText: '2' },
-        { label: '3개소', action: 'message', messageText: '3' },
-        { label: '4개소', action: 'message', messageText: '4' },
-        { label: '5개소', action: 'message', messageText: '5' }
-      ]
-    };
-  }
-  
-  if (step === 'get_led_specs' && session.data.ledSpecs.length > 0) {
-    session.data.ledSpecs.pop();
-    session.currentLED = session.data.ledSpecs.length + 1;
-    
-    return {
-      text: `LED ${session.currentLED}번째 개소의 크기를 다시 입력해주세요.\n\n다양한 형식으로 입력 가능합니다:\n• 4000x2500\n• 4000*2500\n• 4000×2500\n• 4000 x 2500`,
-      quickReplies: [
-        { label: '4000x2500', action: 'message', messageText: '4000x2500' },
-        { label: '2000x1500', action: 'message', messageText: '2000x1500' },
-        { label: '1000x1000', action: 'message', messageText: '1000x1000' }
       ]
     };
   }
@@ -678,7 +553,9 @@ function handleLEDSpecs(message: string, session: UserSession) {
     session.data.ledSpecs.push({
       size: validation.size,
       needOperator: false,
-      operatorDays: 0
+      operatorDays: 0,
+      prompterConnection: false,
+      relayConnection: false
     });
     
     session.step = 'get_stage_height';
@@ -704,7 +581,7 @@ function handleLEDSpecs(message: string, session: UserSession) {
   }
 }
 
-// 무대 높이 처리 (버그 수정 버전)
+// 무대 높이 처리
 function handleStageHeight(message: string, session: UserSession) {
   const validation = validateStageHeight(message);
   
@@ -755,7 +632,15 @@ function handleOperatorNeeds(message: string, session: UserSession) {
     };
   } else {
     session.data.ledSpecs[currentLedIndex].operatorDays = 0;
-    return handleNextLEDOrContinue(session);
+    session.step = 'get_prompter_connection';
+    
+    return {
+      text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 불필요\n\n📺 프롬프터 연결이 필요하신가요?\n\n프롬프터는 발표자가 대본을 보면서 발표할 수 있도록 도와주는 장치입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      quickReplies: [
+        { label: '네, 필요합니다', action: 'message', messageText: '네' },
+        { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
+      ]
+    };
   }
 }
 
@@ -768,7 +653,15 @@ function handleOperatorDays(message: string, session: UserSession) {
     const days = parseInt(dayMatch[1]);
     if (days >= 1 && days <= 10) {
       session.data.ledSpecs[currentLedIndex].operatorDays = days;
-      return handleNextLEDOrContinue(session);
+      session.step = 'get_prompter_connection';
+      
+      return {
+        text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 ${days}일\n\n📺 프롬프터 연결이 필요하신가요?\n\n프롬프터는 발표자가 대본을 보면서 발표할 수 있도록 도와주는 장치입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+        quickReplies: [
+          { label: '네, 필요합니다', action: 'message', messageText: '네' },
+          { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
+        ]
+      };
     }
   }
   
@@ -784,8 +677,31 @@ function handleOperatorDays(message: string, session: UserSession) {
   };
 }
 
-// 다음 LED 또는 계속 진행
-function handleNextLEDOrContinue(session: UserSession) {
+// 프롬프터 연결 처리
+function handlePrompterConnection(message: string, session: UserSession) {
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const needsPrompter = message.includes('네') || message.includes('필요');
+  
+  session.data.ledSpecs[currentLedIndex].prompterConnection = needsPrompter;
+  session.step = 'get_relay_connection';
+  
+  return {
+    text: `✅ LED ${session.currentLED}번째 개소: 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n📹 중계카메라 연결이 필요하신가요?\n\n중계카메라는 행사 진행 상황을 실시간으로 LED에 송출하는 기능입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+    quickReplies: [
+      { label: '네, 필요합니다', action: 'message', messageText: '네' },
+      { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
+    ]
+  };
+}
+
+// 중계카메라 연결 처리
+function handleRelayConnection(message: string, session: UserSession) {
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const needsRelay = message.includes('네') || message.includes('필요');
+  
+  session.data.ledSpecs[currentLedIndex].relayConnection = needsRelay;
+  
+  // 다음 LED로 이동하거나 행사 기간 입력으로 이동
   if (session.currentLED < session.ledCount) {
     session.currentLED++;
     session.step = 'get_led_specs';
@@ -801,16 +717,19 @@ function handleNextLEDOrContinue(session: UserSession) {
   } else {
     session.step = 'get_event_period';
     
-    // LED 설정 요약 생성
-    const ledSummary = session.data.ledSpecs.map((led, index) => {
+    // 확장된 LED 설정 요약 생성
+    const enhancedLedSummary = session.data.ledSpecs.map((led, index) => {
       const [w, h] = led.size.split('x').map(Number);
       const moduleCount = (w / 500) * (h / 500);
+      const prompterText = led.prompterConnection ? ', 프롬프터 연결' : '';
+      const relayText = led.relayConnection ? ', 중계카메라 연결' : '';
       const operatorText = led.needOperator ? `, 오퍼레이터 ${led.operatorDays}일` : '';
-      return `LED${index + 1}: ${led.size} (${led.stageHeight}mm 높이, ${moduleCount}개 모듈${operatorText})`;
+      
+      return `LED${index + 1}: ${led.size} (${led.stageHeight}mm, ${moduleCount}개${operatorText}${prompterText}${relayText})`;
     }).join('\n');
     
     return {
-      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${ledSummary}\n\n📅 행사 기간을 알려주세요.\n시작일과 종료일을 모두 입력해주세요.\n\n예시: 2025-07-09 ~ 2025-07-11\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${enhancedLedSummary}\n\n📅 행사 기간을 알려주세요.\n시작일과 종료일을 모두 입력해주세요.\n\n예시: 2025-07-09 ~ 2025-07-11\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: []
     };
   }
@@ -918,7 +837,11 @@ function handleContactPhone(message: string, session: UserSession) {
     const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
       const [w, h] = led.size.split('x').map(Number);
       const moduleCount = (w / 500) * (h / 500);
-      return `LED${index + 1}: ${led.size} (${led.stageHeight}mm, ${moduleCount}개)`;
+      const prompterText = led.prompterConnection ? ', 프롬프터 연결' : '';
+      const relayText = led.relayConnection ? ', 중계카메라 연결' : '';
+      const operatorText = led.needOperator ? `, 오퍼레이터 ${led.operatorDays}일` : '';
+      
+      return `LED${index + 1}: ${led.size} (${led.stageHeight}mm, ${moduleCount}개${operatorText}${prompterText}${relayText})`;
     }).join('\n');
     
     return {
@@ -936,7 +859,7 @@ function handleContactPhone(message: string, session: UserSession) {
   }
 }
 
-// 최종 확인 처리 (🆕 언급 기능 통합)
+// 최종 확인 처리
 async function handleFinalConfirmation(message: string, session: UserSession) {
   if (message.includes('네') || message.includes('전달')) {
     try {
@@ -976,29 +899,20 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
       // Notion에 저장
       const notionResult = await notionMCPTool.handler(notionData);
       
-      // 🆕 담당자 언급 추가 (안전한 방식)
-      if (NotionMentionService) {
-        try {
-          const mentionService = new NotionMentionService();
-          await mentionService.addMentionComment(notionResult.id, {
-            eventName: notionData.eventName,
-            customerName: notionData.customerName,
-            contactName: notionData.contactName,
-            contactTitle: notionData.contactTitle,
-            contactPhone: notionData.contactPhone,
-            eventPeriod: notionData.eventSchedule,
-            venue: notionData.venue,
-            totalAmount: notionData.totalQuoteAmount,
-            ledSpecs: session.data.ledSpecs,
-            operatorDays: session.data.ledSpecs.reduce((sum, led) => sum + led.operatorDays, 0)
-          });
-          console.log('✅ 허지성님 언급 완료');
-        } catch (mentionError) {
-          console.error('❌ 담당자 언급 실패 (무시하고 계속):', mentionError);
-        }
-      } else {
-        console.log('⚠️ NotionMentionService를 사용할 수 없음');
-      }
+      // 담당자 언급 추가
+      const mentionService = new NotionMentionService();
+      await mentionService.addMentionComment(notionResult.id, {
+        eventName: notionData.eventName,
+        customerName: notionData.customerName,
+        contactName: notionData.contactName,
+        contactTitle: notionData.contactTitle,
+        contactPhone: notionData.contactPhone,
+        eventPeriod: notionData.eventSchedule,
+        venue: notionData.venue,
+        totalAmount: notionData.totalQuoteAmount,
+        ledSpecs: session.data.ledSpecs,
+        operatorDays: notionData.operatorDays
+      });
       
       // 세션 초기화
       session.step = 'start';
@@ -1045,5 +959,4 @@ function handleDefault(session: UserSession) {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`개선된 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
-  console.log(`NotionMentionService 상태: ${NotionMentionService ? '로드됨' : '로드안됨'}`);
 });

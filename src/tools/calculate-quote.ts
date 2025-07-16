@@ -383,3 +383,84 @@ export const calculateMultiQuoteTool = {
     }
   }
 };
+
+// LED 해상도 계산 함수
+export function calculateLEDResolution(ledSize: string): string {
+  if (!ledSize) return '';
+  
+  const [width, height] = ledSize.split('x').map(Number);
+  
+  // LED 모듈 1장당 168x168 픽셀, 모듈 크기 500x500mm
+  const horizontalModules = width / 500;
+  const verticalModules = height / 500;
+  
+  const horizontalPixels = horizontalModules * 168;
+  const verticalPixels = verticalModules * 168;
+  
+  return `${horizontalPixels} x ${verticalPixels} pixels`;
+}
+
+// LED 소비전력 계산 함수
+export function calculateLEDPowerConsumption(ledSize: string): string {
+  if (!ledSize) return '';
+  
+  const [width, height] = ledSize.split('x').map(Number);
+  const moduleCount = (width / 500) * (height / 500);
+  
+  // LED 모듈 1장당 380V 0.2kW
+  const totalPower = moduleCount * 0.2;
+  
+  return `380V ${totalPower}kW`;
+}
+
+// 전기설치 방식 계산 함수
+export function calculateElectricalInstallation(ledSize: string): string {
+  if (!ledSize) return '';
+  
+  const [width, height] = ledSize.split('x').map(Number);
+  
+  // 대각선 인치 계산
+  const inches = Math.sqrt(width ** 2 + height ** 2) / 25.4;
+  
+  if (inches < 250) {
+    // 250인치 미만: 220V 멀티탭
+    const moduleCount = (width / 500) * (height / 500);
+    const multiTapCount = moduleCount <= 20 ? 3 : 4;
+    return `220V 멀티탭 ${multiTapCount}개`;
+  } else {
+    // 250인치 이상: 50A 3상-4선 배전반
+    const moduleCount = (width / 500) * (height / 500);
+    const totalPower = moduleCount * 0.2; // kW
+    
+    // 50A 배전반 1개당 약 19kW 처리 가능 (380V x 50A x √3 x 0.8 ≈ 26kW, 안전율 고려)
+    const panelCount = Math.ceil(totalPower / 19);
+    return `50A 3상-4선 배전반 ${panelCount}개`;
+  }
+}
+
+// LED 사양 인터페이스 확장
+export interface EnhancedLEDSpec {
+  size: string;
+  stageHeight?: number;
+  needOperator: boolean;
+  operatorDays: number;
+  
+  // 새로 추가된 속성들
+  resolution?: string;
+  powerConsumption?: string;
+  electricalInstallation?: string;
+  prompterConnection?: boolean;
+  relayConnection?: boolean;
+}
+
+// 확장된 LED 사양 계산 함수
+export function calculateEnhancedLEDSpecs(ledSpecs: any[]): EnhancedLEDSpec[] {
+  return ledSpecs.map(spec => ({
+    ...spec,
+    resolution: calculateLEDResolution(spec.size),
+    powerConsumption: calculateLEDPowerConsumption(spec.size),
+    electricalInstallation: calculateElectricalInstallation(spec.size),
+    prompterConnection: spec.prompterConnection || false,
+    relayConnection: spec.relayConnection || false
+  }));
+}

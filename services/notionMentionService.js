@@ -191,7 +191,7 @@ class NotionMentionService {
       eventData.ledSpecs.forEach((spec, index) => {
         richTextContent.push({
           type: 'text',
-          text: { content: `${index + 1}. ${spec.size} (${spec.modules}모듈, 무대높이: ${spec.stageHeight}m)\n` }
+          text: { content: `${index + 1}. ${spec.size} (무대높이: ${spec.stageHeight}m)\n` }
         });
       });
     }

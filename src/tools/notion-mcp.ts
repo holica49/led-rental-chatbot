@@ -7,14 +7,17 @@ const notion = new Client({
 
 const databaseId = process.env.NOTION_DATABASE_ID;
 
-// 타입 정의
+// 확장된 LED 사양 타입
 interface LEDSpec {
   size: string;
   stageHeight: number;
   needOperator: boolean;
   operatorDays: number;
+  prompterConnection?: boolean;  // 🆕 추가
+  relayConnection?: boolean;     // 🆕 추가
 }
 
+// 확장된 Notion 데이터 타입
 interface NotionData {
   eventName: string;
   customerName: string;
@@ -42,6 +45,60 @@ interface NotionData {
   transportCost: number;
 }
 
+// LED 해상도 계산 함수
+function calculateLEDResolution(ledSize: string): string {
+  if (!ledSize) return '';
+  
+  const [width, height] = ledSize.split('x').map(Number);
+  
+  // LED 모듈 1장당 168x168 픽셀, 모듈 크기 500x500mm
+  const horizontalModules = width / 500;
+  const verticalModules = height / 500;
+  
+  const horizontalPixels = horizontalModules * 168;
+  const verticalPixels = verticalModules * 168;
+  
+  return `${horizontalPixels} x ${verticalPixels} pixels`;
+}
+
+// LED 소비전력 계산 함수
+function calculateLEDPowerConsumption(ledSize: string): string {
+  if (!ledSize) return '';
+  
+  const [width, height] = ledSize.split('x').map(Number);
+  const moduleCount = (width / 500) * (height / 500);
+  
+  // LED 모듈 1장당 380V 0.2kW
+  const totalPower = moduleCount * 0.2;
+  
+  return `380V ${totalPower}kW`;
+}
+
+// 전기설치 방식 계산 함수
+function calculateElectricalInstallation(ledSize: string): string {
+  if (!ledSize) return '';
+  
+  const [width, height] = ledSize.split('x').map(Number);
+  
+  // 대각선 인치 계산
+  const inches = Math.sqrt(width ** 2 + height ** 2) / 25.4;
+  
+  if (inches < 250) {
+    // 250인치 미만: 220V 멀티탭
+    const moduleCount = (width / 500) * (height / 500);
+    const multiTapCount = moduleCount <= 20 ? 3 : 4;
+    return `220V 멀티탭 ${multiTapCount}개`;
+  } else {
+    // 250인치 이상: 50A 3상-4선 배전반
+    const moduleCount = (width / 500) * (height / 500);
+    const totalPower = moduleCount * 0.2; // kW
+    
+    // 50A 배전반 1개당 약 19kW 처리 가능 (380V x 50A x √3 x 0.8 ≈ 26kW, 안전율 고려)
+    const panelCount = Math.ceil(totalPower / 19);
+    return `50A 3상-4선 배전반 ${panelCount}개`;
+  }
+}
+
 export const notionMCPTool = {
   async handler(data: NotionData) {
     try {
@@ -54,7 +111,7 @@ export const notionMCPTool = {
         return (width / 500) * (height / 500);
       };
 
-      // LED 모듈 수량 계산 함수 (기존 함수 수정)
+      // 총 모듈 수량 계산 함수
       const calculateTotalModuleCount = (data: NotionData): number => {
         let totalCount = 0;
         for (let i = 1; i <= 5; i++) {
@@ -151,7 +208,7 @@ export const notionMCPTool = {
             } : null
           },
           
-          // LED1 정보
+          // LED1 정보 - 확장된 속성들
           "LED1 크기": {
             rich_text: [
               {
@@ -170,6 +227,44 @@ export const notionMCPTool = {
             number: data.led1?.size ? calculateModuleCount(data.led1.size) : null
           },
           
+          "LED1 해상도": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led1?.size ? calculateLEDResolution(data.led1.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED1 소비전력": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led1?.size ? calculateLEDPowerConsumption(data.led1.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED1 전기설치 방식": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led1?.size ? calculateElectricalInstallation(data.led1.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED1 프롬프터 연결": {
+            checkbox: data.led1?.prompterConnection || false
+          },
+          
+          "LED1 중계카메라 연결": {
+            checkbox: data.led1?.relayConnection || false
+          },
+          
           "LED1 오퍼레이터 필요": {
             checkbox: data.led1?.needOperator || false
           },
@@ -178,7 +273,7 @@ export const notionMCPTool = {
             number: data.led1?.operatorDays || null
           },
           
-          // LED2 정보
+          // LED2 정보 - 확장된 속성들
           "LED2 크기": {
             rich_text: [
               {
@@ -197,6 +292,44 @@ export const notionMCPTool = {
             number: data.led2?.size ? calculateModuleCount(data.led2.size) : null
           },
           
+          "LED2 해상도": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led2?.size ? calculateLEDResolution(data.led2.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED2 소비전력": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led2?.size ? calculateLEDPowerConsumption(data.led2.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED2 전기설치 방식": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led2?.size ? calculateElectricalInstallation(data.led2.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED2 프롬프터 연결": {
+            checkbox: data.led2?.prompterConnection || false
+          },
+          
+          "LED2 중계카메라 연결": {
+            checkbox: data.led2?.relayConnection || false
+          },
+          
           "LED2 오퍼레이터 필요": {
             checkbox: data.led2?.needOperator || false
           },
@@ -205,7 +338,7 @@ export const notionMCPTool = {
             number: data.led2?.operatorDays || null
           },
           
-          // LED3 정보
+          // LED3 정보 - 확장된 속성들
           "LED3 크기": {
             rich_text: [
               {
@@ -224,6 +357,44 @@ export const notionMCPTool = {
             number: data.led3?.size ? calculateModuleCount(data.led3.size) : null
           },
           
+          "LED3 해상도": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led3?.size ? calculateLEDResolution(data.led3.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED3 소비전력": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led3?.size ? calculateLEDPowerConsumption(data.led3.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED3 전기설치 방식": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led3?.size ? calculateElectricalInstallation(data.led3.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED3 프롬프터 연결": {
+            checkbox: data.led3?.prompterConnection || false
+          },
+          
+          "LED3 중계카메라 연결": {
+            checkbox: data.led3?.relayConnection || false
+          },
+          
           "LED3 오퍼레이터 필요": {
             checkbox: data.led3?.needOperator || false
           },
@@ -232,7 +403,7 @@ export const notionMCPTool = {
             number: data.led3?.operatorDays || null
           },
           
-          // LED4 정보
+          // LED4 정보 - 확장된 속성들
           "LED4 크기": {
             rich_text: [
               {
@@ -251,6 +422,44 @@ export const notionMCPTool = {
             number: data.led4?.size ? calculateModuleCount(data.led4.size) : null
           },
           
+          "LED4 해상도": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led4?.size ? calculateLEDResolution(data.led4.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED4 소비전력": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led4?.size ? calculateLEDPowerConsumption(data.led4.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED4 전기설치 방식": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led4?.size ? calculateElectricalInstallation(data.led4.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED4 프롬프터 연결": {
+            checkbox: data.led4?.prompterConnection || false
+          },
+          
+          "LED4 중계카메라 연결": {
+            checkbox: data.led4?.relayConnection || false
+          },
+          
           "LED4 오퍼레이터 필요": {
             checkbox: data.led4?.needOperator || false
           },
@@ -259,7 +468,7 @@ export const notionMCPTool = {
             number: data.led4?.operatorDays || null
           },
           
-          // LED5 정보
+          // LED5 정보 - 확장된 속성들
           "LED5 크기": {
             rich_text: [
               {
@@ -278,6 +487,44 @@ export const notionMCPTool = {
             number: data.led5?.size ? calculateModuleCount(data.led5.size) : null
           },
           
+          "LED5 해상도": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led5?.size ? calculateLEDResolution(data.led5.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED5 소비전력": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led5?.size ? calculateLEDPowerConsumption(data.led5.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED5 전기설치 방식": {
+            rich_text: [
+              {
+                text: {
+                  content: data.led5?.size ? calculateElectricalInstallation(data.led5.size) : ""
+                }
+              }
+            ]
+          },
+          
+          "LED5 프롬프터 연결": {
+            checkbox: data.led5?.prompterConnection || false
+          },
+          
+          "LED5 중계카메라 연결": {
+            checkbox: data.led5?.relayConnection || false
+          },
+          
           "LED5 오퍼레이터 필요": {
             checkbox: data.led5?.needOperator || false
           },
@@ -286,6 +533,7 @@ export const notionMCPTool = {
             number: data.led5?.operatorDays || null
           },
           
+          // 총 LED 모듈 수량
           "총 LED 모듈 수량": {
             number: calculateTotalModuleCount(data)
           },
@@ -348,6 +596,22 @@ export const notionMCPTool = {
         return;
       }
       
+      // LED 사양 요약 생성
+      const ledSummary = [];
+      for (let i = 1; i <= 5; i++) {
+        const ledKey = `led${i}` as keyof NotionData;
+        const ledData = data[ledKey] as LEDSpec | undefined;
+        if (ledData && ledData.size) {
+          const [width, height] = ledData.size.split('x').map(Number);
+          const moduleCount = (width / 500) * (height / 500);
+          const operatorText = ledData.needOperator ? `, 오퍼레이터 ${ledData.operatorDays}일` : '';
+          const prompterText = ledData.prompterConnection ? ', 프롬프터 연결' : '';
+          const relayText = ledData.relayConnection ? ', 중계카메라 연결' : '';
+          
+          ledSummary.push(`LED${i}: ${ledData.size} (${moduleCount}개${operatorText}${prompterText}${relayText})`);
+        }
+      }
+      
       const comment = await notion.comments.create({
         parent: {
           page_id: pageId,
@@ -371,7 +635,7 @@ export const notionMCPTool = {
           {
             type: "text",
             text: {
-              content: ` 님, 확인해주세요.\n\n📋 행사명: ${data.eventName}\n🏢 고객사: ${data.customerName}\n👤 담당자: ${data.contactName} ${data.contactTitle}\n📞 연락처: ${data.contactPhone}\n📅 행사 일정: ${data.eventSchedule}\n💰 견적 금액: ${data.totalQuoteAmount?.toLocaleString()}원`
+              content: ` 님, 확인해주세요.\n\n📋 행사명: ${data.eventName}\n🏢 고객사: ${data.customerName}\n👤 담당자: ${data.contactName} ${data.contactTitle}\n📞 연락처: ${data.contactPhone}\n📅 행사 일정: ${data.eventSchedule}\n\n🖥️ LED 사양:\n${ledSummary.join('\n')}\n\n💰 견적 금액: ${data.totalQuoteAmount?.toLocaleString()}원`
             }
           }
         ],
