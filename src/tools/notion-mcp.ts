@@ -245,7 +245,13 @@ export const notionMCPTool = {
           },
           
           "LED1 대각선 인치": {
-            number: data.led1?.size ? calculateInches(data.led1.size) : null
+            rich_text: [
+              {
+                text: {
+                  content: data.led1?.size ? `${calculateInches(data.led1.size)}인치` : ""
+                }
+              }
+            ]
           },
           
           "LED1 해상도": {
@@ -314,7 +320,13 @@ export const notionMCPTool = {
           },
           
           "LED2 대각선 인치": {
-            number: data.led2?.size ? calculateInches(data.led2.size) : null
+            rich_text: [
+              {
+                text: {
+                  content: data.led2?.size ? `${calculateInches(data.led2.size)}인치` : ""
+                }
+              }
+            ]
           },
           
           "LED2 해상도": {
@@ -383,7 +395,13 @@ export const notionMCPTool = {
           },
           
           "LED3 대각선 인치": {
-            number: data.led3?.size ? calculateInches(data.led3.size) : null
+            rich_text: [
+              {
+                text: {
+                  content: data.led3?.size ? `${calculateInches(data.led3.size)}인치` : ""
+                }
+              }
+            ]
           },
           
           "LED3 해상도": {
@@ -452,7 +470,13 @@ export const notionMCPTool = {
           },
           
           "LED4 대각선 인치": {
-            number: data.led4?.size ? calculateInches(data.led4.size) : null
+            rich_text: [
+              {
+                text: {
+                  content: data.led4?.size ? `${calculateInches(data.led4.size)}인치` : ""
+                }
+              }
+            ]
           },
           
           "LED4 해상도": {
@@ -521,7 +545,13 @@ export const notionMCPTool = {
           },
           
           "LED5 대각선 인치": {
-            number: data.led5?.size ? calculateInches(data.led5.size) : null
+            rich_text: [
+              {
+                text: {
+                  content: data.led5?.size ? `${calculateInches(data.led5.size)}인치` : ""
+                }
+              }
+            ]
           },
           
           "LED5 해상도": {
@@ -606,46 +636,14 @@ export const notionMCPTool = {
           
           "운반 비용": {
             number: data.transportCost || null
-          },
-          
-          // 추가 조건별 정보
-          "구조물 단가 구분": {
-            select: {
-              name: data.maxStageHeight && data.maxStageHeight >= 4000 ? "4m 이상 (25,000원)" : "4m 미만 (20,000원)"
-            }
-          },
-          
-          "설치인력 구간": {
-            select: {
-              name: data.installationWorkerRange || "60개 이하 (3명)"
-            }
-          },
-          
-          "설치인력 수량": {
-            number: data.installationWorkers || 3
-          },
-          
-          "컨트롤러 총 개소": {
-            number: data.controllerCount || 1
-          },
-          
-          "파워 필요 개소": {
-            number: data.powerRequiredCount || 0
-          },
-          
-          "운반비 구간": {
-            select: {
-              name: data.transportRange || "200개 이하"
-            }
-          },
-          
-          "최대 무대 높이": {
-            number: data.maxStageHeight || null
           }
         }
       });
       
       console.log('Notion 저장 완료:', response.id);
+      
+      // 조건별 정보를 댓글로 추가
+      await this.addConditionComment(response.id, data);
       
       return {
         content: [{
@@ -658,6 +656,40 @@ export const notionMCPTool = {
     } catch (error) {
       console.error('Notion 저장 실패:', error);
       throw error;
+    }
+  },
+  
+  // 조건별 정보를 댓글로 추가
+  async addConditionComment(pageId: string, data: NotionData) {
+    try {
+      // 조건별 정보 요약
+      const conditionSummary = [
+        `📊 조건별 정보 요약`,
+        ``,
+        `🏗️ 구조물: ${data.maxStageHeight && data.maxStageHeight >= 4000 ? "4m 이상 (25,000원/㎡)" : "4m 미만 (20,000원/㎡)"}`,
+        `👷 설치인력: ${data.installationWorkerRange || "60개 이하 (3명)"} - ${data.installationWorkers || 3}명`,
+        `🎛️ 컨트롤러: 총 ${data.controllerCount || 1}개소`,
+        `⚡ 파워: ${data.powerRequiredCount || 0}개소 필요`,
+        `🚚 운반비: ${data.transportRange || "200개 이하"}`,
+        `📐 최대 무대높이: ${data.maxStageHeight || 0}mm`
+      ].join('\n');
+      
+      const comment = await notion.comments.create({
+        parent: { page_id: pageId },
+        rich_text: [
+          {
+            type: 'text',
+            text: { content: conditionSummary }
+          }
+        ]
+      });
+      
+      console.log('조건별 정보 댓글 추가 완료:', comment.id);
+      return comment;
+      
+    } catch (error) {
+      console.error('조건별 정보 댓글 추가 실패:', error);
+      // 댓글 실패해도 메인 프로세스는 계속 진행
     }
   }
 };
