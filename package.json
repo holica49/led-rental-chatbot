@@ -34,13 +34,13 @@
     "dotenv": "^17.2.0",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
-    "googleapis": "^153.0.0",
     "pdf-lib": "^1.17.1",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.14",
+    "googleapis": "^144.0.0",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
