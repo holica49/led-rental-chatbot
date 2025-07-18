@@ -9,6 +9,11 @@ export class NotionPollingService {
   private notion: Client;
   private automation: NotionStatusAutomation;
   private lastCheckedPages: Map<string, string> = new Map();
+  private lastFileCheckMap: Map<string, {
+    hasQuote: boolean;
+    hasRequest: boolean;
+    lastChecked: number;
+  }> = new Map();
   private pollingInterval: NodeJS.Timeout | null = null;
   private isPolling: boolean = false;
 
@@ -69,12 +74,25 @@ export class NotionPollingService {
 
       for (const page of response.results) {
         const pageId = page.id;
-        const currentStatus = (page as any).properties['행사 상태']?.status?.name;
-        const eventName = (page as any).properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
+        const properties = (page as any).properties;
+        const currentStatus = properties['행사 상태']?.status?.name;
+        const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
         
         if (currentStatus) {
           this.lastCheckedPages.set(pageId, currentStatus);
           console.log(`📌 ${eventName}: ${currentStatus}`);
+        }
+
+        // 파일 상태도 초기화
+        if (currentStatus === '견적 검토') {
+          const hasQuoteFile = properties['견적서']?.files?.length > 0;
+          const hasRequestFile = properties['요청서']?.files?.length > 0;
+          
+          this.lastFileCheckMap.set(pageId, {
+            hasQuote: hasQuoteFile || false,
+            hasRequest: hasRequestFile || false,
+            lastChecked: Date.now()
+          });
         }
       }
       
@@ -85,7 +103,7 @@ export class NotionPollingService {
   }
 
   /**
-   * 상태 변경 확인
+   * 상태 변경 및 파일 업로드 확인
    */
   private async checkStatusChanges() {
     try {
@@ -103,11 +121,36 @@ export class NotionPollingService {
 
       for (const page of response.results) {
         const pageId = page.id;
-        const currentStatus = (page as any).properties['행사 상태']?.status?.name;
-        const eventName = (page as any).properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
+        const properties = (page as any).properties;
+        const currentStatus = properties['행사 상태']?.status?.name;
+        const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
         const lastStatus = this.lastCheckedPages.get(pageId);
 
-        // 상태 변경 감지
+        // 1. 파일 업로드 확인 (견적 검토 상태일 때)
+        if (currentStatus === '견적 검토') {
+          const hasQuoteFile = properties['견적서']?.files?.length > 0;
+          const hasRequestFile = properties['요청서']?.files?.length > 0;
+          const lastFileCheck = this.lastFileCheckMap.get(pageId);
+          
+          // 파일 업로드 상태 확인
+          if (hasQuoteFile && hasRequestFile) {
+            // 이전에 두 파일이 모두 없었는데 지금 있으면 상태 변경
+            if (!lastFileCheck || !lastFileCheck.hasQuote || !lastFileCheck.hasRequest) {
+              console.log(`📎 파일 업로드 감지: ${eventName} - 견적 승인으로 자동 변경`);
+              await this.updateToApproved(pageId, eventName);
+              changesDetected++;
+            }
+          }
+          
+          // 현재 파일 상태 저장
+          this.lastFileCheckMap.set(pageId, {
+            hasQuote: hasQuoteFile || false,
+            hasRequest: hasRequestFile || false,
+            lastChecked: Date.now()
+          });
+        }
+
+        // 2. 일반 상태 변경 감지
         if (lastStatus && lastStatus !== currentStatus) {
           console.log(`🔄 상태 변경 감지: ${eventName} (${lastStatus} → ${currentStatus})`);
           changesDetected++;
@@ -116,7 +159,7 @@ export class NotionPollingService {
           await this.handleStatusChange(pageId, currentStatus, lastStatus, eventName);
         }
 
-        // 새로운 페이지 감지
+        // 3. 새로운 페이지 감지
         if (!lastStatus && currentStatus) {
           console.log(`🆕 새로운 행사 감지: ${eventName} (${currentStatus})`);
         }
@@ -128,7 +171,7 @@ export class NotionPollingService {
       }
 
       if (changesDetected > 0) {
-        console.log(`✅ ${changesDetected}개 상태 변경 처리 완료`);
+        console.log(`✅ ${changesDetected}개 변경사항 처리 완료`);
       }
 
       // 완료된 행사들 정리
@@ -136,6 +179,64 @@ export class NotionPollingService {
 
     } catch (error) {
       console.error('❌ 상태 변경 확인 중 오류:', error);
+    }
+  }
+
+  /**
+   * 견적 승인으로 상태 변경
+   */
+  private async updateToApproved(pageId: string, eventName: string) {
+    try {
+      // 1. 상태를 "견적 승인"으로 변경
+      await this.notion.pages.update({
+        page_id: pageId,
+        properties: {
+          '행사 상태': {
+            status: { name: '견적 승인' }
+          }
+        }
+      });
+
+      // 2. 현재 상태 업데이트
+      this.lastCheckedPages.set(pageId, '견적 승인');
+
+      // 3. 댓글 추가
+      await this.notion.comments.create({
+        parent: { page_id: pageId },
+        rich_text: [
+          {
+            type: 'text',
+            text: { 
+              content: `✅ 파일 업로드 완료 - 자동 승인\n\n견적서와 요청서가 모두 업로드되어 자동으로 "견적 승인" 상태로 변경되었습니다.\n\n📎 업로드된 파일:\n• 견적서 ✓\n• 요청서 ✓\n\n🚚 다음 단계:\n배차 정보가 자동으로 생성됩니다.\n\n⏰ 변경 시간: ${new Date().toLocaleString()}` 
+            }
+          }
+        ]
+      });
+
+      // 4. 자동화 실행 (배차 정보 생성)
+      await this.automation.onStatusQuoteApproved(pageId);
+      
+      console.log(`✅ ${eventName} - 견적 승인으로 자동 변경 완료`);
+      
+    } catch (error) {
+      console.error(`❌ 견적 승인 변경 실패 (${eventName}):`, error);
+      
+      // 오류 발생 시 댓글 추가
+      try {
+        await this.notion.comments.create({
+          parent: { page_id: pageId },
+          rich_text: [
+            {
+              type: 'text',
+              text: { 
+                content: `❌ 자동 승인 실패\n\n파일은 업로드되었으나 상태 변경 중 오류가 발생했습니다.\n오류: ${error instanceof Error ? error.message : String(error)}\n\n담당자가 수동으로 "견적 승인"으로 변경해주세요.` 
+              }
+            }
+          ]
+        });
+      } catch (commentError) {
+        console.error('댓글 추가 실패:', commentError);
+      }
     }
   }
 
@@ -148,9 +249,9 @@ export class NotionPollingService {
       
       switch (newStatus) {
         case '견적 검토':
-          console.log('📊 견적서/요청서 자동 생성 시작...');
+          console.log('📊 견적서/요청서 작성 안내...');
           await this.automation.onStatusQuoteReview(pageId);
-          console.log('✅ 견적서/요청서 생성 완료');
+          console.log('✅ 견적 검토 프로세스 완료');
           break;
           
         case '견적 승인':
@@ -180,7 +281,7 @@ export class NotionPollingService {
             {
               type: 'text',
               text: { 
-                content: `❌ 자동화 오류 발생\n\n상태: ${oldStatus} → ${newStatus}\n오류: ${error.message}\n\n담당자 확인이 필요합니다.` 
+                content: `❌ 자동화 오류 발생\n\n상태: ${oldStatus} → ${newStatus}\n오류: ${error instanceof Error ? error.message : String(error)}\n\n담당자 확인이 필요합니다.` 
               }
             }
           ]
@@ -201,6 +302,7 @@ export class NotionPollingService {
     for (const pageId of currentPageIds) {
       if (!activePageIds.has(pageId)) {
         this.lastCheckedPages.delete(pageId);
+        this.lastFileCheckMap.delete(pageId);
         console.log(`🗑️ 완료된 행사 정리: ${pageId}`);
       }
     }
@@ -213,7 +315,14 @@ export class NotionPollingService {
     return {
       isPolling: this.isPolling,
       trackedPages: this.lastCheckedPages.size,
-      lastCheckedPages: Array.from(this.lastCheckedPages.entries())
+      trackedFiles: this.lastFileCheckMap.size,
+      lastCheckedPages: Array.from(this.lastCheckedPages.entries()),
+      fileStatuses: Array.from(this.lastFileCheckMap.entries()).map(([pageId, status]) => ({
+        pageId,
+        hasQuote: status.hasQuote,
+        hasRequest: status.hasRequest,
+        lastChecked: new Date(status.lastChecked).toLocaleString()
+      }))
     };
   }
 

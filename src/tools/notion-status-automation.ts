@@ -5,31 +5,8 @@ const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
 // 행사 상태 관리 서비스
 export class NotionStatusAutomation {
-  private driveService: any = null;
-  
   constructor() {
-    // 생성자에서는 초기화하지 않음
     console.log('NotionStatusAutomation 생성됨');
-  }
-
-  // GoogleDriveService를 실제로 사용할 때만 초기화
-  private async initializeDriveService() {
-    if (this.driveService) {
-      return; // 이미 초기화됨
-    }
-
-    try {
-      console.log('🔄 GoogleDriveService 동적 로딩...');
-      
-      // 동적으로 import
-      const { GoogleDriveService } = await import('./google-drive-service.js');
-      this.driveService = new GoogleDriveService();
-      
-      console.log('✅ GoogleDriveService 로드 완료');
-    } catch (error) {
-      console.warn('⚠️ Google Drive 서비스를 사용할 수 없습니다:', error);
-      this.driveService = null;
-    }
   }
 
   /**
@@ -45,22 +22,8 @@ export class NotionStatusAutomation {
       // 2. 견적 계산
       const quote = this.calculateQuoteFromEventData(eventData);
       
-      // 3. 기본 댓글 추가 (항상 실행)
+      // 3. 견적 검토 댓글 추가
       await this.addQuoteReviewComment(pageId, eventData, quote);
-      
-      // 4. Google Drive 서비스 초기화 및 사용
-      try {
-        await this.initializeDriveService(); // 필요할 때 초기화
-        
-        if (this.driveService) {
-          const driveResult = await this.driveService.generateQuoteAndRequestFiles(eventData, quote);
-          await this.updateNotionWithFileLinks(pageId, driveResult);
-          console.log('✅ 구글 드라이브 파일 생성 완료');
-        }
-      } catch (driveError) {
-        console.error('❌ 구글 드라이브 파일 생성 실패:', driveError);
-        await this.addErrorComment(pageId, '구글 드라이브 파일 생성 실패', driveError);
-      }
       
       console.log('✅ 견적 검토 프로세스 완료');
       return { success: true, eventData, quote };
@@ -203,75 +166,6 @@ export class NotionStatusAutomation {
   }
 
   /**
-   * Notion에 파일 링크 저장
-   */
-  private async updateNotionWithFileLinks(pageId: string, driveResult: any) {
-    try {
-      console.log('🔗 Notion에 파일 링크 저장 중...');
-      
-      const updateData: any = {};
-      
-      // 견적서 링크가 있으면 추가
-      if (driveResult.quoteFileUrl) {
-        updateData['견적서 링크'] = {
-          url: driveResult.quoteFileUrl
-        };
-        console.log(`📊 견적서 링크: ${driveResult.quoteFileUrl}`);
-      }
-      
-      // 요청서 링크가 있으면 추가
-      if (driveResult.requestFileUrl) {
-        updateData['요청서 링크'] = {
-          url: driveResult.requestFileUrl
-        };
-        console.log(`📋 요청서 링크: ${driveResult.requestFileUrl}`);
-      }
-      
-      if (Object.keys(updateData).length > 0) {
-        await notion.pages.update({
-          page_id: pageId,
-          properties: updateData
-        });
-        console.log('✅ Notion에 파일 링크 저장 완료');
-      } else {
-        console.log('⚠️ 저장할 파일 링크가 없습니다.');
-      }
-      
-    } catch (error) {
-      console.error('❌ Notion 파일 링크 저장 실패:', error);
-      
-      // 속성이 없는 경우 안내 메시지
-      if (error instanceof Error && error.message.includes('property')) {
-        console.error('💡 Notion 데이터베이스에 "견적서 링크", "요청서 링크" 속성(URL 타입)을 추가해주세요.');
-      }
-      
-      // 링크 저장 실패 시 댓글로 링크 제공
-      await this.addFileLinksComment(pageId, driveResult);
-    }
-  }
-
-  /**
-   * 파일 링크 댓글 추가 (속성 저장 실패 시 대안)
-   */
-  private async addFileLinksComment(pageId: string, driveResult: any) {
-    try {
-      const linkComment = `🔗 생성된 파일 링크
-
-📊 견적서: ${driveResult.quoteFileUrl || '생성 실패'}
-📋 요청서: ${driveResult.requestFileUrl || '생성 실패'}
-
-💡 Notion 데이터베이스에 "견적서 링크", "요청서 링크" 속성(URL 타입)을 추가하면 자동으로 링크가 저장됩니다.
-
-⏰ 생성 시간: ${new Date().toLocaleString()}`;
-
-      await this.addCommentToPage(pageId, linkComment);
-      console.log('✅ 파일 링크 댓글 추가 완료');
-    } catch (error) {
-      console.error('❌ 파일 링크 댓글 추가 실패:', error);
-    }
-  }
-
-  /**
    * 견적 검토 완료 댓글 추가
    */
   private async addQuoteReviewComment(pageId: string, eventData: any, quote: any) {
@@ -306,22 +200,22 @@ ${ledSummary}
 - 오퍼레이터: ${quote.operation?.totalPrice?.toLocaleString() || 0}원
 - 운반비: ${quote.transport?.price?.toLocaleString() || 0}원
 
-📎 생성된 파일:
-- 견적서와 요청서가 생성되었습니다
-- 파일 링크는 데이터베이스 속성에 자동 저장됩니다
-- Google Drive 서비스 연동 상태에 따라 파일이 생성됩니다
+📎 파일 업로드 가이드:
+1. 위 내용을 바탕으로 견적서를 작성하세요
+2. 요청서를 작성하세요
+3. 작성된 파일을 아래 위치에 업로드하세요:
+   • 견적서 → "견적서" 속성에 업로드
+   • 요청서 → "요청서" 속성에 업로드
 
-🔄 다음 단계:
-1. 견적 내용을 검토해주세요
-2. 생성된 견적서와 요청서를 확인해주세요
-3. 필요시 수정 사항을 반영해주세요
-4. 고객사에 견적을 전달해주세요
-5. 고객 승인 후 상태를 "견적 승인"으로 변경해주세요
+⚠️ 중요: 두 파일이 모두 업로드되면 자동으로 "견적 승인"으로 변경됩니다!
+
+✨ 자동화 프로세스:
+- 파일 업로드 감지 → 자동 승인 → 배차 정보 생성
 
 ⏰ 자동화 실행 시간: ${new Date().toLocaleString()}`;
 
-    await this.addCommentToPage(pageId, comment);
-  }
+  await this.addCommentToPage(pageId, comment);
+}
 
   /**
    * 배차 정보 생성

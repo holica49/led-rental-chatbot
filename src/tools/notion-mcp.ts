@@ -210,6 +210,12 @@ export const notionMCPTool = {
         "견적 금액": {
           number: data.totalQuoteAmount || null
         },
+        "견적서": {
+          files: []  // 파일은 나중에 수동으로 업로드
+        },
+        "요청서": {
+          files: []  // 파일은 나중에 수동으로 업로드
+        },
         "LED 모듈 비용": {
           number: data.ledModuleCost || null
         },
