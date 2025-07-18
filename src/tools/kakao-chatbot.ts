@@ -182,8 +182,7 @@ function validateStageHeight(input: string): { valid: boolean; height?: number; 
   const buttonValues: { [key: string]: number } = {
     '600mm': 600,
     '800mm': 800,
-    '1000mm': 1000,
-    '1200mm': 1200
+    '1000mm': 1000
   };
   
   if (buttonValues[cleanInput]) {
@@ -628,9 +627,9 @@ function handleLEDCount(message: string, session: UserSession) {
     return {
       text: `✅ 총 ${count}개소의 LED 설정을 진행하겠습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED 1번째 개소의 크기를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 4000x2500\n• 4000*2500\n• 4000×2500\n• 4000 x 2500\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: [
-        { label: '4000x2500', action: 'message', messageText: '4000x2500' },
-        { label: '2000x1500', action: 'message', messageText: '2000x1500' },
-        { label: '1000x1000', action: 'message', messageText: '1000x1000' }
+        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
+        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
+        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
       ]
     };
   } else {
