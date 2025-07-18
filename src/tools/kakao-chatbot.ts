@@ -1128,34 +1128,110 @@ app.post('/admin/manual-trigger', async (req, res) => {
   }
 });
 
-// 서버 종료 시 폴링 정리
-process.on('SIGINT', () => {
-  console.log('🛑 서버 종료 중...');
-  const service = getPollingService();
-  service.stopPolling();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  console.log('🛑 서버 종료 중...');
-  const service = getPollingService();
-  service.stopPolling();
-  process.exit(0);
-});
-
-// 서버 시작 (중복 제거)
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-  console.log(`🚀 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
-  
-  // 폴링 서비스 자동 시작
+// 특정 페이지의 상세 정보 확인
+app.get('/admin/page-details/:pageId', async (req, res) => {
   try {
-    console.log('🔄 Notion 상태 변경 모니터링 시작...');
-    await startPollingService();
-    console.log('✅ 폴링 서비스 시작 완료');
+    const { pageId } = req.params;
+    
+    const page = await notion.pages.retrieve({ page_id: pageId });
+    const properties = (page as any).properties;
+    
+    res.json({
+      success: true,
+      data: {
+        pageId,
+        eventName: properties['행사명']?.title?.[0]?.text?.content || 'Unknown',
+        status: properties['행사 상태']?.status?.name,
+        quoteFiles: properties['견적서'],
+        requestFiles: properties['요청서'],
+        lastEditedTime: (page as any).last_edited_time,
+        lastEditedBy: (page as any).last_edited_by,
+        // 파일 속성 상세 정보
+        quoteFileDetails: {
+          type: properties['견적서']?.type,
+          files: properties['견적서']?.files || [],
+          fileCount: (properties['견적서']?.files || []).length
+        },
+        requestFileDetails: {
+          type: properties['요청서']?.type,
+          files: properties['요청서']?.files || [],
+          fileCount: (properties['요청서']?.files || []).length
+        }
+      }
+    });
   } catch (error) {
-    console.error('❌ 폴링 서비스 시작 실패:', error);
-    console.log('⚠️ 나중에 /admin/start-polling 엔드포인트로 수동 시작 가능합니다.');
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// 수동으로 파일 체크 트리거
+app.post('/admin/manual-file-check/:pageId', async (req, res) => {
+  try {
+    const { pageId } = req.params;
+    const service = getPollingService();
+    
+    // 페이지 정보 가져오기
+    const page = await notion.pages.retrieve({ page_id: pageId });
+    const properties = (page as any).properties;
+    const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
+    
+    // 파일 체크 수동 실행 (private 메서드이므로 직접 실행)
+    const hasQuoteFile = properties['견적서']?.files?.length > 0;
+    const hasRequestFile = properties['요청서']?.files?.length > 0;
+    
+    console.log(`🔍 수동 파일 체크 - ${eventName} (${pageId})`);
+    console.log(`   견적서: ${hasQuoteFile ? '✅' : '❌'}`);
+    console.log(`   요청서: ${hasRequestFile ? '✅' : '❌'}`);
+    
+    // 두 파일이 모두 있으면 승인으로 변경
+    if (hasQuoteFile && hasRequestFile) {
+      console.log('✅ 두 파일 모두 업로드됨. 견적 승인으로 변경합니다.');
+      
+      await notion.pages.update({
+        page_id: pageId,
+        properties: {
+          '행사 상태': {
+            status: { name: '견적 승인' }
+          }
+        }
+      });
+      
+      // 자동화 실행
+      const automation = new NotionStatusAutomation();
+      await automation.onStatusQuoteApproved(pageId);
+      
+      res.json({
+        success: true,
+        message: '파일이 모두 확인되어 견적 승인으로 변경되었습니다.',
+        data: {
+          hasQuoteFile,
+          hasRequestFile,
+          statusChanged: true
+        }
+      });
+    } else {
+      res.json({
+        success: true,
+        message: '파일이 아직 모두 업로드되지 않았습니다.',
+        data: {
+          hasQuoteFile,
+          hasRequestFile,
+          statusChanged: false,
+          missingFiles: [
+            !hasQuoteFile && '견적서',
+            !hasRequestFile && '요청서'
+          ].filter(Boolean)
+        }
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
 });
 
@@ -1166,57 +1242,262 @@ app.get('/admin/check-files/:pageId', async (req, res) => {
     
     const page = await notion.pages.retrieve({ page_id: pageId });
     const properties = (page as any).properties;
-    
     const fileInfo = {
-      pageId,
-      eventName: properties['행사명']?.title?.[0]?.text?.content || 'Unknown',
-      status: properties['행사 상태']?.status?.name,
-      quoteFiles: properties['견적서']?.files || [],
-      requestFiles: properties['요청서']?.files || [],
-      hasQuoteFile: (properties['견적서']?.files || []).length > 0,
-      hasRequestFile: (properties['요청서']?.files || []).length > 0
-    };
-    
-    res.json({
-      success: true,
-      data: fileInfo
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
+     pageId,
+     eventName: properties['행사명']?.title?.[0]?.text?.content || 'Unknown',
+     status: properties['행사 상태']?.status?.name,
+     quoteFiles: properties['견적서']?.files || [],
+     requestFiles: properties['요청서']?.files || [],
+     hasQuoteFile: (properties['견적서']?.files || []).length > 0,
+     hasRequestFile: (properties['요청서']?.files || []).length > 0
+   };
+   
+   res.json({
+     success: true,
+     data: fileInfo
+   });
+ } catch (error) {
+   res.status(500).json({
+     success: false,
+     error: error instanceof Error ? error.message : String(error)
+   });
+ }
 });
 
 // 수동으로 파일 체크 후 승인 처리
 app.post('/admin/force-approve/:pageId', async (req, res) => {
-  try {
-    const { pageId } = req.params;
-    const service = getPollingService();
-    
-    // 강제로 견적 승인으로 변경
-    await notion.pages.update({
-      page_id: pageId,
-      properties: {
-        '행사 상태': {
-          status: { name: '견적 승인' }
-        }
-      }
-    });
-    
-    // 자동화 실행
-    const automation = new NotionStatusAutomation();
-    await automation.onStatusQuoteApproved(pageId);
-    
-    res.json({
-      success: true,
-      message: '견적 승인으로 변경되었습니다.'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
+ try {
+   const { pageId } = req.params;
+   const service = getPollingService();
+   
+   // 강제로 견적 승인으로 변경
+   await notion.pages.update({
+     page_id: pageId,
+     properties: {
+       '행사 상태': {
+         status: { name: '견적 승인' }
+       }
+     }
+   });
+   
+   // 자동화 실행
+   const automation = new NotionStatusAutomation();
+   await automation.onStatusQuoteApproved(pageId);
+   
+   res.json({
+     success: true,
+     message: '견적 승인으로 변경되었습니다.'
+   });
+ } catch (error) {
+   res.status(500).json({
+     success: false,
+     error: error instanceof Error ? error.message : String(error)
+   });
+ }
+});
+
+// 전체 파일 상태 확인 (견적 검토 상태인 모든 페이지)
+app.get('/admin/check-all-files', async (req, res) => {
+ try {
+   const databaseId = process.env.NOTION_DATABASE_ID!;
+   
+   // 견적 검토 상태인 페이지들 조회
+   const response = await notion.databases.query({
+     database_id: databaseId,
+     filter: {
+       property: '행사 상태',
+       status: {
+         equals: '견적 검토'
+       }
+     }
+   });
+   
+   const fileStatuses = [];
+   
+   for (const page of response.results) {
+     if (page.object !== 'page') continue;
+     
+     const properties = (page as any).properties;
+     const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
+     const hasQuoteFile = (properties['견적서']?.files || []).length > 0;
+     const hasRequestFile = (properties['요청서']?.files || []).length > 0;
+     
+     fileStatuses.push({
+       pageId: page.id,
+       eventName,
+       hasQuoteFile,
+       hasRequestFile,
+       bothFilesUploaded: hasQuoteFile && hasRequestFile,
+       lastEditedTime: (page as any).last_edited_time
+     });
+   }
+   
+   // 파일이 모두 업로드된 페이지 찾기
+   const readyForApproval = fileStatuses.filter(p => p.bothFilesUploaded);
+   
+   res.json({
+     success: true,
+     data: {
+       total: fileStatuses.length,
+       readyForApproval: readyForApproval.length,
+       pages: fileStatuses,
+       summary: {
+         withBothFiles: readyForApproval.length,
+         withQuoteOnly: fileStatuses.filter(p => p.hasQuoteFile && !p.hasRequestFile).length,
+         withRequestOnly: fileStatuses.filter(p => !p.hasQuoteFile && p.hasRequestFile).length,
+         withNoFiles: fileStatuses.filter(p => !p.hasQuoteFile && !p.hasRequestFile).length
+       }
+     }
+   });
+ } catch (error) {
+   res.status(500).json({
+     success: false,
+     error: error instanceof Error ? error.message : String(error)
+   });
+ }
+});
+
+// 일괄 승인 처리 (파일이 모두 업로드된 페이지들)
+app.post('/admin/batch-approve', async (req, res) => {
+ try {
+   const databaseId = process.env.NOTION_DATABASE_ID!;
+   
+   // 견적 검토 상태인 페이지들 조회
+   const response = await notion.databases.query({
+     database_id: databaseId,
+     filter: {
+       property: '행사 상태',
+       status: {
+         equals: '견적 검토'
+       }
+     }
+   });
+   
+   const results = [];
+   const automation = new NotionStatusAutomation();
+   
+   for (const page of response.results) {
+     if (page.object !== 'page') continue;
+     
+     const properties = (page as any).properties;
+     const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
+     const hasQuoteFile = (properties['견적서']?.files || []).length > 0;
+     const hasRequestFile = (properties['요청서']?.files || []).length > 0;
+     
+     if (hasQuoteFile && hasRequestFile) {
+       try {
+         // 견적 승인으로 변경
+         await notion.pages.update({
+           page_id: page.id,
+           properties: {
+             '행사 상태': {
+               status: { name: '견적 승인' }
+             }
+           }
+         });
+         
+         // 자동화 실행
+         await automation.onStatusQuoteApproved(page.id);
+         
+         results.push({
+           pageId: page.id,
+           eventName,
+           success: true,
+           message: '승인 완료'
+         });
+         
+         console.log(`✅ ${eventName} - 견적 승인 처리 완료`);
+         
+       } catch (error) {
+         results.push({
+           pageId: page.id,
+           eventName,
+           success: false,
+           message: error instanceof Error ? error.message : '처리 실패'
+         });
+         
+         console.error(`❌ ${eventName} - 처리 실패:`, error);
+       }
+     } else {
+       results.push({
+         pageId: page.id,
+         eventName,
+         success: false,
+         message: `파일 누락 (견적서: ${hasQuoteFile ? '✅' : '❌'}, 요청서: ${hasRequestFile ? '✅' : '❌'})`
+       });
+     }
+   }
+   
+   const successCount = results.filter(r => r.success).length;
+   
+   res.json({
+     success: true,
+     message: `총 ${results.length}개 중 ${successCount}개 승인 완료`,
+     results
+   });
+   
+ } catch (error) {
+   res.status(500).json({
+     success: false,
+     error: error instanceof Error ? error.message : String(error)
+   });
+ }
+});
+
+// 폴링 재시작 엔드포인트
+app.post('/admin/restart-polling', async (req, res) => {
+ try {
+   const service = getPollingService();
+   
+   // 기존 폴링 중지
+   service.stopPolling();
+   
+   // 잠시 대기
+   await new Promise(resolve => setTimeout(resolve, 1000));
+   
+   // 폴링 재시작
+   await service.startPolling();
+   
+   res.json({
+     success: true,
+     message: '폴링 서비스가 재시작되었습니다.',
+     status: service.getPollingStatus()
+   });
+ } catch (error) {
+   res.status(500).json({
+     success: false,
+     error: error instanceof Error ? error.message : String(error)
+   });
+ }
+});
+
+// 서버 종료 시 폴링 정리
+process.on('SIGINT', () => {
+ console.log('🛑 서버 종료 중...');
+ const service = getPollingService();
+ service.stopPolling();
+ process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+ console.log('🛑 서버 종료 중...');
+ const service = getPollingService();
+ service.stopPolling();
+ process.exit(0);
+});
+
+// 서버 시작 (중복 제거)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, async () => {
+ console.log(`🚀 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
+ 
+ // 폴링 서비스 자동 시작
+ try {
+   console.log('🔄 Notion 상태 변경 모니터링 시작...');
+   await startPollingService();
+   console.log('✅ 폴링 서비스 시작 완료');
+ } catch (error) {
+   console.error('❌ 폴링 서비스 시작 실패:', error);
+   console.log('⚠️ 나중에 /admin/start-polling 엔드포인트로 수동 시작 가능합니다.');
+ }
 });

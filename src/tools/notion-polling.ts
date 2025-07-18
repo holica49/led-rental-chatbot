@@ -186,14 +186,22 @@ export class NotionPollingService {
   /**
    * 파일 업로드 확인
    */
-  private async checkFileUploads(pageId: string, properties: any, eventName: string) {
+    private async checkFileUploads(pageId: string, properties: any, eventName: string) {
     try {
-      // 현재 파일 상태 확인
-      const hasQuoteFile = properties['견적서']?.files?.length > 0;
-      const hasRequestFile = properties['요청서']?.files?.length > 0;
-      
-      // 이전 파일 상태
-      const lastFileCheck = this.lastFileCheckMap.get(pageId);
+        // 파일 정보 상세 로그
+        console.log(`🔍 파일 체크 시작 - ${eventName} (${pageId})`);
+        console.log(`   견적서 파일 속성:`, JSON.stringify(properties['견적서'], null, 2));
+        console.log(`   요청서 파일 속성:`, JSON.stringify(properties['요청서'], null, 2));
+        
+        // 현재 파일 상태 확인
+        const hasQuoteFile = properties['견적서']?.files?.length > 0;
+        const hasRequestFile = properties['요청서']?.files?.length > 0;
+        
+        console.log(`   파일 존재 여부: 견적서=${hasQuoteFile}, 요청서=${hasRequestFile}`);
+        
+        // 이전 파일 상태
+        const lastFileCheck = this.lastFileCheckMap.get(pageId);
+        console.log(`   이전 상태:`, lastFileCheck);
       
       // 디버깅 로그
       if (hasQuoteFile || hasRequestFile) {
