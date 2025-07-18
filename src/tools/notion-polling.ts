@@ -60,6 +60,7 @@ export class NotionPollingService {
       
       // 데이터베이스 ID를 하이픈 형식으로 변환
       const databaseId = this.formatDatabaseId(process.env.NOTION_DATABASE_ID!);
+      console.log(`   데이터베이스 ID: ${databaseId}`);
       
       const response = await this.notion.databases.query({
         database_id: databaseId,
@@ -70,6 +71,10 @@ export class NotionPollingService {
           }
         }
       });
+
+      console.log(`   총 ${response.results.length}개 행사 조회됨`);
+      
+      let quoteReviewCount = 0;
 
       for (const page of response.results) {
         if (page.object !== 'page') continue;
@@ -85,6 +90,7 @@ export class NotionPollingService {
           
           // 파일 상태도 초기화 (견적 검토 상태일 때)
           if (currentStatus === '견적 검토') {
+            quoteReviewCount++;
             const hasQuoteFile = (properties['견적서']?.files || []).length > 0;
             const hasRequestFile = (properties['요청서']?.files || []).length > 0;
             
@@ -95,13 +101,22 @@ export class NotionPollingService {
             });
             
             console.log(`   파일 상태: 견적서=${hasQuoteFile ? '✅' : '❌'}, 요청서=${hasRequestFile ? '✅' : '❌'}`);
+            
+            // 파일 정보 상세 출력
+            if (hasQuoteFile || hasRequestFile) {
+              console.log(`   견적서 파일: ${properties['견적서']?.files?.map((f: any) => f.name).join(', ') || '없음'}`);
+              console.log(`   요청서 파일: ${properties['요청서']?.files?.map((f: any) => f.name).join(', ') || '없음'}`);
+            }
           }
         }
       }
       
-      console.log(`✅ 초기 상태 로드 완료 (${this.lastCheckedPages.size}개 행사)`);
+      console.log(`✅ 초기 상태 로드 완료 (총 ${this.lastCheckedPages.size}개, 견적검토 ${quoteReviewCount}개)`);
     } catch (error) {
       console.error('❌ 초기 상태 로드 실패:', error);
+      if (error instanceof Error) {
+        console.error('오류 상세:', error.message);
+      }
     }
   }
 
@@ -113,6 +128,7 @@ export class NotionPollingService {
       const databaseId = this.formatDatabaseId(process.env.NOTION_DATABASE_ID!);
       
       console.log('🔍 상태 변경 확인 중...');
+      console.log(`   데이터베이스 ID: ${databaseId}`);
       
       const response = await this.notion.databases.query({
         database_id: databaseId,
@@ -124,8 +140,11 @@ export class NotionPollingService {
         }
       });
 
+      console.log(`   조회된 페이지 수: ${response.results.length}`);
+
       let changesDetected = 0;
       let fileCheckCount = 0;
+      let quoteReviewCount = 0;
 
       for (const page of response.results) {
         if (page.object !== 'page') continue;
@@ -134,6 +153,14 @@ export class NotionPollingService {
         const properties = (page as any).properties;
         const currentStatus = properties['행사 상태']?.status?.name;
         const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
+        
+        console.log(`   📋 ${eventName}: ${currentStatus}`);
+        
+        // 견적 검토 상태 카운트
+        if (currentStatus === '견적 검토') {
+          quoteReviewCount++;
+        }
+        
         const lastStatus = this.lastCheckedPages.get(pageId);
 
         // 1. 상태 변경 감지
@@ -145,10 +172,14 @@ export class NotionPollingService {
           await this.handleStatusChange(pageId, currentStatus, lastStatus, eventName);
         }
 
-        // 2. 견적 검토 상태인 모든 페이지의 파일 체크 (매번)
+        // 2. 견적 검토 상태인 모든 페이지의 파일 체크
         if (currentStatus === '견적 검토') {
           fileCheckCount++;
-          console.log(`📄 파일 체크: ${eventName}`);
+          console.log(`📄 파일 체크 시작: ${eventName}`);
+          
+          // 파일 속성 상세 로그
+          console.log(`   견적서 속성:`, JSON.stringify(properties['견적서'], null, 2));
+          console.log(`   요청서 속성:`, JSON.stringify(properties['요청서'], null, 2));
           
           // 파일 정보 직접 확인
           const quoteFiles = properties['견적서']?.files || [];
@@ -162,14 +193,15 @@ export class NotionPollingService {
           
           // 디버깅을 위한 파일 정보 출력
           if (hasQuoteFile) {
-            console.log(`   견적서 파일:`, quoteFiles.map((f: any) => f.name).join(', '));
+            console.log(`   견적서 파일:`, quoteFiles.map((f: any) => f.name || 'unnamed').join(', '));
           }
           if (hasRequestFile) {
-            console.log(`   요청서 파일:`, requestFiles.map((f: any) => f.name).join(', '));
+            console.log(`   요청서 파일:`, requestFiles.map((f: any) => f.name || 'unnamed').join(', '));
           }
           
           // 이전 파일 상태 가져오기
           const lastFileCheck = this.lastFileCheckMap.get(pageId);
+          console.log(`   이전 파일 상태:`, lastFileCheck);
           
           // 파일 상태 변경 감지
           const fileStateChanged = !lastFileCheck || 
@@ -184,13 +216,18 @@ export class NotionPollingService {
           
           // 두 파일이 모두 있으면 승인으로 변경
           if (hasQuoteFile && hasRequestFile) {
+            console.log(`🎯 두 파일 모두 확인됨!`);
+            
             // 이전에 두 파일이 모두 없었던 경우만 처리
             if (!lastFileCheck || !lastFileCheck.hasQuote || !lastFileCheck.hasRequest) {
               console.log(`✅ 파일 업로드 완료 감지! ${eventName} - 견적 승인으로 변경합니다.`);
               await this.updateToApproved(pageId, eventName);
               changesDetected++;
+            } else {
+              console.log(`   이미 처리된 파일입니다.`);
             }
-          } else if (fileStateChanged) {
+          } else if (fileStateChanged && (hasQuoteFile || hasRequestFile)) {
+            console.log(`📋 파일 일부만 업로드됨`);
             // 파일이 하나만 업로드된 경우 알림
             await this.addPartialUploadComment(pageId, hasQuoteFile, hasRequestFile);
           }
@@ -226,9 +263,7 @@ export class NotionPollingService {
         }
       }
 
-      if (changesDetected > 0 || fileCheckCount > 0) {
-        console.log(`✅ 체크 완료: ${changesDetected}개 변경, ${fileCheckCount}개 파일 체크`);
-      }
+      console.log(`✅ 체크 완료: ${response.results.length}개 중 견적검토 ${quoteReviewCount}개, 파일체크 ${fileCheckCount}개, 변경감지 ${changesDetected}개`);
 
       // 완료된 행사들 정리
       this.cleanupCompletedEvents(response.results);
