@@ -158,7 +158,7 @@ export class GoogleDriveService {
       // 특정 범위에 데이터 입력 (실제 템플릿 구조에 맞게 조정 필요)
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: 'A8:G25', // 템플릿의 데이터 영역
+        range: 'A1:H25', // 템플릿의 데이터 영역
         valueInputOption: 'RAW',
         requestBody: {
           values: values
@@ -208,7 +208,7 @@ export class GoogleDriveService {
       // 요청서 템플릿의 특정 셀들에 데이터 입력
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: fileId,
-        range: 'D4:D15', // 템플릿의 데이터 영역 (실제 구조에 맞게 조정)
+        range: 'A1:J55', // 템플릿의 데이터 영역 (실제 구조에 맞게 조정)
         valueInputOption: 'RAW',
         requestBody: {
           values: values.map(v => v)
