@@ -1,4 +1,3 @@
-// src/tools/notion-mcp.ts
 import { Client } from '@notionhq/client';
 
 const notion = new Client({
@@ -7,7 +6,7 @@ const notion = new Client({
 
 const databaseId = process.env.NOTION_DATABASE_ID;
 
-// 확장된 LED 사양 타입
+// LED 사양 타입
 interface LEDSpec {
   size: string;
   stageHeight: number;
@@ -17,7 +16,7 @@ interface LEDSpec {
   relayConnection?: boolean;
 }
 
-// 확장된 Notion 데이터 타입 (상세 정보 추가)
+// Notion 데이터 타입
 interface NotionData {
   eventName: string;
   customerName: string;
@@ -44,7 +43,7 @@ interface NotionData {
   operatorCost: number;
   transportCost: number;
   
-  // 상세 조건 정보 추가
+  // 상세 조건 정보
   maxStageHeight: number;
   installationWorkers: number;
   installationWorkerRange: string;
@@ -55,65 +54,110 @@ interface NotionData {
   structureUnitPriceDescription: string;
 }
 
-// LED 해상도 계산 함수
+// LED 계산 함수들
 function calculateLEDResolution(ledSize: string): string {
   if (!ledSize) return '';
   
   const [width, height] = ledSize.split('x').map(Number);
-  
-  // LED 모듈 1장당 168x168 픽셀, 모듈 크기 500x500mm
   const horizontalModules = width / 500;
   const verticalModules = height / 500;
-  
   const horizontalPixels = horizontalModules * 168;
   const verticalPixels = verticalModules * 168;
   
   return `${horizontalPixels} x ${verticalPixels} pixels`;
 }
 
-// LED 소비전력 계산 함수
 function calculateLEDPowerConsumption(ledSize: string): string {
   if (!ledSize) return '';
   
   const [width, height] = ledSize.split('x').map(Number);
   const moduleCount = (width / 500) * (height / 500);
-  
-  // LED 모듈 1장당 380V 0.2kW
   const totalPower = moduleCount * 0.2;
   
   return `380V ${totalPower}kW`;
 }
 
-// 전기설치 방식 계산 함수
 function calculateElectricalInstallation(ledSize: string): string {
   if (!ledSize) return '';
   
   const [width, height] = ledSize.split('x').map(Number);
-  
-  // 대각선 인치 계산
   const inches = Math.sqrt(width ** 2 + height ** 2) / 25.4;
   
   if (inches < 250) {
-    // 250인치 미만: 220V 멀티탭
     const moduleCount = (width / 500) * (height / 500);
     const multiTapCount = moduleCount <= 20 ? 3 : 4;
     return `220V 멀티탭 ${multiTapCount}개`;
   } else {
-    // 250인치 이상: 50A 3상-4선 배전반
     const moduleCount = (width / 500) * (height / 500);
-    const totalPower = moduleCount * 0.2; // kW
-    
-    // 50A 배전반 1개당 약 19kW 처리 가능 (380V x 50A x √3 x 0.8 ≈ 26kW, 안전율 고려)
+    const totalPower = moduleCount * 0.2;
     const panelCount = Math.ceil(totalPower / 19);
     return `50A 3상-4선 배전반 ${panelCount}개`;
   }
 }
 
-// 각 LED의 대각선 인치 계산
 function calculateInches(size: string): number {
   if (!size) return 0;
   const [width, height] = size.split('x').map(Number);
   return Math.round(Math.sqrt(width ** 2 + height ** 2) / 25.4 * 10) / 10;
+}
+
+function calculateModuleCount(size: string): number {
+  if (!size) return 0;
+  const [width, height] = size.split('x').map(Number);
+  return (width / 500) * (height / 500);
+}
+
+function calculateTotalModuleCount(data: NotionData): number {
+  let totalCount = 0;
+  for (let i = 1; i <= 5; i++) {
+    const ledKey = `led${i}` as keyof NotionData;
+    const ledData = data[ledKey] as LEDSpec | undefined;
+    if (ledData && ledData.size) {
+      totalCount += calculateModuleCount(ledData.size);
+    }
+  }
+  return totalCount;
+}
+
+// LED 속성 생성 함수
+function createLEDProperties(ledData: LEDSpec | undefined, prefix: string) {
+  if (!ledData) return {};
+  
+  return {
+    [`${prefix} 크기`]: {
+      rich_text: [{ text: { content: ledData.size || "" } }]
+    },
+    [`${prefix} 무대 높이`]: {
+      number: ledData.stageHeight || null
+    },
+    [`${prefix} 모듈 수량`]: {
+      number: ledData.size ? calculateModuleCount(ledData.size) : null
+    },
+    [`${prefix} 대각선 인치`]: {
+      rich_text: [{ text: { content: ledData.size ? `${calculateInches(ledData.size)}인치` : "" } }]
+    },
+    [`${prefix} 해상도`]: {
+      rich_text: [{ text: { content: ledData.size ? calculateLEDResolution(ledData.size) : "" } }]
+    },
+    [`${prefix} 소비전력`]: {
+      rich_text: [{ text: { content: ledData.size ? calculateLEDPowerConsumption(ledData.size) : "" } }]
+    },
+    [`${prefix} 전기설치 방식`]: {
+      rich_text: [{ text: { content: ledData.size ? calculateElectricalInstallation(ledData.size) : "" } }]
+    },
+    [`${prefix} 프롬프터 연결`]: {
+      checkbox: ledData.prompterConnection || false
+    },
+    [`${prefix} 중계카메라 연결`]: {
+      checkbox: ledData.relayConnection || false
+    },
+    [`${prefix} 오퍼레이터 필요`]: {
+      checkbox: ledData.needOperator || false
+    },
+    [`${prefix} 오퍼레이터 일수`]: {
+      number: ledData.operatorDays || null
+    }
+  };
 }
 
 export const notionMCPTool = {
@@ -121,528 +165,97 @@ export const notionMCPTool = {
     try {
       console.log('Notion 저장 시작:', data);
       
-      // LED 모듈 수량 계산 함수
-      const calculateModuleCount = (size: string): number => {
-        if (!size) return 0;
-        const [width, height] = size.split('x').map(Number);
-        return (width / 500) * (height / 500);
-      };
+      // 기본 속성
+      const properties: any = {
+        // 기본 정보
+        "행사명": {
+          title: [{ text: { content: data.eventName || "" } }]
+        },
+        "고객사": {
+          select: { name: data.customerName || "메쎄이상" }
+        },
+        "고객담당자": {
+          rich_text: [{ text: { content: data.contactName && data.contactTitle ? `${data.contactName} ${data.contactTitle}` : (data.contactName || "") } }]
+        },
+        "고객 연락처": {
+          phone_number: data.contactPhone || ""
+        },
+        "행사장": {
+          rich_text: [{ text: { content: data.venue || "" } }]
+        },
+        "행사 상태": {
+          status: { name: "견적 요청" }
+        },
+        
+        // 일정 정보
+        "행사 일정": {
+          rich_text: [{ text: { content: data.eventSchedule || "" } }]
+        },
+        "설치 일정": {
+          date: data.installSchedule ? { start: data.installSchedule } : null
+        },
+        "리허설 일정": {
+          date: data.rehearsalSchedule ? { start: data.rehearsalSchedule } : null
+        },
+        "철거 일정": {
+          date: data.dismantleSchedule ? { start: data.dismantleSchedule } : null
+        },
+        
+        // 총 LED 모듈 수량
+        "총 LED 모듈 수량": {
+          number: calculateTotalModuleCount(data)
+        },
 
-      // 총 모듈 수량 계산 함수
-      const calculateTotalModuleCount = (data: NotionData): number => {
-        let totalCount = 0;
-        for (let i = 1; i <= 5; i++) {
-          const ledKey = `led${i}` as keyof NotionData;
-          const ledData = data[ledKey] as LEDSpec | undefined;
-          if (ledData && ledData.size) {
-            const [width, height] = ledData.size.split('x').map(Number);
-            totalCount += (width / 500) * (height / 500);
-          }
+        // 견적 정보
+        "견적 금액": {
+          number: data.totalQuoteAmount || null
+        },
+        "LED 모듈 비용": {
+          number: data.ledModuleCost || null
+        },
+        "지지구조물 비용": {
+          number: data.structureCost || null
+        },
+        "컨트롤러 및 스위치 비용": {
+          number: data.controllerCost || null
+        },
+        "파워 비용": {
+          number: data.powerCost || null
+        },
+        "설치철거인력 비용": {
+          number: data.installationCost || null
+        },
+        "오퍼레이터 비용": {
+          number: data.operatorCost || null
+        },
+        "운반 비용": {
+          number: data.transportCost || null
         }
-        return totalCount;
       };
+      
+      // LED 개소별 속성 추가
+      const ledProperties = [
+        createLEDProperties(data.led1, 'LED1'),
+        createLEDProperties(data.led2, 'LED2'),
+        createLEDProperties(data.led3, 'LED3'),
+        createLEDProperties(data.led4, 'LED4'),
+        createLEDProperties(data.led5, 'LED5')
+      ];
+      
+      // 모든 LED 속성 병합
+      ledProperties.forEach(ledProp => {
+        Object.assign(properties, ledProp);
+      });
       
       // Notion 페이지 생성
       const response = await notion.pages.create({
         parent: { database_id: databaseId! },
-        properties: {
-          // 기본 정보
-          "행사명": {
-            title: [
-              {
-                text: {
-                  content: data.eventName || ""
-                }
-              }
-            ]
-          },
-          
-          "고객사": {
-            select: {
-              name: data.customerName || "메쎄이상"
-            }
-          },
-          
-          "고객담당자": {
-            rich_text: [
-              {
-                text: {
-                  content: data.contactName && data.contactTitle 
-                    ? `${data.contactName} ${data.contactTitle}`
-                    : (data.contactName || "")
-                }
-              }
-            ]
-          },
-          
-          "고객 연락처": {
-            phone_number: data.contactPhone || ""
-          },
-          
-          "행사장": {
-            rich_text: [
-              {
-                text: {
-                  content: data.venue || ""
-                }
-              }
-            ]
-          },
-          
-          // 상태 관리
-          "행사 상태": {
-            status: {
-              name: "견적 요청"
-            }
-          },
-          
-          // 일정 정보
-          "행사 일정": {
-            rich_text: [
-              {
-                text: {
-                  content: data.eventSchedule || ""
-                }
-              }
-            ]
-          },
-          
-          "설치 일정": {
-            date: data.installSchedule ? {
-              start: data.installSchedule
-            } : null
-          },
-          
-          "리허설 일정": {
-            date: data.rehearsalSchedule ? {
-              start: data.rehearsalSchedule
-            } : null
-          },
-          
-          "철거 일정": {
-            date: data.dismantleSchedule ? {
-              start: data.dismantleSchedule
-            } : null
-          },
-          
-          // LED1 정보 - 확장된 속성들
-          "LED1 크기": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led1?.size || ""
-                }
-              }
-            ]
-          },
-          
-          "LED1 무대 높이": {
-            number: data.led1?.stageHeight || null
-          },
-          
-          "LED1 모듈 수량": {
-            number: data.led1?.size ? calculateModuleCount(data.led1.size) : null
-          },
-          
-          "LED1 대각선 인치": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led1?.size ? `${calculateInches(data.led1.size)}인치` : ""
-                }
-              }
-            ]
-          },
-          
-          "LED1 해상도": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led1?.size ? calculateLEDResolution(data.led1.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED1 소비전력": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led1?.size ? calculateLEDPowerConsumption(data.led1.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED1 전기설치 방식": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led1?.size ? calculateElectricalInstallation(data.led1.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED1 프롬프터 연결": {
-            checkbox: data.led1?.prompterConnection || false
-          },
-          
-          "LED1 중계카메라 연결": {
-            checkbox: data.led1?.relayConnection || false
-          },
-          
-          "LED1 오퍼레이터 필요": {
-            checkbox: data.led1?.needOperator || false
-          },
-          
-          "LED1 오퍼레이터 일수": {
-            number: data.led1?.operatorDays || null
-          },
-          
-          // LED2 정보 - 확장된 속성들
-          "LED2 크기": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led2?.size || ""
-                }
-              }
-            ]
-          },
-          
-          "LED2 무대 높이": {
-            number: data.led2?.stageHeight || null
-          },
-          
-          "LED2 모듈 수량": {
-            number: data.led2?.size ? calculateModuleCount(data.led2.size) : null
-          },
-          
-          "LED2 대각선 인치": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led2?.size ? `${calculateInches(data.led2.size)}인치` : ""
-                }
-              }
-            ]
-          },
-          
-          "LED2 해상도": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led2?.size ? calculateLEDResolution(data.led2.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED2 소비전력": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led2?.size ? calculateLEDPowerConsumption(data.led2.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED2 전기설치 방식": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led2?.size ? calculateElectricalInstallation(data.led2.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED2 프롬프터 연결": {
-            checkbox: data.led2?.prompterConnection || false
-          },
-          
-          "LED2 중계카메라 연결": {
-            checkbox: data.led2?.relayConnection || false
-          },
-          
-          "LED2 오퍼레이터 필요": {
-            checkbox: data.led2?.needOperator || false
-          },
-          
-          "LED2 오퍼레이터 일수": {
-            number: data.led2?.operatorDays || null
-          },
-          
-          // LED3 정보 - 확장된 속성들
-          "LED3 크기": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led3?.size || ""
-                }
-              }
-            ]
-          },
-          
-          "LED3 무대 높이": {
-            number: data.led3?.stageHeight || null
-          },
-          
-          "LED3 모듈 수량": {
-            number: data.led3?.size ? calculateModuleCount(data.led3.size) : null
-          },
-          
-          "LED3 대각선 인치": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led3?.size ? `${calculateInches(data.led3.size)}인치` : ""
-                }
-              }
-            ]
-          },
-          
-          "LED3 해상도": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led3?.size ? calculateLEDResolution(data.led3.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED3 소비전력": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led3?.size ? calculateLEDPowerConsumption(data.led3.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED3 전기설치 방식": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led3?.size ? calculateElectricalInstallation(data.led3.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED3 프롬프터 연결": {
-            checkbox: data.led3?.prompterConnection || false
-          },
-          
-          "LED3 중계카메라 연결": {
-            checkbox: data.led3?.relayConnection || false
-          },
-          
-          "LED3 오퍼레이터 필요": {
-            checkbox: data.led3?.needOperator || false
-          },
-          
-          "LED3 오퍼레이터 일수": {
-            number: data.led3?.operatorDays || null
-          },
-          
-          // LED4 정보 - 확장된 속성들
-          "LED4 크기": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led4?.size || ""
-                }
-              }
-            ]
-          },
-          
-          "LED4 무대 높이": {
-            number: data.led4?.stageHeight || null
-          },
-          
-          "LED4 모듈 수량": {
-            number: data.led4?.size ? calculateModuleCount(data.led4.size) : null
-          },
-          
-          "LED4 대각선 인치": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led4?.size ? `${calculateInches(data.led4.size)}인치` : ""
-                }
-              }
-            ]
-          },
-          
-          "LED4 해상도": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led4?.size ? calculateLEDResolution(data.led4.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED4 소비전력": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led4?.size ? calculateLEDPowerConsumption(data.led4.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED4 전기설치 방식": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led4?.size ? calculateElectricalInstallation(data.led4.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED4 프롬프터 연결": {
-            checkbox: data.led4?.prompterConnection || false
-          },
-          
-          "LED4 중계카메라 연결": {
-            checkbox: data.led4?.relayConnection || false
-          },
-          
-          "LED4 오퍼레이터 필요": {
-            checkbox: data.led4?.needOperator || false
-          },
-          
-          "LED4 오퍼레이터 일수": {
-            number: data.led4?.operatorDays || null
-          },
-          
-          // LED5 정보 - 확장된 속성들
-          "LED5 크기": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led5?.size || ""
-                }
-              }
-            ]
-          },
-          
-          "LED5 무대 높이": {
-            number: data.led5?.stageHeight || null
-          },
-          
-          "LED5 모듈 수량": {
-            number: data.led5?.size ? calculateModuleCount(data.led5.size) : null
-          },
-          
-          "LED5 대각선 인치": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led5?.size ? `${calculateInches(data.led5.size)}인치` : ""
-                }
-              }
-            ]
-          },
-          
-          "LED5 해상도": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led5?.size ? calculateLEDResolution(data.led5.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED5 소비전력": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led5?.size ? calculateLEDPowerConsumption(data.led5.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED5 전기설치 방식": {
-            rich_text: [
-              {
-                text: {
-                  content: data.led5?.size ? calculateElectricalInstallation(data.led5.size) : ""
-                }
-              }
-            ]
-          },
-          
-          "LED5 프롬프터 연결": {
-            checkbox: data.led5?.prompterConnection || false
-          },
-          
-          "LED5 중계카메라 연결": {
-            checkbox: data.led5?.relayConnection || false
-          },
-          
-          "LED5 오퍼레이터 필요": {
-            checkbox: data.led5?.needOperator || false
-          },
-          
-          "LED5 오퍼레이터 일수": {
-            number: data.led5?.operatorDays || null
-          },
-          
-          // 총 LED 모듈 수량
-          "총 LED 모듈 수량": {
-            number: calculateTotalModuleCount(data)
-          },
-
-          // 견적 정보
-          "견적 금액": {
-            number: data.totalQuoteAmount || null
-          },
-          
-          "LED 모듈 비용": {
-            number: data.ledModuleCost || null
-          },
-          
-          "지지구조물 비용": {
-            number: data.structureCost || null
-          },
-          
-          "컨트롤러 및 스위치 비용": {
-            number: data.controllerCost || null
-          },
-          
-          "파워 비용": {
-            number: data.powerCost || null
-          },
-          
-          "설치철거인력 비용": {
-            number: data.installationCost || null
-          },
-          
-          "오퍼레이터 비용": {
-            number: data.operatorCost || null
-          },
-          
-          "운반 비용": {
-            number: data.transportCost || null
-          }
-        }
+        properties
       });
       
       console.log('Notion 저장 완료:', response.id);
       
-      // 조건별 정보를 댓글로 추가 (실제 데이터 사용)
+      // 조건별 정보 댓글 추가
       await this.addConditionComment(response.id, data);
       
       return {
@@ -659,10 +272,9 @@ export const notionMCPTool = {
     }
   },
   
-  // 조건별 정보를 댓글로 추가 (수정됨 - 실제 데이터 사용)
+  // 조건별 정보 댓글 추가
   async addConditionComment(pageId: string, data: NotionData) {
     try {
-      // 조건별 정보 요약 (실제 전달받은 데이터 사용)
       const conditionSummary = [
         `📊 조건별 정보 요약`,
         ``,
@@ -689,7 +301,6 @@ export const notionMCPTool = {
       
     } catch (error) {
       console.error('조건별 정보 댓글 추가 실패:', error);
-      // 댓글 실패해도 메인 프로세스는 계속 진행
     }
   }
 };

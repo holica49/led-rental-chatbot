@@ -2,20 +2,13 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import { calculateMultiLEDQuote } from './calculate-quote.js';
 import { notionMCPTool } from './notion-mcp.js';
-import NotionMentionService from '../../services/notionMentionService.js';
 
 const app = express();
 
-// ngrok 헤더 처리 미들웨어
+// 미들웨어 설정
+app.use(bodyParser.json());
 app.use((req, res, next) => {
   res.setHeader('ngrok-skip-browser-warning', 'true');
-  next();
-});
-
-app.use(bodyParser.json());
-
-// CORS 헤더 추가
-app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
@@ -56,7 +49,7 @@ interface UserSession {
 // 사용자 세션 관리
 const userSessions: { [key: string]: UserSession } = {};
 
-// 간단한 테스트 엔드포인트
+// 테스트 엔드포인트
 app.get('/test', (req, res) => {
   res.json({
     message: "서버가 정상 작동 중입니다!",
@@ -64,24 +57,10 @@ app.get('/test', (req, res) => {
   });
 });
 
-// 테스트 언급 API
-app.get('/test-mention', async (req, res) => {
-  try {
-    const mentionService = new NotionMentionService();
-    const result = await mentionService.sendTestMention();
-    res.json({ success: true, message: '테스트 언급 완료' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // 카카오 스킬 서버 엔드포인트
 app.post('/skill', async (req, res) => {
   try {
-    console.log('요청 받음:', JSON.stringify(req.body, null, 2));
-    
-    const { userRequest, bot, action } = req.body;
-    
+    const { userRequest } = req.body;
     const userId = userRequest?.user?.id || 'default_user';
     const userMessage = userRequest?.utterance || '안녕하세요';
     
@@ -89,9 +68,7 @@ app.post('/skill', async (req, res) => {
     if (!userSessions[userId]) {
       userSessions[userId] = {
         step: 'start',
-        data: {
-          ledSpecs: []
-        },
+        data: { ledSpecs: [] },
         ledCount: 0,
         currentLED: 1
       };
@@ -120,7 +97,6 @@ app.post('/skill', async (req, res) => {
       result.template.quickReplies = response.quickReplies;
     }
     
-    console.log('응답 전송:', JSON.stringify(result, null, 2));
     res.json(result);
     
   } catch (error) {
@@ -338,49 +314,34 @@ async function processUserMessage(message: string, session: UserSession) {
   switch (session.step) {
     case 'start':
       return handleStart(session);
-    
     case 'confirm_customer':
       return handleCustomerConfirm(message, session);
-    
     case 'get_event_info':
       return handleEventInfo(message, session);
-    
     case 'get_led_count':
       return handleLEDCount(message, session);
-    
     case 'get_led_specs':
       return handleLEDSpecs(message, session);
-    
     case 'get_stage_height':
       return handleStageHeight(message, session);
-    
     case 'get_operator_needs':
       return handleOperatorNeeds(message, session);
-    
     case 'get_operator_days':
       return handleOperatorDays(message, session);
-    
     case 'get_prompter_connection':
       return handlePrompterConnection(message, session);
-    
     case 'get_relay_connection':
       return handleRelayConnection(message, session);
-    
     case 'get_event_period':
       return handleEventPeriod(message, session);
-    
     case 'get_contact_name':
       return handleContactName(message, session);
-    
     case 'get_contact_title':
       return handleContactTitle(message, session);
-    
     case 'get_contact_phone':
       return handleContactPhone(message, session);
-    
     case 'final_confirmation':
       return handleFinalConfirmation(message, session);
-    
     default:
       return handleDefault(session);
   }
@@ -859,17 +820,17 @@ function handleContactPhone(message: string, session: UserSession) {
   }
 }
 
-// 최종 확인 처리 (수정됨 - 상세 정보 전달)
+// 최종 확인 처리
 async function handleFinalConfirmation(message: string, session: UserSession) {
   if (message.includes('네') || message.includes('전달')) {
     try {
-      // 견적 계산 (상세 정보 포함)
+      // 견적 계산
       const quote = calculateMultiLEDQuote(session.data.ledSpecs);
       
       // 일정 계산
       const schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
       
-      // Notion에 저장할 데이터 준비 (상세 정보 추가)
+      // Notion에 저장할 데이터 준비
       const notionData = {
         eventName: session.data.eventName,
         customerName: session.data.customerName,
@@ -907,22 +868,7 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
       };
       
       // Notion에 저장
-      const notionResult = await notionMCPTool.handler(notionData);
-      
-      // 담당자 언급 추가
-      const mentionService = new NotionMentionService();
-      await mentionService.addMentionComment(notionResult.id, {
-        eventName: notionData.eventName,
-        customerName: notionData.customerName,
-        contactName: notionData.contactName,
-        contactTitle: notionData.contactTitle,
-        contactPhone: notionData.contactPhone,
-        eventPeriod: notionData.eventSchedule,
-        venue: notionData.venue,
-        totalAmount: notionData.totalQuoteAmount,
-        ledSpecs: session.data.ledSpecs,
-        operatorDays: notionData.operatorDays
-      });
+      await notionMCPTool.handler(notionData);
       
       // 세션 초기화
       session.step = 'start';
@@ -930,10 +876,8 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
       session.ledCount = 0;
       session.currentLED = 1;
       
-      let successMessage = `✅ 견적 요청이 성공적으로 접수되었습니다!\n\n📋 ${notionData.eventName}\n👤 담당자: ${notionData.contactName} ${notionData.contactTitle}\n📞 연락처: ${notionData.contactPhone}\n\n📝 담당자에게 전달되었으며, 곧 연락드리겠습니다!\n\n🔄 새로운 견적을 원하시면 "안녕하세요"라고 말씀해주세요.`;
-      
       return {
-        text: successMessage,
+        text: `✅ 견적 요청이 성공적으로 접수되었습니다!\n\n📋 ${notionData.eventName}\n👤 담당자: ${notionData.contactName} ${notionData.contactTitle}\n📞 연락처: ${notionData.contactPhone}\n\n📝 담당자에게 전달되었으며, 곧 연락드리겠습니다!\n\n🔄 새로운 견적을 원하시면 "안녕하세요"라고 말씀해주세요.`,
         quickReplies: [
           { label: '새 견적 요청', action: 'message', messageText: '안녕하세요' },
           { label: '문의사항', action: 'message', messageText: '문의' }
