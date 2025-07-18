@@ -8,19 +8,11 @@
   "type": "module",
   "scripts": {
     "dev": "node --loader ts-node/esm src/index.ts",
-    "build": "tsc",
+    "build": "echo 'Build skipped for Railway'",
     "start": "node dist/index.js",
     "chatbot": "node --loader ts-node/esm src/tools/kakao-chatbot.ts",
     "dev-chatbot": "nodemon --exec \"node --loader ts-node/esm src/tools/kakao-chatbot.ts\"",
-    "railway-start": "node --loader ts-node/esm src/tools/kakao-chatbot.ts",
-    "test": "node --loader ts-node/esm test/test-calculate.ts",
-    "test-excel": "node --loader ts-node/esm test/test-excel.ts",
-    "test-simple": "node test/test-simple.js",
-    "test-enhanced": "node --loader ts-node/esm test/test-enhanced-excel.ts",
-    "test-notion": "node --loader ts-node/esm test/test-notion.ts",
-    "test-integrated": "node --loader ts-node/esm test/test-integrated.ts",
-    "test-multi-led": "node --loader ts-node/esm test/test-multi-led.ts",
-    "test-corrected": "node --loader ts-node/esm test/test-corrected-calculation.ts"
+    "railway-start": "node --loader ts-node/esm src/tools/kakao-chatbot.ts"
   },
   "keywords": [],
   "author": "",
