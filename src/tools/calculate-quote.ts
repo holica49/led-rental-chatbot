@@ -3,22 +3,66 @@ import { LEDQuoteResponse, LEDQuoteRequest, TransportInfo } from '../types/index
 // 가격 상수
 const PRICES = {
   LED_MODULE: 34000,          // LED 모듈 단가 (500개 이상 시)
-  STRUCTURE_UNDER_4M: 20000,  // 4m 미만 구조물 (원/㎡) - 항상 이 가격 적용
-  STRUCTURE_OVER_4M: 25000,   // 4m 이상 구조물 (원/㎡) - 사용 안 함
+  STRUCTURE_UNDER_4M: 20000,  // 4m 미만 구조물 (원/㎡)
+  STRUCTURE_OVER_4M: 25000,   // 4m 이상 구조물 (원/㎡)
   CONTROLLER_UNDER_200: 200000, // 200인치 미만 컨트롤러
   CONTROLLER_OVER_200: 500000,  // 200인치 이상 컨트롤러
   POWER_OVER_250: 500000,       // 250인치 이상 파워
   INSTALLATION_PER_WORKER: 160000, // 설치 인력 단가
   OPERATOR_PER_DAY: 280000,     // 오퍼레이터 일당
-  MIN_WORKERS: 3,               // 최소 설치 인력
   VAT_RATE: 0.1                 // 부가세율
 };
 
 // LED 입력 타입 정의
 interface LEDSpecInput {
   size: string;
+  stageHeight?: number;
   needOperator: boolean;
   operatorDays: number;
+  prompterConnection?: boolean;
+  relayConnection?: boolean;
+}
+
+// 총 LED 모듈 수량에 따른 설치 인력 계산
+function calculateInstallationWorkers(totalModules: number): number {
+  if (totalModules <= 60) return 3;
+  if (totalModules <= 100) return 5;
+  if (totalModules <= 150) return 7;
+  if (totalModules <= 250) return 9;
+  return 12; // 251개 이상
+}
+
+// 설치인력 구간 구분 텍스트 반환
+function getInstallationWorkerRange(totalModules: number): string {
+  if (totalModules <= 60) return "60개 이하 (3명)";
+  if (totalModules <= 100) return "61-100개 (5명)";
+  if (totalModules <= 150) return "101-150개 (7명)";
+  if (totalModules <= 250) return "151-250개 (9명)";
+  return "251개 이상 (12명)";
+}
+
+// 구조물 단가 구분 (무대 높이 기준)
+function getStructureUnitPrice(stageHeights: number[]): { unitPrice: number; description: string } {
+  const maxHeight = Math.max(...stageHeights.filter(h => h > 0));
+  
+  if (maxHeight >= 4000) { // 4m 이상
+    return {
+      unitPrice: PRICES.STRUCTURE_OVER_4M,
+      description: "4m 이상 (25,000원/㎡)"
+    };
+  } else {
+    return {
+      unitPrice: PRICES.STRUCTURE_UNDER_4M,
+      description: "4m 미만 (20,000원/㎡)"
+    };
+  }
+}
+
+// 운반비 구간 구분
+function getTransportRange(totalModules: number): string {
+  if (totalModules <= 200) return "200개 이하";
+  if (totalModules <= 400) return "201-400개";
+  return "400개 초과";
 }
 
 // LED 크기 검증 함수
@@ -49,7 +93,7 @@ function validateLEDSize(ledSize: string): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
-// 운반비 계산 함수 (수정됨)
+// 운반비 계산 함수
 function calculateTransportCost(totalModules: number): number {
   if (totalModules <= 200) {
     return 200000;
@@ -83,13 +127,15 @@ function calculateTransport(moduleCount: number): TransportInfo {
   }
 }
 
-// 다중 LED 견적 계산 함수 (총 모듈 수 포함)
+// 다중 LED 견적 계산 함수 (수정됨)
 export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
   let totalModules = 0;
   let totalStructureArea = 0;
   let totalControllerCost = 0;
   let totalPowerCost = 0;
   let totalOperatorCost = 0;
+  let powerRequiredCount = 0; // 파워 필요 개소
+  const stageHeights: number[] = [];
 
   // 각 LED 개소별 계산
   ledSpecs.forEach(specs => {
@@ -99,11 +145,16 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
     
     // LED 모듈 수량
     const moduleCount = (width / 500) * (height / 500);
-    totalModules += moduleCount;  // 각 개소의 모듈 수를 누적
+    totalModules += moduleCount;
     
-    // 구조물 면적 (LED 크기의 가로×세로만, 무대 높이 무시)
+    // 구조물 면적
     const structureArea = (width * height) / 1_000_000;
     totalStructureArea += structureArea;
+    
+    // 무대 높이 수집
+    if (specs.stageHeight) {
+      stageHeights.push(specs.stageHeight);
+    }
     
     // 대각선 인치 계산
     const inches = Math.sqrt(width ** 2 + height ** 2) / 25.4;
@@ -112,7 +163,10 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
     totalControllerCost += inches < 200 ? PRICES.CONTROLLER_UNDER_200 : PRICES.CONTROLLER_OVER_200;
     
     // 파워 비용 (개소별)
-    totalPowerCost += inches >= 250 ? PRICES.POWER_OVER_250 : 0;
+    if (inches >= 250) {
+      totalPowerCost += PRICES.POWER_OVER_250;
+      powerRequiredCount++;
+    }
     
     // 오퍼레이터 비용
     if (specs.needOperator) {
@@ -120,39 +174,50 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
     }
   });
 
-  // 여기서 totalModules는 모든 LED 개소의 모듈 수 합계
-  // 예: LED1(40개) + LED2(12개) + LED3(4개) = 56개
+  // 구조물 단가 결정 (최대 무대 높이 기준)
+  const structureInfo = getStructureUnitPrice(stageHeights);
+  
+  // 설치 인력 계산 (총 모듈 수 기준)
+  const installationWorkers = calculateInstallationWorkers(totalModules);
 
   const quote = {
     ledModules: {
-      count: totalModules,  // 총 모듈 수 (56개)
+      count: totalModules,
       price: totalModules < 500 ? 0 : totalModules * PRICES.LED_MODULE
     },
     structure: {
       area: totalStructureArea,
-      unitPrice: PRICES.STRUCTURE_UNDER_4M,  // 항상 4m 미만 요금
-      totalPrice: totalStructureArea * PRICES.STRUCTURE_UNDER_4M
+      unitPrice: structureInfo.unitPrice,
+      unitPriceDescription: structureInfo.description,
+      totalPrice: totalStructureArea * structureInfo.unitPrice
     },
     controller: {
-      totalPrice: totalControllerCost
+      totalPrice: totalControllerCost,
+      count: ledSpecs.length // 개소 수
     },
     power: {
-      totalPrice: totalPowerCost
+      totalPrice: totalPowerCost,
+      requiredCount: powerRequiredCount
     },
     installation: {
-      workers: PRICES.MIN_WORKERS,
+      workers: installationWorkers,
+      workerRange: getInstallationWorkerRange(totalModules),
       pricePerWorker: PRICES.INSTALLATION_PER_WORKER,
-      totalPrice: PRICES.MIN_WORKERS * PRICES.INSTALLATION_PER_WORKER
+      totalPrice: installationWorkers * PRICES.INSTALLATION_PER_WORKER
     },
     operation: {
-      totalPrice: totalOperatorCost
+      totalPrice: totalOperatorCost,
+      days: ledSpecs.reduce((sum, spec) => sum + (spec.needOperator ? spec.operatorDays : 0), 0),
+      pricePerDay: PRICES.OPERATOR_PER_DAY
     },
     transport: {
-      price: calculateTransportCost(totalModules)  // 총 모듈 수로 운반비 계산
+      price: calculateTransportCost(totalModules),
+      range: getTransportRange(totalModules)
     },
     
-    // 💡 여기가 핵심! 총 모듈 수를 별도로 포함
-    totalModuleCount: totalModules,  // 🔥 새로 추가된 부분 - Notion DB용
+    // 추가 정보
+    totalModuleCount: totalModules,
+    maxStageHeight: Math.max(...stageHeights.filter(h => h > 0), 0),
     
     subtotal: 0,
     vat: 0,
@@ -236,6 +301,9 @@ export const calculateQuoteTool = {
       const endDate = new Date(args.eventEndDate);
       const eventDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
+      // 설치인력 계산
+      const installationWorkers = calculateInstallationWorkers(moduleCount);
+
       // 견적 계산 (수정된 로직)
       const quote: LEDQuoteResponse = {
         ledModules: {
@@ -244,7 +312,7 @@ export const calculateQuoteTool = {
         },
         structure: {
           area: structureArea,
-          unitPrice: PRICES.STRUCTURE_UNDER_4M,  // 항상 4m 미만 요금 적용
+          unitPrice: PRICES.STRUCTURE_UNDER_4M,  // 기본값 (무대높이 정보 없음)
           totalPrice: structureArea * PRICES.STRUCTURE_UNDER_4M
         },
         controller: {
@@ -255,9 +323,9 @@ export const calculateQuoteTool = {
           price: inches >= 250 ? PRICES.POWER_OVER_250 : 0
         },
         installation: {
-          workers: PRICES.MIN_WORKERS,
+          workers: installationWorkers,
           pricePerWorker: PRICES.INSTALLATION_PER_WORKER,
-          totalPrice: PRICES.MIN_WORKERS * PRICES.INSTALLATION_PER_WORKER
+          totalPrice: installationWorkers * PRICES.INSTALLATION_PER_WORKER
         },
         operation: {
           days: args.needOperator ? eventDays : 0,
@@ -265,7 +333,7 @@ export const calculateQuoteTool = {
           totalPrice: args.needOperator ? eventDays * PRICES.OPERATOR_PER_DAY : 0
         },
         transport: {
-          price: calculateTransportCost(moduleCount)  // 수정된 운반비 계산
+          price: calculateTransportCost(moduleCount)
         },
         subtotal: 0,
         vat: 0,
@@ -306,7 +374,7 @@ export const calculateQuoteTool = {
   }
 };
 
-// 다중 LED 견적 계산 도구 (새로 추가)
+// 다중 LED 견적 계산 도구
 export const calculateMultiQuoteTool = {
   definition: {
     name: 'calculate_multi_quote',
@@ -321,6 +389,7 @@ export const calculateMultiQuoteTool = {
             type: 'object',
             properties: {
               size: { type: 'string', description: 'LED 크기 (예: "4000x2500")' },
+              stageHeight: { type: 'number', description: '무대 높이 (mm)' },
               needOperator: { type: 'boolean', description: '오퍼레이터 필요 여부' },
               operatorDays: { type: 'number', description: '오퍼레이터 일수' }
             },
@@ -354,7 +423,7 @@ export const calculateMultiQuoteTool = {
       // 배차 정보 계산
       const transport = calculateTransport(quote.ledModules.count);
 
-      // LED 개소별 요약 정보 (타입 안전)
+      // LED 개소별 요약 정보
       const ledSummary = ledSpecs.map((specs: LEDSpecInput, index: number) => {
         const [width, height] = specs.size.split('x').map(Number);
         const moduleCount = (width / 500) * (height / 500);
@@ -432,20 +501,20 @@ export function calculateElectricalInstallation(ledSize: string): string {
     const moduleCount = (width / 500) * (height / 500);
     const totalPower = moduleCount * 0.2; // kW
     
-    // 50A 배전반 1개당 약 19kW 처리 가능 (380V x 50A x √3 x 0.8 ≈ 26kW, 안전율 고려)
+    // 50A 배전반 1개당 약 19kW 처리 가능
     const panelCount = Math.ceil(totalPower / 19);
     return `50A 3상-4선 배전반 ${panelCount}개`;
   }
 }
 
-// LED 사양 인터페이스 확장
+// 확장된 LED 사양 인터페이스
 export interface EnhancedLEDSpec {
   size: string;
   stageHeight?: number;
   needOperator: boolean;
   operatorDays: number;
   
-  // 새로 추가된 속성들
+  // 확장 속성들
   resolution?: string;
   powerConsumption?: string;
   electricalInstallation?: string;

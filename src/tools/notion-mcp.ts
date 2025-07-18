@@ -13,8 +13,8 @@ interface LEDSpec {
   stageHeight: number;
   needOperator: boolean;
   operatorDays: number;
-  prompterConnection?: boolean;  // 🆕 추가
-  relayConnection?: boolean;     // 🆕 추가
+  prompterConnection?: boolean;
+  relayConnection?: boolean;
 }
 
 // 확장된 Notion 데이터 타입
@@ -43,6 +43,16 @@ interface NotionData {
   installationCost: number;
   operatorCost: number;
   transportCost: number;
+  
+  // 추가 정보 (견적 계산에서 넘어오는 데이터)
+  maxStageHeight?: number;
+  installationWorkers?: number;
+  installationWorkerRange?: string;
+  controllerCount?: number;
+  powerRequiredCount?: number;
+  transportRange?: string;
+  structureUnitPrice?: number;
+  structureUnitPriceDescription?: string;
 }
 
 // LED 해상도 계산 함수
@@ -97,6 +107,13 @@ function calculateElectricalInstallation(ledSize: string): string {
     const panelCount = Math.ceil(totalPower / 19);
     return `50A 3상-4선 배전반 ${panelCount}개`;
   }
+}
+
+// 각 LED의 대각선 인치 계산
+function calculateInches(size: string): number {
+  if (!size) return 0;
+  const [width, height] = size.split('x').map(Number);
+  return Math.round(Math.sqrt(width ** 2 + height ** 2) / 25.4 * 10) / 10;
 }
 
 export const notionMCPTool = {
@@ -227,6 +244,10 @@ export const notionMCPTool = {
             number: data.led1?.size ? calculateModuleCount(data.led1.size) : null
           },
           
+          "LED1 대각선 인치": {
+            number: data.led1?.size ? calculateInches(data.led1.size) : null
+          },
+          
           "LED1 해상도": {
             rich_text: [
               {
@@ -290,6 +311,10 @@ export const notionMCPTool = {
           
           "LED2 모듈 수량": {
             number: data.led2?.size ? calculateModuleCount(data.led2.size) : null
+          },
+          
+          "LED2 대각선 인치": {
+            number: data.led2?.size ? calculateInches(data.led2.size) : null
           },
           
           "LED2 해상도": {
@@ -357,6 +382,10 @@ export const notionMCPTool = {
             number: data.led3?.size ? calculateModuleCount(data.led3.size) : null
           },
           
+          "LED3 대각선 인치": {
+            number: data.led3?.size ? calculateInches(data.led3.size) : null
+          },
+          
           "LED3 해상도": {
             rich_text: [
               {
@@ -422,6 +451,10 @@ export const notionMCPTool = {
             number: data.led4?.size ? calculateModuleCount(data.led4.size) : null
           },
           
+          "LED4 대각선 인치": {
+            number: data.led4?.size ? calculateInches(data.led4.size) : null
+          },
+          
           "LED4 해상도": {
             rich_text: [
               {
@@ -485,6 +518,10 @@ export const notionMCPTool = {
           
           "LED5 모듈 수량": {
             number: data.led5?.size ? calculateModuleCount(data.led5.size) : null
+          },
+          
+          "LED5 대각선 인치": {
+            number: data.led5?.size ? calculateInches(data.led5.size) : null
           },
           
           "LED5 해상도": {
@@ -569,84 +606,58 @@ export const notionMCPTool = {
           
           "운반 비용": {
             number: data.transportCost || null
+          },
+          
+          // 추가 조건별 정보
+          "구조물 단가 구분": {
+            select: {
+              name: data.maxStageHeight && data.maxStageHeight >= 4000 ? "4m 이상 (25,000원)" : "4m 미만 (20,000원)"
+            }
+          },
+          
+          "설치인력 구간": {
+            select: {
+              name: data.installationWorkerRange || "60개 이하 (3명)"
+            }
+          },
+          
+          "설치인력 수량": {
+            number: data.installationWorkers || 3
+          },
+          
+          "컨트롤러 총 개소": {
+            number: data.controllerCount || 1
+          },
+          
+          "파워 필요 개소": {
+            number: data.powerRequiredCount || 0
+          },
+          
+          "운반비 구간": {
+            select: {
+              name: data.transportRange || "200개 이하"
+            }
+          },
+          
+          "최대 무대 높이": {
+            number: data.maxStageHeight || null
           }
         }
       });
       
       console.log('Notion 저장 완료:', response.id);
       
-      // 관리자 알림을 위한 댓글 추가
-      await this.addNotificationComment(response.id, data);
-      
-      return response;
+      return {
+        content: [{
+          type: 'text',
+          text: `✅ Notion에 행사 정보가 저장되었습니다!\n📝 페이지 ID: ${response.id}\n🏢 고객사: ${data.customerName}\n📋 행사명: ${data.eventName}\n💰 견적 금액: ${data.totalQuoteAmount?.toLocaleString()}원`
+        }],
+        id: response.id
+      };
       
     } catch (error) {
       console.error('Notion 저장 실패:', error);
       throw error;
-    }
-  },
-  
-  // 관리자 알림 댓글 추가
-  async addNotificationComment(pageId: string, data: NotionData) {
-    try {
-      const adminUserId = process.env.NOTION_ADMIN_USER_ID;
-      
-      if (!adminUserId) {
-        console.log('관리자 사용자 ID가 설정되지 않음');
-        return;
-      }
-      
-      // LED 사양 요약 생성
-      const ledSummary = [];
-      for (let i = 1; i <= 5; i++) {
-        const ledKey = `led${i}` as keyof NotionData;
-        const ledData = data[ledKey] as LEDSpec | undefined;
-        if (ledData && ledData.size) {
-          const [width, height] = ledData.size.split('x').map(Number);
-          const moduleCount = (width / 500) * (height / 500);
-          const operatorText = ledData.needOperator ? `, 오퍼레이터 ${ledData.operatorDays}일` : '';
-          const prompterText = ledData.prompterConnection ? ', 프롬프터 연결' : '';
-          const relayText = ledData.relayConnection ? ', 중계카메라 연결' : '';
-          
-          ledSummary.push(`LED${i}: ${ledData.size} (${moduleCount}개${operatorText}${prompterText}${relayText})`);
-        }
-      }
-      
-      const comment = await notion.comments.create({
-        parent: {
-          page_id: pageId,
-        },
-        rich_text: [
-          {
-            type: "text",
-            text: {
-              content: "🚨 새로운 LED 렌탈 견적 요청이 도착했습니다!\n\n"
-            }
-          },
-          {
-            type: "mention",
-            mention: {
-              type: "user",
-              user: {
-                id: adminUserId
-              }
-            }
-          },
-          {
-            type: "text",
-            text: {
-              content: ` 님, 확인해주세요.\n\n📋 행사명: ${data.eventName}\n🏢 고객사: ${data.customerName}\n👤 담당자: ${data.contactName} ${data.contactTitle}\n📞 연락처: ${data.contactPhone}\n📅 행사 일정: ${data.eventSchedule}\n\n🖥️ LED 사양:\n${ledSummary.join('\n')}\n\n💰 견적 금액: ${data.totalQuoteAmount?.toLocaleString()}원`
-            }
-          }
-        ],
-      });
-      
-      console.log('Notion 댓글 알림 추가 완료:', comment.id);
-      return comment;
-      
-    } catch (error) {
-      console.error('Notion 댓글 알림 추가 실패:', error);
-      // 댓글 실패해도 메인 프로세스는 계속 진행
     }
   }
 };
