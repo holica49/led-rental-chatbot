@@ -54,9 +54,16 @@ const userSessions: { [key: string]: UserSession } = {};
 
 // 테스트 엔드포인트
 app.get('/test', (req, res) => {
+  const service = getPollingService();
+  const pollingStatus = service.getPollingStatus();
+  
   res.json({
     message: "서버가 정상 작동 중입니다!",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    polling: {
+      isActive: pollingStatus.isPolling,
+      trackedPages: pollingStatus.trackedPages
+    }
   });
 });
 
@@ -427,6 +434,8 @@ async function addMentionToPage(pageId: string, eventData: any) {
     console.error('❌ 담당자 언급 실패:', error);
   }
 }
+
+// 사용자 메시지 처리 함수 (기존 코드 유지)
 async function processUserMessage(message: string, session: UserSession) {
   // 수정 요청 처리
   if (isModificationRequest(message)) {
@@ -488,6 +497,10 @@ function isResetRequest(message: string): boolean {
   const resetKeywords = ['처음부터', '처음부터 시작', '초기화', '새로', '다시 시작'];
   return resetKeywords.some(keyword => message.includes(keyword));
 }
+
+// 나머지 핸들러 함수들... (기존 코드 유지)
+// 이 부분에는 기존의 모든 핸들러 함수들이 포함됩니다.
+// 여기서는 공간을 절약하기 위해 주요 함수만 포함합니다.
 
 // 수정 요청 처리
 function handleModificationRequest(message: string, session: UserSession) {
@@ -553,7 +566,7 @@ function handleStart(session: UserSession) {
   };
 }
 
-// 고객 확인 처리
+// 고객 확인 처리 (기존 코드 유지)
 function handleCustomerConfirm(message: string, session: UserSession) {
   if (message.includes('네') || message.includes('맞') || message.includes('예')) {
     session.step = 'get_event_info';
@@ -844,29 +857,6 @@ function handleEventPeriod(message: string, session: UserSession) {
   }
 }
 
-// 날짜 계산 함수
-function calculateScheduleDates(startDate: string, endDate: string) {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  
-  // 설치 일정: 시작일 하루 전
-  const installDate = new Date(start);
-  installDate.setDate(installDate.getDate() - 1);
-  
-  // 리허설 일정: 시작일 하루 전 (설치일과 같음)
-  const rehearsalDate = new Date(installDate);
-  
-  // 철거 일정: 마지막 날
-  const dismantleDate = new Date(end);
-  
-  return {
-    eventSchedule: `${startDate} ~ ${endDate}`,
-    installSchedule: installDate.toISOString().split('T')[0],
-    rehearsalSchedule: rehearsalDate.toISOString().split('T')[0],
-    dismantleSchedule: dismantleDate.toISOString().split('T')[0]
-  };
-}
-
 // 담당자 이름 처리
 function handleContactName(message: string, session: UserSession) {
   if (message && message.trim().length > 0) {
@@ -1050,8 +1040,30 @@ function handleDefault(session: UserSession) {
   };
 }
 
+// 날짜 계산 함수
+function calculateScheduleDates(startDate: string, endDate: string) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  // 설치 일정: 시작일 하루 전
+  const installDate = new Date(start);
+  installDate.setDate(installDate.getDate() - 1);
+  
+  // 리허설 일정: 시작일 하루 전 (설치일과 같음)
+  const rehearsalDate = new Date(installDate);
+  
+  // 철거 일정: 마지막 날
+  const dismantleDate = new Date(end);
+  
+  return {
+    eventSchedule: `${startDate} ~ ${endDate}`,
+    installSchedule: installDate.toISOString().split('T')[0],
+    rehearsalSchedule: rehearsalDate.toISOString().split('T')[0],
+    dismantleSchedule: dismantleDate.toISOString().split('T')[0]
+  };
+}
 
-// 새로운 관리자 엔드포인트들 추가
+// 관리자 엔드포인트들
 app.get('/admin/polling-status', (req, res) => {
   try {
     const service = getPollingService();
@@ -1115,21 +1127,6 @@ app.post('/admin/manual-trigger', async (req, res) => {
   }
 });
 
-// 기존 테스트 엔드포인트 확장
-app.get('/test', (req, res) => {
-  const service = getPollingService();
-  const pollingStatus = service.getPollingStatus();
-  
-  res.json({
-    message: "서버가 정상 작동 중입니다!",
-    timestamp: new Date().toISOString(),
-    polling: {
-      isActive: pollingStatus.isPolling,
-      trackedPages: pollingStatus.trackedPages
-    }
-  });
-});
-
 // 서버 종료 시 폴링 정리
 process.on('SIGINT', () => {
   console.log('🛑 서버 종료 중...');
@@ -1145,11 +1142,8 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
+// 서버 시작 (중복 제거)
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`개선된 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
-});
-
 app.listen(PORT, async () => {
   console.log(`🚀 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
   
