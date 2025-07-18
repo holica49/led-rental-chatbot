@@ -9,11 +9,7 @@ export class NotionPollingService {
   private notion: Client;
   private automation: NotionStatusAutomation;
   private lastCheckedPages: Map<string, string> = new Map();
-  private lastFileCheckMap: Map<string, {
-    hasQuote: boolean;
-    hasRequest: boolean;
-    lastChecked: number;
-  }> = new Map();
+  private lastFileCheckMap: Map<string, { hasQuote: boolean; hasRequest: boolean; lastChecked: number }> = new Map();
   private pollingInterval: NodeJS.Timeout | null = null;
   private isPolling: boolean = false;
 
@@ -81,20 +77,18 @@ export class NotionPollingService {
         if (currentStatus) {
           this.lastCheckedPages.set(pageId, currentStatus);
           console.log(`📌 ${eventName}: ${currentStatus}`);
-        }
-
-        // 파일 상태도 초기화
-        if (currentStatus === '견적 검토') {
-          const hasQuoteFile = (properties['견적서']?.files || []).length > 0;
-          const hasRequestFile = (properties['요청서']?.files || []).length > 0;
           
-          this.lastFileCheckMap.set(pageId, {
-            hasQuote: hasQuoteFile,
-            hasRequest: hasRequestFile,
-            lastChecked: Date.now()
-          });
-          
-          console.log(`   파일 상태 - 견적서: ${hasQuoteFile ? '있음' : '없음'}, 요청서: ${hasRequestFile ? '있음' : '없음'}`);
+          // 파일 상태도 초기화
+          if (currentStatus === '견적 검토') {
+            const hasQuoteFile = properties['견적서']?.files?.length > 0;
+            const hasRequestFile = properties['요청서']?.files?.length > 0;
+            
+            this.lastFileCheckMap.set(pageId, {
+              hasQuote: hasQuoteFile,
+              hasRequest: hasRequestFile,
+              lastChecked: Date.now()
+            });
+          }
         }
       }
       
@@ -105,7 +99,7 @@ export class NotionPollingService {
   }
 
   /**
-   * 상태 변경 및 파일 업로드 확인
+   * 상태 변경 확인
    */
   private async checkStatusChanges() {
     try {
@@ -128,70 +122,23 @@ export class NotionPollingService {
         const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
         const lastStatus = this.lastCheckedPages.get(pageId);
 
-        // 디버깅: 견적 검토 상태의 모든 페이지 확인
-        if (currentStatus === '견적 검토') {
-          console.log(`\n🔍 [${eventName}] 파일 속성 확인:`);
-          console.log('견적서 속성:', JSON.stringify(properties['견적서'], null, 2));
-          console.log('요청서 속성:', JSON.stringify(properties['요청서'], null, 2));
-          
-          // 파일 존재 여부 확인 (다양한 경우 처리)
-          const quoteFiles = properties['견적서']?.files || [];
-          const requestFiles = properties['요청서']?.files || [];
-          
-          const hasQuoteFile = quoteFiles.length > 0;
-          const hasRequestFile = requestFiles.length > 0;
-          
-          console.log(`파일 상태: 견적서(${hasQuoteFile ? '있음' : '없음'}), 요청서(${hasRequestFile ? '있음' : '없음'})`);
-          
-          const lastFileCheck = this.lastFileCheckMap.get(pageId);
-          console.log('이전 파일 상태:', lastFileCheck);
-          
-          // 파일 업로드 상태 확인
-          if (hasQuoteFile && hasRequestFile) {
-            // 이전 상태와 비교
-            if (!lastFileCheck || !lastFileCheck.hasQuote || !lastFileCheck.hasRequest) {
-              console.log(`✅ 파일 업로드 감지! 견적 승인으로 변경 시작...`);
-              await this.updateToApproved(pageId, eventName);
-              changesDetected++;
-            } else {
-              console.log('ℹ️ 파일이 이미 업로드된 상태');
-            }
-          } else {
-            console.log(`⏳ 파일 대기 중... (견적서: ${hasQuoteFile}, 요청서: ${hasRequestFile})`);
-          }
-          
-          // 현재 파일 상태 저장
-          this.lastFileCheckMap.set(pageId, {
-            hasQuote: hasQuoteFile,
-            hasRequest: hasRequestFile,
-            lastChecked: Date.now()
-          });
-        }
-
-        // 일반 상태 변경 감지
+        // 1. 상태 변경 감지
         if (lastStatus && lastStatus !== currentStatus) {
-          console.log(`\n🔄 상태 변경 감지: ${eventName} (${lastStatus} → ${currentStatus})`);
+          console.log(`🔄 상태 변경 감지: ${eventName} (${lastStatus} → ${currentStatus})`);
           changesDetected++;
           
           // 자동화 실행
           await this.handleStatusChange(pageId, currentStatus, lastStatus, eventName);
         }
 
-        // 새로운 페이지 감지
+        // 2. 파일 업로드 감지 (견적 검토 상태일 때만)
+        if (currentStatus === '견적 검토') {
+          await this.checkFileUploads(pageId, properties, eventName);
+        }
+
+        // 3. 새로운 페이지 감지
         if (!lastStatus && currentStatus) {
-          console.log(`\n🆕 새로운 행사 감지: ${eventName} (${currentStatus})`);
-          
-          // 새 페이지가 견적 검토 상태면 파일 상태 초기화
-          if (currentStatus === '견적 검토') {
-            const hasQuoteFile = (properties['견적서']?.files || []).length > 0;
-            const hasRequestFile = (properties['요청서']?.files || []).length > 0;
-            
-            this.lastFileCheckMap.set(pageId, {
-              hasQuote: hasQuoteFile,
-              hasRequest: hasRequestFile,
-              lastChecked: Date.now()
-            });
-          }
+          console.log(`🆕 새로운 행사 감지: ${eventName} (${currentStatus})`);
         }
 
         // 현재 상태 저장
@@ -201,7 +148,7 @@ export class NotionPollingService {
       }
 
       if (changesDetected > 0) {
-        console.log(`\n✅ ${changesDetected}개 변경사항 처리 완료`);
+        console.log(`✅ ${changesDetected}개 상태 변경 처리 완료`);
       }
 
       // 완료된 행사들 정리
@@ -213,12 +160,85 @@ export class NotionPollingService {
   }
 
   /**
+   * 파일 업로드 확인
+   */
+  private async checkFileUploads(pageId: string, properties: any, eventName: string) {
+    try {
+      // 현재 파일 상태 확인
+      const hasQuoteFile = properties['견적서']?.files?.length > 0;
+      const hasRequestFile = properties['요청서']?.files?.length > 0;
+      
+      // 이전 파일 상태
+      const lastFileCheck = this.lastFileCheckMap.get(pageId);
+      
+      // 파일 업로드 감지 로직
+      if (hasQuoteFile && hasRequestFile) {
+        // 이전 상태가 없거나, 이전에는 파일이 없었는데 지금 모두 있는 경우
+        if (!lastFileCheck || (!lastFileCheck.hasQuote && !lastFileCheck.hasRequest) || 
+            (lastFileCheck.hasQuote && !lastFileCheck.hasRequest) || 
+            (!lastFileCheck.hasQuote && lastFileCheck.hasRequest)) {
+          
+          console.log(`📎 파일 업로드 완료 감지: ${eventName}`);
+          console.log(`   - 견적서: ${hasQuoteFile ? '✅' : '❌'}`);
+          console.log(`   - 요청서: ${hasRequestFile ? '✅' : '❌'}`);
+          
+          // 견적 승인으로 자동 변경
+          await this.updateToApproved(pageId, eventName);
+        }
+      } else if (hasQuoteFile || hasRequestFile) {
+        // 하나만 업로드된 경우 로그
+        console.log(`📎 파일 부분 업로드: ${eventName}`);
+        console.log(`   - 견적서: ${hasQuoteFile ? '✅' : '❌'}`);
+        console.log(`   - 요청서: ${hasRequestFile ? '✅' : '❌'}`);
+        
+        // 알림 댓글 추가 (선택사항)
+        if (!lastFileCheck || 
+            (hasQuoteFile && !lastFileCheck.hasQuote) || 
+            (hasRequestFile && !lastFileCheck.hasRequest)) {
+          await this.addPartialUploadComment(pageId, hasQuoteFile, hasRequestFile);
+        }
+      }
+      
+      // 현재 파일 상태 저장
+      this.lastFileCheckMap.set(pageId, {
+        hasQuote: hasQuoteFile,
+        hasRequest: hasRequestFile,
+        lastChecked: Date.now()
+      });
+      
+    } catch (error) {
+      console.error(`❌ 파일 업로드 확인 실패 (${eventName}):`, error);
+    }
+  }
+
+  /**
+   * 부분 업로드 알림 댓글
+   */
+  private async addPartialUploadComment(pageId: string, hasQuote: boolean, hasRequest: boolean) {
+    const missingFile = !hasQuote ? '견적서' : '요청서';
+    
+    try {
+      await this.notion.comments.create({
+        parent: { page_id: pageId },
+        rich_text: [
+          {
+            type: 'text',
+            text: { 
+              content: `📎 파일 업로드 확인\n\n✅ 업로드 완료: ${hasQuote ? '견적서' : '요청서'}\n❌ 업로드 대기: ${missingFile}\n\n${missingFile}를 업로드하면 자동으로 "견적 승인" 상태로 변경됩니다.` 
+            }
+          }
+        ]
+      });
+    } catch (error) {
+      console.error('댓글 추가 실패:', error);
+    }
+  }
+
+  /**
    * 견적 승인으로 상태 변경
    */
   private async updateToApproved(pageId: string, eventName: string) {
     try {
-      console.log(`🔄 [${eventName}] 견적 승인으로 변경 중...`);
-      
       // 1. 상태를 "견적 승인"으로 변경
       await this.notion.pages.update({
         page_id: pageId,
@@ -229,30 +249,26 @@ export class NotionPollingService {
         }
       });
 
-      console.log(`✅ [${eventName}] 상태 변경 완료`);
-
-      // 2. 현재 상태 업데이트
-      this.lastCheckedPages.set(pageId, '견적 승인');
-
-      // 3. 댓글 추가
+      // 2. 댓글 추가
       await this.notion.comments.create({
         parent: { page_id: pageId },
         rich_text: [
           {
             type: 'text',
             text: { 
-              content: `✅ 파일 업로드 완료 - 자동 승인\n\n견적서와 요청서가 모두 업로드되어 자동으로 "견적 승인" 상태로 변경되었습니다.\n\n📎 업로드된 파일:\n• 견적서 ✓\n• 요청서 ✓\n\n🚚 다음 단계:\n배차 정보가 자동으로 생성됩니다.\n\n⏰ 변경 시간: ${new Date().toLocaleString()}` 
+              content: `✅ 파일 업로드 완료 - 자동 승인\n\n견적서와 요청서가 모두 업로드되어 자동으로 "견적 승인" 상태로 변경되었습니다.\n\n📎 업로드 파일:\n• 견적서 ✅\n• 요청서 ✅\n\n🚚 다음 단계:\n1. 배차 정보가 자동 생성됩니다\n2. 설치 인력 배정을 진행해주세요\n\n⏰ 변경 시간: ${new Date().toLocaleString()}` 
             }
           }
         ]
       });
 
-      console.log(`✅ [${eventName}] 댓글 추가 완료`);
+      // 3. 상태 변경 기록 업데이트
+      this.lastCheckedPages.set(pageId, '견적 승인');
 
       // 4. 자동화 실행 (배차 정보 생성)
       await this.automation.onStatusQuoteApproved(pageId);
       
-      console.log(`✅ [${eventName}] 견적 승인 프로세스 완료`);
+      console.log(`✅ ${eventName} - 견적 승인으로 자동 변경 완료`);
       
     } catch (error) {
       console.error(`❌ 견적 승인 변경 실패 (${eventName}):`, error);
@@ -265,13 +281,13 @@ export class NotionPollingService {
             {
               type: 'text',
               text: { 
-                content: `❌ 자동 승인 실패\n\n파일은 업로드되었으나 상태 변경 중 오류가 발생했습니다.\n오류: ${error instanceof Error ? error.message : String(error)}\n\n담당자가 수동으로 "견적 승인"으로 변경해주세요.` 
+                content: `❌ 자동 승인 실패\n\n오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n담당자가 수동으로 "견적 승인"으로 변경해주세요.` 
               }
             }
           ]
         });
       } catch (commentError) {
-        console.error('댓글 추가 실패:', commentError);
+        console.error('오류 댓글 추가 실패:', commentError);
       }
     }
   }
@@ -285,9 +301,9 @@ export class NotionPollingService {
       
       switch (newStatus) {
         case '견적 검토':
-          console.log('📊 견적서/요청서 작성 안내...');
+          console.log('📊 견적서/요청서 자동 생성 시작...');
           await this.automation.onStatusQuoteReview(pageId);
-          console.log('✅ 견적 검토 프로세스 완료');
+          console.log('✅ 견적서/요청서 생성 완료');
           break;
           
         case '견적 승인':
@@ -317,7 +333,7 @@ export class NotionPollingService {
             {
               type: 'text',
               text: { 
-                content: `❌ 자동화 오류 발생\n\n상태: ${oldStatus} → ${newStatus}\n오류: ${error instanceof Error ? error.message : String(error)}\n\n담당자 확인이 필요합니다.` 
+                content: `❌ 자동화 오류 발생\n\n상태: ${oldStatus} → ${newStatus}\n오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n담당자 확인이 필요합니다.` 
               }
             }
           ]
@@ -351,9 +367,9 @@ export class NotionPollingService {
     return {
       isPolling: this.isPolling,
       trackedPages: this.lastCheckedPages.size,
-      trackedFiles: this.lastFileCheckMap.size,
+      fileTrackingPages: this.lastFileCheckMap.size,
       lastCheckedPages: Array.from(this.lastCheckedPages.entries()),
-      fileStatuses: Array.from(this.lastFileCheckMap.entries()).map(([pageId, status]) => ({
+      fileStatus: Array.from(this.lastFileCheckMap.entries()).map(([pageId, status]) => ({
         pageId,
         hasQuote: status.hasQuote,
         hasRequest: status.hasRequest,
@@ -390,33 +406,6 @@ export class NotionPollingService {
       
     } catch (error) {
       console.error('❌ 수동 트리거 실패:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 수동으로 파일 체크 (디버깅용)
-   */
-  async manualFileCheck(pageId: string) {
-    try {
-      const page = await this.notion.pages.retrieve({ page_id: pageId });
-      const properties = (page as any).properties;
-      
-      const fileInfo = {
-        pageId,
-        eventName: properties['행사명']?.title?.[0]?.text?.content || 'Unknown',
-        status: properties['행사 상태']?.status?.name,
-        quoteFiles: properties['견적서']?.files || [],
-        requestFiles: properties['요청서']?.files || [],
-        hasQuoteFile: (properties['견적서']?.files || []).length > 0,
-        hasRequestFile: (properties['요청서']?.files || []).length > 0
-      };
-      
-      console.log('📁 파일 체크 결과:', fileInfo);
-      return fileInfo;
-      
-    } catch (error) {
-      console.error('❌ 파일 체크 실패:', error);
       throw error;
     }
   }
