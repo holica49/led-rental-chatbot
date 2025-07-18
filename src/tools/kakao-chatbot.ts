@@ -166,7 +166,7 @@ function validateAndNormalizeLEDSize(input: string): { valid: boolean; size?: st
   
   return { 
     valid: false, 
-    error: 'LED 크기 형식이 올바르지 않습니다.\n예시: 4000x2500, 4000*2500, 4000×2500' 
+    error: 'LED 크기 형식이 올바르지 않습니다.\n예시: 6000x3000, 4000*3000, 4000×2500' 
   };
 }
 
@@ -546,7 +546,7 @@ function handleResetRequest(session: UserSession) {
   session.currentLED = 1;
   
   return {
-    text: '견적 요청을 처음부터 다시 시작합니다.\n\n안녕하세요! LED 렌탈 자동 견적 시스템입니다.\n\n혹시 메쎄이상 관계자이신가요?',
+    text: '견적 요청을 처음부터 다시 시작합니다.\n\n안녕하세요! LED 렌탈 자동화 시스템, 오비스입니다.\n\n혹시 LED렌탈 요청이신가요?',
     quickReplies: [
       { label: '네, 맞습니다', action: 'message', messageText: '네' },
       { label: '아니요', action: 'message', messageText: '아니요' }
@@ -559,7 +559,7 @@ function handleStart(session: UserSession) {
   session.step = 'confirm_customer';
   
   return {
-    text: '안녕하세요! LED 렌탈 자동 견적 시스템입니다.\n\n혹시 메쎄이상 관계자이신가요?',
+    text: '안녕하세요! LED 렌탈 자동화 시스템, 오비스입니다.\n\n혹시 LED렌탈 요청이신가요?',
     quickReplies: [
       { label: '네, 맞습니다', action: 'message', messageText: '네' },
       { label: '아니요', action: 'message', messageText: '아니요' }
@@ -574,13 +574,13 @@ function handleCustomerConfirm(message: string, session: UserSession) {
     session.data.customerName = '메쎄이상';
     
     return {
-      text: '메쎄이상 관계자님 안녕하세요! 😊\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀\n\n💡 나중에 수정하고 싶으시면 "수정"이라고 말씀해주세요.',
+      text: '신청자님 안녕하세요! 😊\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀\n\n💡 나중에 수정하고 싶으시면 "수정"이라고 말씀해주세요.',
       quickReplies: []
     };
   } else {
     session.step = 'start';
     return {
-      text: '죄송합니다. 현재는 메쎄이상 전용 서비스입니다.\n다른 문의사항이 있으시면 담당자에게 연락해주세요.',
+      text: '죄송합니다. 현재는 LED렌탈 전용 서비스입니다.\n다른 문의사항이 있으시면 담당자에게 연락해주세요.',
       quickReplies: [
         { label: '처음으로', action: 'message', messageText: '처음부터' }
       ]
@@ -598,7 +598,7 @@ function handleEventInfo(message: string, session: UserSession) {
     session.step = 'get_led_count';
     
     return {
-      text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n몇 개소의 LED가 필요하신가요? (1-5개소)\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n몇 개소의 LED가 필요하신가요? (1-5개소)\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: [
         { label: '1개소', action: 'message', messageText: '1' },
         { label: '2개소', action: 'message', messageText: '2' },
@@ -626,7 +626,7 @@ function handleLEDCount(message: string, session: UserSession) {
     session.data.ledSpecs = [];
     
     return {
-      text: `✅ 총 ${count}개소의 LED 설정을 진행하겠습니다.\n\n🖥️ LED 1번째 개소의 크기를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 4000x2500\n• 4000*2500\n• 4000×2500\n• 4000 x 2500\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 총 ${count}개소의 LED 설정을 진행하겠습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED 1번째 개소의 크기를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 4000x2500\n• 4000*2500\n• 4000×2500\n• 4000 x 2500\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: [
         { label: '4000x2500', action: 'message', messageText: '4000x2500' },
         { label: '2000x1500', action: 'message', messageText: '2000x1500' },
@@ -663,21 +663,20 @@ function handleLEDSpecs(message: string, session: UserSession) {
     session.step = 'get_stage_height';
     
     return {
-      text: `✅ LED ${session.currentLED}번째 개소: ${validation.size}\n\n📐 이 LED의 무대 높이를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 600 (mm)\n• 600mm\n• 60cm\n• 0.6m\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ LED ${session.currentLED}번째 개소: ${validation.size}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📐 이 LED의 무대 높이를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 600 (mm)\n• 600mm\n• 60cm\n• 0.6m\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: [
         { label: '600mm', action: 'message', messageText: '600mm' },
-        { label: '800mm', action: 'message', messageText: '800mm' },
-        { label: '1000mm', action: 'message', messageText: '1000mm' },
-        { label: '1200mm', action: 'message', messageText: '1200mm' }
+        { label: '500mm', action: 'message', messageText: '500mm' },
+        { label: '1000mm', action: 'message', messageText: '1000mm' }
       ]
     };
   } else {
     return {
       text: `❌ ${validation.error}\n\n다시 입력해주세요:\n\n✅ 올바른 형식:\n• 4000x2500\n• 4000*2500\n• 4000×2500\n• 4000 x 2500\n\n💡 500mm 단위로만 입력 가능합니다.`,
       quickReplies: [
-        { label: '4000x2500', action: 'message', messageText: '4000x2500' },
-        { label: '2000x1500', action: 'message', messageText: '2000x1500' },
-        { label: '1000x1000', action: 'message', messageText: '1000x1000' }
+        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
+        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
+        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
       ]
     };
   }
@@ -694,7 +693,7 @@ function handleStageHeight(message: string, session: UserSession) {
     session.step = 'get_operator_needs';
     
     return {
-      text: `✅ LED ${session.currentLED}번째 개소 무대 높이: ${validation.height}mm\n\n👨‍💼 이 LED에 오퍼레이터가 필요하신가요?\n\n오퍼레이터는 LED 화면 조작 및 콘텐츠 관리를 담당합니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ LED ${session.currentLED}번째 개소 무대 높이: ${validation.height}mm\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👨‍💼 이 LED에 오퍼레이터가 필요하신가요?\n\n오퍼레이터는 LED 화면 조작 및 콘텐츠 관리를 담당합니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: [
         { label: '네, 필요합니다', action: 'message', messageText: '네' },
         { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
@@ -702,12 +701,11 @@ function handleStageHeight(message: string, session: UserSession) {
     };
   } else {
     return {
-      text: `❌ ${validation.error}\n\n다시 입력해주세요:\n\n✅ 올바른 형식:\n• 600 (mm 단위)\n• 600mm\n• 60cm\n• 0.6m\n\n📏 일반적인 무대 높이: 600mm~1200mm`,
+      text: `❌ ${validation.error}\n\n다시 입력해주세요:\n\n✅ 올바른 형식:\n• 600 (mm 단위)\n• 600mm\n• 60cm\n• 0.6m\n\n📏 일반적인 무대 높이: 600mm~1000mm`,
       quickReplies: [
         { label: '600mm', action: 'message', messageText: '600mm' },
-        { label: '800mm', action: 'message', messageText: '800mm' },
-        { label: '1000mm', action: 'message', messageText: '1000mm' },
-        { label: '1200mm', action: 'message', messageText: '1200mm' }
+        { label: '500mm', action: 'message', messageText: '500mm' },
+        { label: '1000mm', action: 'message', messageText: '1000mm' }
       ]
     };
   }
@@ -723,7 +721,7 @@ function handleOperatorNeeds(message: string, session: UserSession) {
   if (needsOperator) {
     session.step = 'get_operator_days';
     return {
-      text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 필요\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?\n\n일반적으로 행사 기간 + 리허설 1일입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?\n\n일반적으로 행사 기간과 동일합니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: [
         { label: '1일', action: 'message', messageText: '1일' },
         { label: '2일', action: 'message', messageText: '2일' },
@@ -737,7 +735,7 @@ function handleOperatorNeeds(message: string, session: UserSession) {
     session.step = 'get_prompter_connection';
     
     return {
-      text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 불필요\n\n📺 프롬프터 연결이 필요하신가요?\n\n프롬프터는 발표자가 대본을 보면서 발표할 수 있도록 도와주는 장치입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 불필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?\n\n프롬프터는 발표자가 자료를 보면서 발표할 수 있도록 도와주는 모니터입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: [
         { label: '네, 필요합니다', action: 'message', messageText: '네' },
         { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
@@ -758,7 +756,7 @@ function handleOperatorDays(message: string, session: UserSession) {
       session.step = 'get_prompter_connection';
       
       return {
-        text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 ${days}일\n\n📺 프롬프터 연결이 필요하신가요?\n\n프롬프터는 발표자가 대본을 보면서 발표할 수 있도록 도와주는 장치입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+        text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 ${days}일\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?\n\n프롬프터는 발표자가 대본을 보면서 발표할 수 있도록 도와주는 장치입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
         quickReplies: [
           { label: '네, 필요합니다', action: 'message', messageText: '네' },
           { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
@@ -788,7 +786,7 @@ function handlePrompterConnection(message: string, session: UserSession) {
   session.step = 'get_relay_connection';
   
   return {
-    text: `✅ LED ${session.currentLED}번째 개소: 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n📹 중계카메라 연결이 필요하신가요?\n\n중계카메라는 행사 진행 상황을 실시간으로 LED에 송출하는 기능입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+    text: `✅ LED ${session.currentLED}번째 개소: 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📹 중계카메라 연결이 필요하신가요?\n\n중계카메라는 행사 진행 상황을 실시간으로 LED에 송출하는 기능입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
     quickReplies: [
       { label: '네, 필요합니다', action: 'message', messageText: '네' },
       { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
@@ -809,11 +807,11 @@ function handleRelayConnection(message: string, session: UserSession) {
     session.step = 'get_led_specs';
     
     return {
-      text: `✅ LED ${session.currentLED - 1}번째 개소 설정 완료\n\n🖥️ LED ${session.currentLED}번째 개소의 크기를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 4000x2500\n• 4000*2500\n• 4000×2500`,
+      text: `✅ LED ${session.currentLED - 1}번째 개소 설정 완료\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번째 개소의 크기를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 4000x2500\n• 4000*2500\n• 4000×2500`,
       quickReplies: [
-        { label: '4000x2500', action: 'message', messageText: '4000x2500' },
-        { label: '2000x1500', action: 'message', messageText: '2000x1500' },
-        { label: '1000x1000', action: 'message', messageText: '1000x1000' }
+        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
+        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
+        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
       ]
     };
   } else {
@@ -831,7 +829,7 @@ function handleRelayConnection(message: string, session: UserSession) {
     }).join('\n');
     
     return {
-      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${enhancedLedSummary}\n\n📅 행사 기간을 알려주세요.\n시작일과 종료일을 모두 입력해주세요.\n\n예시: 2025-07-09 ~ 2025-07-11\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${enhancedLedSummary}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 행사 기간을 알려주세요.\n시작일과 종료일을 모두 입력해주세요.\n\n예시: 2025-07-09 ~ 2025-07-11\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: []
     };
   }
@@ -847,7 +845,7 @@ function handleEventPeriod(message: string, session: UserSession) {
     session.step = 'get_contact_name';
     
     return {
-      text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate}\n\n👤 담당자님의 성함을 알려주세요.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: []
     };
   } else {
@@ -865,12 +863,12 @@ function handleContactName(message: string, session: UserSession) {
     session.step = 'get_contact_title';
     
     return {
-      text: `✅ 담당자: ${session.data.contactName}님\n\n💼 직급을 알려주세요.\n\n예시: 과장, 대리, 팀장, 부장 등\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 담당자: ${session.data.contactName}님\n\n💼 직급을 알려주세요.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n예시: 매니저, 책임, 팀장, 이사 등\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: [
-        { label: '과장', action: 'message', messageText: '과장' },
-        { label: '대리', action: 'message', messageText: '대리' },
+        { label: '매니저', action: 'message', messageText: '매니저' },
+        { label: '책임', action: 'message', messageText: '책임' },
         { label: '팀장', action: 'message', messageText: '팀장' },
-        { label: '부장', action: 'message', messageText: '부장' }
+        { label: '이사', action: 'message', messageText: '이사' }
       ]
     };
   } else {
@@ -888,17 +886,17 @@ function handleContactTitle(message: string, session: UserSession) {
     session.step = 'get_contact_phone';
     
     return {
-      text: `✅ 직급: ${session.data.contactTitle}\n\n📞 연락처를 알려주세요.\n\n예시: 010-1234-5678, 02-1234-5678\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 직급: ${session.data.contactTitle}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📞 연락처를 알려주세요.\n\n예시: 010-1234-5678, 02-1234-5678\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
       quickReplies: []
     };
   } else {
     return {
-      text: '❌ 직급을 입력해주세요.\n\n예시: 과장, 대리, 팀장, 부장 등',
+      text: '❌ 직급을 입력해주세요.\n\n예시: 매니저, 책임, 팀장, 이사 등',
       quickReplies: [
-        { label: '과장', action: 'message', messageText: '과장' },
-        { label: '대리', action: 'message', messageText: '대리' },
+        { label: '매니저', action: 'message', messageText: '매니저' },
+        { label: '책임', action: 'message', messageText: '책임' },
         { label: '팀장', action: 'message', messageText: '팀장' },
-        { label: '부장', action: 'message', messageText: '부장' }
+        { label: '이사', action: 'message', messageText: '이사' }
       ]
     };
   }
@@ -924,7 +922,7 @@ function handleContactPhone(message: string, session: UserSession) {
     }).join('\n');
     
     return {
-      text: `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}\n\n👤 담당자 정보:\n• 성함: ${session.data.contactName}\n• 직급: ${session.data.contactTitle}\n• 연락처: ${session.data.contactPhone}\n\n🖥️ LED 사양:\n${ledSummary}\n\n담당자에게 전달드리겠습니다!`,
+      text: `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}\n\n👤 담당자 정보:\n• 성함: ${session.data.contactName}\n• 직급: ${session.data.contactTitle}\n• 연락처: ${session.data.contactPhone}\n\n🖥️ LED 사양:\n${ledSummary}\n\n담당자에게 전달드리겠습니다!`,
       quickReplies: [
         { label: '네, 전달해주세요', action: 'message', messageText: '네' },
         { label: '수정하고 싶어요', action: 'message', messageText: '수정' }
@@ -1033,7 +1031,7 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
 function handleDefault(session: UserSession) {
   session.step = 'start';
   return {
-    text: '안녕하세요! LED 렌탈 자동 견적 시스템입니다.\n\n견적을 시작하시겠습니까?',
+    text: '안녕하세요! LED 렌탈 자동화 시스템, 오비스입니다.\n\n견적을 시작하시겠습니까?',
     quickReplies: [
       { label: '견적 시작', action: 'message', messageText: '네' },
       { label: '도움말', action: 'message', messageText: '도움말' }
