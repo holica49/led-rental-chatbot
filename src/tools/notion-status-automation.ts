@@ -8,21 +8,24 @@ export class NotionStatusAutomation {
   private driveService: any = null;
   
   constructor() {
-    try {
-      // Google Drive 서비스는 선택적으로 사용
-      // import를 동적으로 처리하여 오류 방지
-      this.initializeDriveService();
-    } catch (error) {
-      console.warn('⚠️ Google Drive 서비스 초기화 실패 (선택사항):', error);
-      this.driveService = null;
-    }
+    // 생성자에서는 초기화하지 않음
+    console.log('NotionStatusAutomation 생성됨');
   }
 
+  // GoogleDriveService를 실제로 사용할 때만 초기화
   private async initializeDriveService() {
+    if (this.driveService) {
+      return; // 이미 초기화됨
+    }
+
     try {
+      console.log('🔄 GoogleDriveService 동적 로딩...');
+      
+      // 동적으로 import
       const { GoogleDriveService } = await import('./google-drive-service.js');
       this.driveService = new GoogleDriveService();
-      console.log('✅ Google Drive 서비스 초기화 완료');
+      
+      console.log('✅ GoogleDriveService 로드 완료');
     } catch (error) {
       console.warn('⚠️ Google Drive 서비스를 사용할 수 없습니다:', error);
       this.driveService = null;
@@ -45,18 +48,18 @@ export class NotionStatusAutomation {
       // 3. 기본 댓글 추가 (항상 실행)
       await this.addQuoteReviewComment(pageId, eventData, quote);
       
-      // 4. Google Drive 서비스가 있으면 파일 생성
-      if (this.driveService) {
-        try {
+      // 4. Google Drive 서비스 초기화 및 사용
+      try {
+        await this.initializeDriveService(); // 필요할 때 초기화
+        
+        if (this.driveService) {
           const driveResult = await this.driveService.generateQuoteAndRequestFiles(eventData, quote);
           await this.updateNotionWithFileLinks(pageId, driveResult);
           console.log('✅ 구글 드라이브 파일 생성 완료');
-        } catch (driveError) {
-          console.error('❌ 구글 드라이브 파일 생성 실패:', driveError);
-          await this.addErrorComment(pageId, '구글 드라이브 파일 생성 실패', driveError);
         }
-      } else {
-        console.log('ℹ️ 구글 드라이브 서비스가 설정되지 않음 - 기본 댓글만 추가');
+      } catch (driveError) {
+        console.error('❌ 구글 드라이브 파일 생성 실패:', driveError);
+        await this.addErrorComment(pageId, '구글 드라이브 파일 생성 실패', driveError);
       }
       
       console.log('✅ 견적 검토 프로세스 완료');
@@ -284,29 +287,29 @@ export class NotionStatusAutomation {
     const comment = `📊 견적 검토 자동화 완료
 
 ✅ 견적 정보:
-• 행사명: ${eventData.eventName}
-• 고객사: ${eventData.customerName}
-• 행사장: ${eventData.venue}
-• 총 LED 모듈: ${quote.ledModules?.count || 0}개
-• 견적 금액: ${quote.total?.toLocaleString() || 0}원 (VAT 포함)
-• 설치 인력: ${quote.installation?.workers || 0}명
+- 행사명: ${eventData.eventName}
+- 고객사: ${eventData.customerName}
+- 행사장: ${eventData.venue}
+- 총 LED 모듈: ${quote.ledModules?.count || 0}개
+- 견적 금액: ${quote.total?.toLocaleString() || 0}원 (VAT 포함)
+- 설치 인력: ${quote.installation?.workers || 0}명
 
 🖥️ LED 사양:
 ${ledSummary}
 
 💰 견적 세부내역:
-• LED 모듈: ${quote.ledModules?.price?.toLocaleString() || 0}원
-• 구조물: ${quote.structure?.totalPrice?.toLocaleString() || 0}원
-• 컨트롤러: ${quote.controller?.totalPrice?.toLocaleString() || 0}원
-• 파워: ${quote.power?.totalPrice?.toLocaleString() || 0}원
-• 설치인력: ${quote.installation?.totalPrice?.toLocaleString() || 0}원
-• 오퍼레이터: ${quote.operation?.totalPrice?.toLocaleString() || 0}원
-• 운반비: ${quote.transport?.price?.toLocaleString() || 0}원
+- LED 모듈: ${quote.ledModules?.price?.toLocaleString() || 0}원
+- 구조물: ${quote.structure?.totalPrice?.toLocaleString() || 0}원
+- 컨트롤러: ${quote.controller?.totalPrice?.toLocaleString() || 0}원
+- 파워: ${quote.power?.totalPrice?.toLocaleString() || 0}원
+- 설치인력: ${quote.installation?.totalPrice?.toLocaleString() || 0}원
+- 오퍼레이터: ${quote.operation?.totalPrice?.toLocaleString() || 0}원
+- 운반비: ${quote.transport?.price?.toLocaleString() || 0}원
 
 📎 생성된 파일:
-• 견적서와 요청서가 생성되었습니다
-• 파일 링크는 데이터베이스 속성에 자동 저장됩니다
-• Google Drive 서비스 연동 상태에 따라 파일이 생성됩니다
+- 견적서와 요청서가 생성되었습니다
+- 파일 링크는 데이터베이스 속성에 자동 저장됩니다
+- Google Drive 서비스 연동 상태에 따라 파일이 생성됩니다
 
 🔄 다음 단계:
 1. 견적 내용을 검토해주세요
@@ -343,19 +346,19 @@ ${ledSummary}
       message: `🚚 배차 정보 자동 생성 (${eventData.eventName})
 
 📋 기본 정보:
-• 고객사: ${eventData.customerName}
-• 행사장: ${eventData.venue}
-• 담당자: ${eventData.contactName}
-• 연락처: ${eventData.contactPhone}
+- 고객사: ${eventData.customerName}
+- 행사장: ${eventData.venue}
+- 담당자: ${eventData.contactName}
+- 연락처: ${eventData.contactPhone}
 
 📦 운반 물품:
-• LED 모듈: ${totalModules}개
-• 플레이트 케이스: ${plateBoxCount}박스
-• 필요 차량: ${truckInfo}
+- LED 모듈: ${totalModules}개
+- 플레이트 케이스: ${plateBoxCount}박스
+- 필요 차량: ${truckInfo}
 
 📅 일정:
-• 설치일: ${installDate || '미정'}
-• 철거일: ${dismantleDate || '미정'}
+- 설치일: ${installDate || '미정'}
+- 철거일: ${dismantleDate || '미정'}
 
 📍 배송지: ${eventData.venue}
 
@@ -404,14 +407,14 @@ ${ledSummary}
 □ 전원 공급 및 전기 설치 조건 확인
 
 📞 연락처 정보:
-• 고객 담당자: ${eventData.contactName}
-• 연락처: ${eventData.contactPhone}
-• 행사장: ${eventData.venue}
+- 고객 담당자: ${eventData.contactName}
+- 연락처: ${eventData.contactPhone}
+- 행사장: ${eventData.venue}
 
 📅 일정 확인:
-• 설치일: ${eventData.installSchedule || '미정'}
-• 리허설: ${eventData.rehearsalSchedule || '미정'}
-• 철거일: ${eventData.dismantleSchedule || '미정'}
+- 설치일: ${eventData.installSchedule || '미정'}
+- 리허설: ${eventData.rehearsalSchedule || '미정'}
+- 철거일: ${eventData.dismantleSchedule || '미정'}
 
 🔄 다음 단계:
 설치일에 자동으로 "설치 중" 상태로 변경됩니다.

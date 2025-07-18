@@ -1,4 +1,5 @@
-import { google } from 'googleapis';
+// src/tools/google-drive-service.ts
+
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import path from 'path';
@@ -7,19 +8,43 @@ import path from 'path';
 export class GoogleDriveService {
   private drive: any;
   private sheets: any;
+  private initialized = false;
   
   constructor() {
-    // 서비스 계정 인증
-    const auth = new google.auth.GoogleAuth({
-      keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE, // 서비스 계정 JSON 파일 경로
-      scopes: [
-        'https://www.googleapis.com/auth/drive',
-        'https://www.googleapis.com/auth/spreadsheets'
-      ]
-    });
-    
-    this.drive = google.drive({ version: 'v3', auth });
-    this.sheets = google.sheets({ version: 'v4', auth });
+    console.log('GoogleDriveService 생성됨 (초기화 대기 중)');
+  }
+
+  private async initialize() {
+    if (this.initialized) {
+      return;
+    }
+
+    try {
+      console.log('🔄 googleapis 동적 로딩 시작...');
+      
+      // 필요한 시점에 googleapis 로드
+      const { google } = await import('googleapis');
+      
+      console.log('✅ googleapis 로드 완료');
+      
+      // 서비스 계정 인증
+      const auth = new google.auth.GoogleAuth({
+        keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
+        scopes: [
+          'https://www.googleapis.com/auth/drive',
+          'https://www.googleapis.com/auth/spreadsheets'
+        ]
+      });
+      
+      this.drive = google.drive({ version: 'v3', auth });
+      this.sheets = google.sheets({ version: 'v4', auth });
+      this.initialized = true;
+      
+      console.log('✅ Google Drive 서비스 초기화 완료');
+    } catch (error) {
+      console.error('❌ Google Drive 서비스 초기화 실패:', error);
+      throw error;
+    }
   }
 
   /**
@@ -27,6 +52,8 @@ export class GoogleDriveService {
    */
   async generateQuoteAndRequestFiles(eventData: any, quote: any) {
     try {
+      await this.initialize();
+      
       console.log('📄 구글 드라이브에 견적서/요청서 생성 시작...');
       
       const results = {
@@ -61,6 +88,10 @@ export class GoogleDriveService {
    * 견적서 파일 생성
    */
   private async createQuoteFile(eventData: any, quote: any) {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+    
     // 견적서 템플릿 파일 ID (구글 드라이브에 미리 업로드된 템플릿)
     const templateFileId = process.env.QUOTE_TEMPLATE_FILE_ID;
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -94,6 +125,10 @@ export class GoogleDriveService {
    * 요청서 파일 생성
    */
   private async createRequestFile(eventData: any) {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+    
     // 요청서 템플릿 파일 ID
     const templateFileId = process.env.REQUEST_TEMPLATE_FILE_ID;
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -256,6 +291,8 @@ export class GoogleDriveService {
    */
   async listFilesInFolder(folderId?: string) {
     try {
+      await this.initialize();
+      
       const targetFolderId = folderId || process.env.GOOGLE_DRIVE_FOLDER_ID;
       
       const response = await this.drive.files.list({
@@ -277,6 +314,8 @@ export class GoogleDriveService {
    */
   async deleteFile(fileId: string) {
     try {
+      await this.initialize();
+      
       await this.drive.files.delete({
         fileId: fileId
       });
