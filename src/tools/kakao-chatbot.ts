@@ -2,8 +2,10 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import { calculateMultiLEDQuote } from './calculate-quote.js';
 import { notionMCPTool } from './notion-mcp.js';
+import { Client } from '@notionhq/client';
 
 const app = express();
+const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
 // 미들웨어 설정
 app.use(bodyParser.json());
@@ -299,7 +301,131 @@ function validatePhoneNumber(input: string): { valid: boolean; phone?: string; e
   };
 }
 
-// 메시지 처리 함수
+// 담당자 언급 알림 함수
+async function addMentionToPage(pageId: string, eventData: any) {
+  try {
+    // 환경변수에서 담당자 정보 가져오기
+    const managersConfig = JSON.parse(process.env.MANAGERS_CONFIG || '{"managers":[]}');
+    const activeManagers = managersConfig.managers.filter((m: any) => m.isActive);
+    
+    if (activeManagers.length === 0) {
+      console.warn('활성화된 담당자가 없습니다.');
+      return;
+    }
+    
+    // 댓글 내용 구성 (올바른 Notion API 타입)
+    const richTextContent: any[] = [
+      {
+        type: 'text',
+        text: { content: '🚨 새로운 견적 요청이 접수되었습니다!\n\n' },
+        annotations: { bold: true, color: 'red' }
+      },
+      {
+        type: 'text',
+        text: { content: `📋 행사명: ${eventData.eventName}\n` },
+        annotations: { bold: true }
+      },
+      {
+        type: 'text',
+        text: { content: `🏢 고객사: ${eventData.customerName}\n` }
+      },
+      {
+        type: 'text',
+        text: { content: `👤 담당자: ${eventData.contactName} (${eventData.contactTitle})\n` }
+      },
+      {
+        type: 'text',
+        text: { content: `📞 연락처: ${eventData.contactPhone}\n` }
+      },
+      {
+        type: 'text',
+        text: { content: `📅 행사기간: ${eventData.eventPeriod}\n` }
+      },
+      {
+        type: 'text',
+        text: { content: `🎪 행사장: ${eventData.venue}\n` }
+      },
+      {
+        type: 'text',
+        text: { content: `💰 견적금액: ${eventData.totalAmount?.toLocaleString() || '계산중'}원\n\n` }
+      }
+    ];
+    
+    // LED 사양 정보 추가
+    if (eventData.ledSpecs && eventData.ledSpecs.length > 0) {
+      richTextContent.push({
+        type: 'text',
+        text: { content: '📺 LED 사양:\n' },
+        annotations: { bold: true }
+      });
+      
+      eventData.ledSpecs.forEach((spec: any, index: number) => {
+        const [w, h] = spec.size.split('x').map(Number);
+        const moduleCount = (w / 500) * (h / 500);
+        richTextContent.push({
+          type: 'text',
+          text: { content: `${index + 1}. ${spec.size} (무대높이: ${spec.stageHeight}mm, ${moduleCount}개)\n` }
+        });
+      });
+    }
+    
+    // 구분선
+    richTextContent.push({
+      type: 'text',
+      text: { content: '\n' + '─'.repeat(30) + '\n' }
+    });
+    
+    // 담당자 언급
+    richTextContent.push({
+      type: 'text',
+      text: { content: '담당자 확인 요청: ' },
+      annotations: { bold: true }
+    });
+    
+    // 각 담당자를 언급
+    activeManagers.forEach((manager: any, index: number) => {
+      richTextContent.push({
+        type: 'mention',
+        mention: {
+          type: 'user',
+          user: { id: manager.notionId }
+        }
+      });
+      
+      if (manager.department) {
+        richTextContent.push({
+          type: 'text',
+          text: { content: `(${manager.department})` }
+        });
+      }
+      
+      if (index < activeManagers.length - 1) {
+        richTextContent.push({
+          type: 'text',
+          text: { content: ', ' }
+        });
+      }
+    });
+    
+    // 마감 안내
+    richTextContent.push({
+      type: 'text',
+      text: { content: '\n\n⏰ 빠른 확인 부탁드립니다!' },
+      annotations: { bold: true }
+    });
+    
+    // Notion 댓글 추가
+    await notion.comments.create({
+      parent: { page_id: pageId },
+      rich_text: richTextContent
+    });
+    
+    console.log('✅ 담당자 언급 알림 완료');
+    
+  } catch (error) {
+    console.error('❌ 담당자 언급 실패:', error);
+  }
+}
 async function processUserMessage(message: string, session: UserSession) {
   // 수정 요청 처리
   if (isModificationRequest(message)) {
@@ -868,7 +994,20 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
       };
       
       // Notion에 저장
-      await notionMCPTool.handler(notionData);
+      const notionResult = await notionMCPTool.handler(notionData);
+      
+      // 담당자 언급 알림 추가
+      await addMentionToPage(notionResult.id, {
+        eventName: notionData.eventName,
+        customerName: notionData.customerName,
+        contactName: notionData.contactName,
+        contactTitle: notionData.contactTitle,
+        contactPhone: notionData.contactPhone,
+        eventPeriod: notionData.eventSchedule,
+        venue: notionData.venue,
+        totalAmount: notionData.totalQuoteAmount,
+        ledSpecs: session.data.ledSpecs
+      });
       
       // 세션 초기화
       session.step = 'start';
