@@ -127,7 +127,7 @@ function calculateTransport(moduleCount: number): TransportInfo {
   }
 }
 
-// 다중 LED 견적 계산 함수 (수정됨)
+// 다중 LED 견적 계산 함수 (수정됨 - 상세 정보 추가)
 export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
   let totalModules = 0;
   let totalStructureArea = 0;
@@ -215,9 +215,16 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
       range: getTransportRange(totalModules)
     },
     
-    // 추가 정보
+    // 추가 정보 (상세 조건 정보)
     totalModuleCount: totalModules,
     maxStageHeight: Math.max(...stageHeights.filter(h => h > 0), 0),
+    installationWorkers: installationWorkers,
+    installationWorkerRange: getInstallationWorkerRange(totalModules),
+    controllerCount: ledSpecs.length,
+    powerRequiredCount: powerRequiredCount,
+    transportRange: getTransportRange(totalModules),
+    structureUnitPrice: structureInfo.unitPrice,
+    structureUnitPriceDescription: structureInfo.description,
     
     subtotal: 0,
     vat: 0,

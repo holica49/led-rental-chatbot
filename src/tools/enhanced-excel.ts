@@ -47,7 +47,7 @@ export const enhancedExcelTool = {
   }
 };
 
-// 스타일 상수 정의 (타입 안전)
+// 스타일 상수 정의
 const STYLES = {
   header: {
     font: { bold: true, size: 12, color: { argb: 'FF000000' } },
@@ -158,38 +158,15 @@ async function generateStyledRequestExcel(data: any) {
   let row = 5;
   const venueCell = worksheet.getCell(`B${row}`);
   venueCell.value = '행사장';
-  venueCell.font = { bold: true, size: 10 };
-  venueCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  venueCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  venueCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(venueCell, STYLES.label);
   
   const venueDescCell = worksheet.getCell(`C${row}`);
   venueDescCell.value = '도로명 주소 및 층수를 입력하세요';
-  venueDescCell.font = { bold: true, size: 10 };
-  venueDescCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  venueDescCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  venueDescCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(venueDescCell, STYLES.label);
   
   const venueDataCell = worksheet.getCell(`D${row}`);
   venueDataCell.value = data.eventLocation || '';
-  venueDataCell.font = { size: 10 };
-  venueDataCell.alignment = { horizontal: 'left', vertical: 'middle' };
-  venueDataCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(venueDataCell, STYLES.data);
 
   // 가견적 헤더
   const estimateCell = worksheet.getCell(`I${row}`);
@@ -209,105 +186,43 @@ async function generateStyledRequestExcel(data: any) {
   worksheet.mergeCells(`B${row}:C${row}`);
   const scheduleHeaderCell = worksheet.getCell(`B${row}`);
   scheduleHeaderCell.value = '구분';
-  scheduleHeaderCell.font = { bold: true, size: 10 };
-  scheduleHeaderCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  scheduleHeaderCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  scheduleHeaderCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(scheduleHeaderCell, STYLES.label);
   
   const startCell = worksheet.getCell(`D${row}`);
   startCell.value = '시작';
-  startCell.font = { bold: true, size: 10 };
-  startCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  startCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(startCell, STYLES.label);
   
   const endCell = worksheet.getCell(`F${row}`);
   endCell.value = '종료';
-  endCell.font = { bold: true, size: 10 };
-  endCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  endCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(endCell, STYLES.label);
 
   // 행사기간
   row = 8;
   const periodLabelCell = worksheet.getCell(`B${row}`);
   periodLabelCell.value = '행사기간';
-  periodLabelCell.font = { bold: true, size: 10 };
-  periodLabelCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  periodLabelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  periodLabelCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(periodLabelCell, STYLES.label);
   
   const periodPlaceholderCell = worksheet.getCell(`C${row}`);
   periodPlaceholderCell.value = '2024-00-00 00:00';
-  periodPlaceholderCell.font = { bold: true, size: 10 };
-  periodPlaceholderCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  periodPlaceholderCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  periodPlaceholderCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(periodPlaceholderCell, STYLES.label);
   
   const startDateCell = worksheet.getCell(`D${row}`);
   if (data.eventStartDate) {
     startDateCell.value = new Date(data.eventStartDate + ' 10:00');
     startDateCell.numFmt = 'yyyy-mm-dd hh:mm';
   }
-  startDateCell.font = { size: 10 };
-  startDateCell.alignment = { horizontal: 'left', vertical: 'middle' };
-  startDateCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(startDateCell, STYLES.data);
   
   const endPlaceholderCell = worksheet.getCell(`E${row}`);
   endPlaceholderCell.value = '2024-00-00 00:00';
-  endPlaceholderCell.font = { bold: true, size: 10 };
-  endPlaceholderCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  endPlaceholderCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  endPlaceholderCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(endPlaceholderCell, STYLES.label);
   
   const endDateCell = worksheet.getCell(`F${row}`);
   if (data.eventEndDate) {
     endDateCell.value = new Date(data.eventEndDate + ' 18:00');
     endDateCell.numFmt = 'yyyy-mm-dd hh:mm';
   }
-  endDateCell.font = { size: 10 };
-  endDateCell.alignment = { horizontal: 'left', vertical: 'middle' };
-  endDateCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(endDateCell, STYLES.data);
 
   // LED 사양 섹션
   row = 14;
@@ -331,52 +246,21 @@ async function generateStyledRequestExcel(data: any) {
   
   const spaceCell = worksheet.getCell(`I${row}`);
   spaceCell.value = '설치 필요공간(mm)';
-  spaceCell.font = { bold: true, size: 10 };
-  spaceCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  spaceCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  spaceCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(spaceCell, STYLES.label);
 
   // LED 사이즈
   row = 15;
   const ledSizeLabelCell = worksheet.getCell(`B${row}`);
   ledSizeLabelCell.value = 'LED 사이즈(mm)';
-  ledSizeLabelCell.font = { bold: true, size: 10 };
-  ledSizeLabelCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  ledSizeLabelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  ledSizeLabelCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(ledSizeLabelCell, STYLES.label);
   
   const ledSizeDescCell = worksheet.getCell(`C${row}`);
   ledSizeDescCell.value = '가로 x 높이(500mm 단위로)';
-  ledSizeDescCell.font = { bold: true, size: 10 };
-  ledSizeDescCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  ledSizeDescCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  ledSizeDescCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(ledSizeDescCell, STYLES.label);
   
   const ledSizeDataCell = worksheet.getCell(`D${row}`);
   ledSizeDataCell.value = data.ledSize || '';
-  ledSizeDataCell.font = { size: 10 };
-  ledSizeDataCell.alignment = { horizontal: 'left', vertical: 'middle' };
-  ledSizeDataCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(ledSizeDataCell, STYLES.data);
 
   // 옵션들
   const options = [
@@ -390,65 +274,26 @@ async function generateStyledRequestExcel(data: any) {
     row = 16 + index;
     const optionLabelCell = worksheet.getCell(`B${row}`);
     optionLabelCell.value = option.label;
-    optionLabelCell.font = { bold: true, size: 10 };
-    optionLabelCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    optionLabelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-    optionLabelCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
+    Object.assign(optionLabelCell, STYLES.label);
     
     const optionDescCell = worksheet.getCell(`C${row}`);
     optionDescCell.value = 'O / X';
-    optionDescCell.font = { bold: true, size: 10 };
-    optionDescCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    optionDescCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-    optionDescCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
+    Object.assign(optionDescCell, STYLES.label);
     
     const optionValueCell = worksheet.getCell(`D${row}`);
     optionValueCell.value = option.value;
-    optionValueCell.font = { size: 10 };
-    optionValueCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    optionValueCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
+    Object.assign(optionValueCell, STYLES.data);
   });
 
   // 시나리오 섹션
   row = 22;
   const scenarioLabelCell = worksheet.getCell(`B${row}`);
   scenarioLabelCell.value = '시나리오(식순)/콘텐츠 구성';
-  scenarioLabelCell.font = { bold: true, size: 10 };
-  scenarioLabelCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  scenarioLabelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  scenarioLabelCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(scenarioLabelCell, STYLES.label);
   
   const scenarioDescCell = worksheet.getCell(`C${row}`);
   scenarioDescCell.value = '대략적인 시나리오 또는 콘텐츠를 입력해주세요.';
-  scenarioDescCell.font = { bold: true, size: 10 };
-  scenarioDescCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  scenarioDescCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-  scenarioDescCell.border = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
+  Object.assign(scenarioDescCell, STYLES.label);
   
   worksheet.mergeCells(`D${row}:K${row + 2}`);
   const scenarioDataCell = worksheet.getCell(`D${row}`);
@@ -474,38 +319,15 @@ async function generateStyledRequestExcel(data: any) {
     const currentRow = row + index;
     const contactLabelCell = worksheet.getCell(`B${currentRow}`);
     contactLabelCell.value = contact.label;
-    contactLabelCell.font = { bold: true, size: 10 };
-    contactLabelCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    contactLabelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-    contactLabelCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
+    Object.assign(contactLabelCell, STYLES.label);
     
     const contactDescCell = worksheet.getCell(`C${currentRow}`);
     contactDescCell.value = '이름 직책 연락처';
-    contactDescCell.font = { bold: true, size: 10 };
-    contactDescCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    contactDescCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-    contactDescCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
+    Object.assign(contactDescCell, STYLES.label);
     
     const contactDataCell = worksheet.getCell(`D${currentRow}`);
     contactDataCell.value = contact.value;
-    contactDataCell.font = { size: 10 };
-    contactDataCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    contactDataCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
+    Object.assign(contactDataCell, STYLES.data);
   });
 
   // 파일 저장
@@ -526,7 +348,7 @@ async function generateStyledRequestExcel(data: any) {
   };
 }
 
-// 스타일이 적용된 견적서 생성
+// 스타일이 적용된 견적서 생성 (수정됨)
 async function generateStyledQuoteExcel(data: any) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('견적서');
@@ -622,7 +444,7 @@ async function generateStyledQuoteExcel(data: any) {
     };
   });
 
-  // 견적 항목들
+  // 견적 항목들 (수정된 버전)
   let row = 22;
   const quote = data.quote;
 
@@ -637,7 +459,7 @@ async function generateStyledQuoteExcel(data: any) {
     },
     {
       item: '',
-      description: '지지구조물(시스템 비계)\n - 4m 이상 25,000원/㎡\n - 4m 미만 20,000원/㎡',
+      description: `지지구조물(시스템 비계)\n${quote.structure.unitPriceDescription || '4m 미만 (20,000원/㎡)'}`,
       unitPrice: quote.structure.unitPrice,
       quantity: quote.structure.area,
       unit: '㎡',
@@ -645,23 +467,23 @@ async function generateStyledQuoteExcel(data: any) {
     },
     {
       item: '',
-      description: 'LED Wall 컨트롤러 및 스위치\n - 200인치 이상 500,000원/개소\n - 200인치 미만 200,000원/개소',
-      unitPrice: quote.controller.price,
-      quantity: 1,
+      description: `LED Wall 컨트롤러 및 스위치\n- 200인치 이상 500,000원/개소\n- 200인치 미만 200,000원/개소\n(총 ${quote.controller.count || 1}개소)`,
+      unitPrice: quote.controller.count ? Math.round(quote.controller.totalPrice / quote.controller.count) : quote.controller.totalPrice,
+      quantity: quote.controller.count || 1,
       unit: '개',
-      amount: quote.controller.price
+      amount: quote.controller.totalPrice
     },
     {
       item: '',
-      description: 'LED 파워\n - 250인치 이상 500,000원/개소\n - 250인치 이하 무상',
-      unitPrice: quote.power.price || 0,
-      quantity: quote.power.price > 0 ? 1 : 0,
+      description: `LED 파워\n- 250인치 이상 500,000원/개소\n- 250인치 이하 무상\n(${quote.power.requiredCount || 0}개소 필요)`,
+      unitPrice: (quote.power.requiredCount && quote.power.requiredCount > 0) ? 500000 : 0,
+      quantity: quote.power.requiredCount || 0,
       unit: '개',
-      amount: quote.power.price
+      amount: quote.power.totalPrice
     },
     {
       item: '',
-      description: '설치/철거 인력',
+      description: `설치/철거 인력\n${quote.installation.workerRange || '60개 이하 (3명)'}`,
       unitPrice: quote.installation.pricePerWorker,
       quantity: quote.installation.workers,
       unit: '명',
@@ -670,14 +492,14 @@ async function generateStyledQuoteExcel(data: any) {
     {
       item: '',
       description: '오퍼레이팅 인력',
-      unitPrice: quote.operation.pricePerDay,
-      quantity: quote.operation.days,
+      unitPrice: quote.operation.pricePerDay || 280000,
+      quantity: quote.operation.days || 0,
       unit: '일',
       amount: quote.operation.totalPrice
     },
     {
       item: '',
-      description: '운반비\n - 200개 이하 200,000원\n - 200개 초과 시 별도 협의',
+      description: `운반비\n${quote.transport.range || '200개 이하'}`,
       unitPrice: quote.transport.price,
       quantity: 1,
       unit: '식',
@@ -829,7 +651,7 @@ async function generateStyledQuoteExcel(data: any) {
   return {
     content: [{
       type: 'text',
-      text: `✨ 스타일이 적용된 견적서 Excel 파일이 생성되었습니다!\n📁 파일명: ${fileName}\n📂 경로: ${filePath}\n\n💰 견적 요약:\n- 총 ${quote.ledModules.count}개 LED 모듈\n- 총액: ${quote.total.toLocaleString()}원 (VAT 포함)`
+      text: `✨ 스타일이 적용된 견적서 Excel 파일이 생성되었습니다!\n📁 파일명: ${fileName}\n📂 경로: ${filePath}\n\n💰 견적 요약:\n- 총 ${quote.ledModules.count}개 LED 모듈\n- 설치인력: ${quote.installation.workers}명 (${quote.installation.workerRange})\n- 총액: ${quote.total.toLocaleString()}원 (VAT 포함)`
     }]
   };
 }

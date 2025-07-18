@@ -859,17 +859,17 @@ function handleContactPhone(message: string, session: UserSession) {
   }
 }
 
-// 최종 확인 처리
+// 최종 확인 처리 (수정됨 - 상세 정보 전달)
 async function handleFinalConfirmation(message: string, session: UserSession) {
   if (message.includes('네') || message.includes('전달')) {
     try {
-      // 견적 계산 (내부 계산용)
+      // 견적 계산 (상세 정보 포함)
       const quote = calculateMultiLEDQuote(session.data.ledSpecs);
       
       // 일정 계산
       const schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
       
-      // Notion에 저장할 데이터 준비
+      // Notion에 저장할 데이터 준비 (상세 정보 추가)
       const notionData = {
         eventName: session.data.eventName,
         customerName: session.data.customerName,
@@ -893,7 +893,17 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
         powerCost: quote.power.totalPrice,
         installationCost: quote.installation.totalPrice,
         operatorCost: quote.operation.totalPrice,
-        transportCost: quote.transport.price
+        transportCost: quote.transport.price,
+        
+        // 상세 조건 정보 추가
+        maxStageHeight: quote.maxStageHeight,
+        installationWorkers: quote.installationWorkers,
+        installationWorkerRange: quote.installationWorkerRange,
+        controllerCount: quote.controllerCount,
+        powerRequiredCount: quote.powerRequiredCount,
+        transportRange: quote.transportRange,
+        structureUnitPrice: quote.structureUnitPrice,
+        structureUnitPriceDescription: quote.structureUnitPriceDescription
       };
       
       // Notion에 저장

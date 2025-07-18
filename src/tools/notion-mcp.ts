@@ -17,7 +17,7 @@ interface LEDSpec {
   relayConnection?: boolean;
 }
 
-// 확장된 Notion 데이터 타입
+// 확장된 Notion 데이터 타입 (상세 정보 추가)
 interface NotionData {
   eventName: string;
   customerName: string;
@@ -44,15 +44,15 @@ interface NotionData {
   operatorCost: number;
   transportCost: number;
   
-  // 추가 정보 (견적 계산에서 넘어오는 데이터)
-  maxStageHeight?: number;
-  installationWorkers?: number;
-  installationWorkerRange?: string;
-  controllerCount?: number;
-  powerRequiredCount?: number;
-  transportRange?: string;
-  structureUnitPrice?: number;
-  structureUnitPriceDescription?: string;
+  // 상세 조건 정보 추가
+  maxStageHeight: number;
+  installationWorkers: number;
+  installationWorkerRange: string;
+  controllerCount: number;
+  powerRequiredCount: number;
+  transportRange: string;
+  structureUnitPrice: number;
+  structureUnitPriceDescription: string;
 }
 
 // LED 해상도 계산 함수
@@ -642,7 +642,7 @@ export const notionMCPTool = {
       
       console.log('Notion 저장 완료:', response.id);
       
-      // 조건별 정보를 댓글로 추가
+      // 조건별 정보를 댓글로 추가 (실제 데이터 사용)
       await this.addConditionComment(response.id, data);
       
       return {
@@ -659,18 +659,18 @@ export const notionMCPTool = {
     }
   },
   
-  // 조건별 정보를 댓글로 추가
+  // 조건별 정보를 댓글로 추가 (수정됨 - 실제 데이터 사용)
   async addConditionComment(pageId: string, data: NotionData) {
     try {
-      // 조건별 정보 요약
+      // 조건별 정보 요약 (실제 전달받은 데이터 사용)
       const conditionSummary = [
         `📊 조건별 정보 요약`,
         ``,
-        `🏗️ 구조물: ${data.maxStageHeight && data.maxStageHeight >= 4000 ? "4m 이상 (25,000원/㎡)" : "4m 미만 (20,000원/㎡)"}`,
-        `👷 설치인력: ${data.installationWorkerRange || "60개 이하 (3명)"} - ${data.installationWorkers || 3}명`,
-        `🎛️ 컨트롤러: 총 ${data.controllerCount || 1}개소`,
+        `🏗️ 구조물: ${data.structureUnitPriceDescription || "정보 없음"}`,
+        `👷 설치인력: ${data.installationWorkerRange || "정보 없음"} - ${data.installationWorkers || 0}명`,
+        `🎛️ 컨트롤러: 총 ${data.controllerCount || 0}개소`,
         `⚡ 파워: ${data.powerRequiredCount || 0}개소 필요`,
-        `🚚 운반비: ${data.transportRange || "200개 이하"}`,
+        `🚚 운반비: ${data.transportRange || "정보 없음"}`,
         `📐 최대 무대높이: ${data.maxStageHeight || 0}mm`
       ].join('\n');
       
