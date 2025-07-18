@@ -5,8 +5,158 @@ const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
 // 행사 상태 관리 서비스
 export class NotionStatusAutomation {
+  private managersConfig: any;
+
   constructor() {
     console.log('NotionStatusAutomation 생성됨');
+    // 담당자 설정 로드
+    this.managersConfig = JSON.parse(process.env.MANAGERS_CONFIG || '{"managers":[]}');
+  }
+
+  /**
+   * 담당자 언급을 포함한 리치 텍스트 생성
+   */
+  private async createRichTextWithMention(pageId: string, content: string): Promise<any[]> {
+    try {
+      // 페이지에서 담당자 정보 가져오기
+      const page = await notion.pages.retrieve({ page_id: pageId });
+      const properties = (page as any).properties;
+      const assignedPeople = properties['담당자']?.people || [];
+      
+      const richText: any[] = [
+        {
+          type: 'text',
+          text: { content }
+        }
+      ];
+
+      // 담당자 언급 추가
+      if (assignedPeople.length > 0) {
+        // 지정된 담당자가 있는 경우
+        richText.push({
+          type: 'text',
+          text: { content: '\n\n📢 담당자 확인 요청: ' },
+          annotations: { bold: true }
+        });
+
+        assignedPeople.forEach((person: any, index: number) => {
+          richText.push({
+            type: 'mention',
+            mention: {
+              type: 'user',
+              user: { id: person.id }
+            }
+          });
+
+          if (index < assignedPeople.length - 1) {
+            richText.push({
+              type: 'text',
+              text: { content: ', ' }
+            });
+          }
+        });
+      } else {
+        // 담당자가 지정되지 않은 경우 - 모든 활성 담당자 언급
+        const activeManagers = this.managersConfig.managers.filter((m: any) => m.isActive);
+        
+        if (activeManagers.length > 0) {
+          richText.push({
+            type: 'text',
+            text: { content: '\n\n📢 담당자 확인 요청: ' },
+            annotations: { bold: true }
+          });
+
+          activeManagers.forEach((manager: any, index: number) => {
+            richText.push({
+              type: 'mention',
+              mention: {
+                type: 'user',
+                user: { id: manager.notionId }
+              }
+            });
+
+            if (manager.department) {
+              richText.push({
+                type: 'text',
+                text: { content: `(${manager.department})` }
+              });
+            }
+
+            if (index < activeManagers.length - 1) {
+              richText.push({
+                type: 'text',
+                text: { content: ', ' }
+              });
+            }
+          });
+        }
+      }
+
+      richText.push({
+        type: 'text',
+        text: { content: '\n\n⏰ 빠른 확인 부탁드립니다!' },
+        annotations: { bold: true }
+      });
+
+      return richText;
+      
+    } catch (error) {
+      console.error('리치 텍스트 생성 실패:', error);
+      // 오류 시 기본 텍스트만 반환
+      return [{ type: 'text', text: { content } }];
+    }
+  }
+
+  /**
+   * 트럭 배차 계산
+   */
+  private calculateTruckDispatch(totalModules: number): { totalTrucks: number; description: string } {
+    if (totalModules <= 80) {
+      // 80개 이하: 1.4톤 1대
+      return {
+        totalTrucks: 1,
+        description: '1.4톤 리프트 화물차'
+      };
+    } else if (totalModules <= 208) {
+      // 81-208개: 3.5톤 1대
+      return {
+        totalTrucks: 1,
+        description: '3.5톤 리프트 화물차'
+      };
+    } else if (totalModules <= 288) {
+      // 209-288개: 3.5톤 1대 + 1.4톤 1대
+      return {
+        totalTrucks: 2,
+        description: '3.5톤 리프트 화물차 1대, 1.4톤 리프트 화물차 1대'
+      };
+    } else if (totalModules <= 416) {
+      // 289-416개: 3.5톤 2대
+      return {
+        totalTrucks: 2,
+        description: '3.5톤 리프트 화물차 2대'
+      };
+    } else {
+      // 417개 이상: 3.5톤으로 계산
+      const trucks35 = Math.floor(totalModules / 208);
+      const remainder = totalModules % 208;
+      
+      if (remainder === 0) {
+        return {
+          totalTrucks: trucks35,
+          description: `3.5톤 리프트 화물차 ${trucks35}대`
+        };
+      } else if (remainder <= 80) {
+        return {
+          totalTrucks: trucks35 + 1,
+          description: `3.5톤 리프트 화물차 ${trucks35}대, 1.4톤 리프트 화물차 1대`
+        };
+      } else {
+        return {
+          totalTrucks: trucks35 + 1,
+          description: `3.5톤 리프트 화물차 ${trucks35 + 1}대`
+        };
+      }
+    }
   }
 
   /**
@@ -89,6 +239,7 @@ export class NotionStatusAutomation {
   async autoUpdateStatusBySchedule() {
     try {
       const today = new Date().toISOString().split('T')[0];
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
       // 설치일이 오늘인 행사들을 "설치 중"으로 변경
       await this.updateStatusByDate('설치 일정', today, '설치 중');
@@ -98,6 +249,9 @@ export class NotionStatusAutomation {
       
       // 철거일이 오늘인 행사들을 "철거 중"으로 변경
       await this.updateStatusByDate('철거 일정', today, '철거 중');
+      
+      // 철거일이 내일인 행사들에 대해 철거 배차 알림
+      await this.notifyDismantleDispatch(tomorrow);
       
     } catch (error) {
       console.error('❌ 자동 상태 변경 실패:', error);
@@ -214,47 +368,41 @@ ${ledSummary}
 
 ⏰ 자동화 실행 시간: ${new Date().toLocaleString()}`;
 
-  await this.addCommentToPage(pageId, comment);
-}
+    await this.addCommentToPageWithMention(pageId, comment);
+  }
 
   /**
-   * 배차 정보 생성
+   * 배차 정보 생성 - 양식에 맞춰 수정
    */
   private generateDispatchMessage(eventData: any) {
     const totalModules = eventData.totalModuleCount || 0;
     const installDate = eventData.installSchedule;
-    const dismantleDate = eventData.dismantleSchedule;
     
     // 배차 정보 계산
-    let truckInfo = '';
-    if (totalModules <= 80) {
-      truckInfo = '1.5톤 트럭 1대';
-    } else {
-      const truckCount = Math.ceil(totalModules / 200);
-      truckInfo = `3.5톤 트럭 ${truckCount}대`;
-    }
+    let dispatch = this.calculateTruckDispatch(totalModules);
     
     const plateBoxCount = Math.ceil(totalModules / 8);
+    const storageAddress = process.env.STORAGE_ADDRESS || '경기 고양시 덕양구 향동동 396, 현대테라타워DMC 337호';
     
-    return {
-      message: `🚚 배차 정보 자동 생성 (${eventData.eventName})
+    // 양식에 맞춘 메시지
+    const message = `배차 ${dispatch.totalTrucks}대 요청드립니다.
 
-📋 기본 정보:
+상차시간 : ${installDate || '미정'}
+
+${dispatch.description}
+(리프트 1500이상 / 차고 3.2m 이하)
+-상차 : ${storageAddress}
+-하차 : ${eventData.venue}
+
+물품 : 플레이트 케이스 2단 ${plateBoxCount}개 + 시스템 비계
+(2단 1개당 950x580x1200mm)
+
+📋 행사 정보:
+- 행사명: ${eventData.eventName}
 - 고객사: ${eventData.customerName}
-- 행사장: ${eventData.venue}
 - 담당자: ${eventData.contactName}
 - 연락처: ${eventData.contactPhone}
-
-📦 운반 물품:
-- LED 모듈: ${totalModules}개
-- 플레이트 케이스: ${plateBoxCount}박스
-- 필요 차량: ${truckInfo}
-
-📅 일정:
-- 설치일: ${installDate || '미정'}
-- 철거일: ${dismantleDate || '미정'}
-
-📍 배송지: ${eventData.venue}
+- 철거일: ${eventData.dismantleSchedule || '미정'}
 
 ⚠️ 주의사항:
 - 설치 전날까지 현장 도착 필수
@@ -267,18 +415,21 @@ ${ledSummary}
 2. 고객사 현장 담당자와 사전 협의
 3. 상태를 "구인 완료"로 변경
 
-⏰ 자동 생성 시간: ${new Date().toLocaleString()}`,
-      truckInfo,
+⏰ 자동 생성 시간: ${new Date().toLocaleString()}`;
+
+    return {
+      message,
+      truckInfo: dispatch.description,
       plateBoxCount,
       totalModules
     };
   }
 
   /**
-   * 배차 댓글 추가
+   * 배차 댓글 추가 - 담당자 언급 포함
    */
   private async addDispatchComment(pageId: string, dispatchInfo: any) {
-    await this.addCommentToPage(pageId, dispatchInfo.message);
+    await this.addCommentToPageWithMention(pageId, dispatchInfo.message);
   }
 
   /**
@@ -318,10 +469,129 @@ ${ledSummary}
   }
 
   /**
-   * 구인 완료 댓글 추가
+   * 구인 완료 댓글 추가 - 담당자 언급 포함
    */
   private async addCompletionComment(pageId: string, completionInfo: any) {
-    await this.addCommentToPage(pageId, completionInfo.message);
+    await this.addCommentToPageWithMention(pageId, completionInfo.message);
+  }
+
+  /**
+   * 철거 배차 알림 (철거일 하루 전)
+   */
+  private async notifyDismantleDispatch(targetDate: string) {
+    try {
+      console.log(`🚚 ${targetDate} 철거 예정 행사 확인 중...`);
+      
+      // 철거일이 내일인 행사들 조회
+      const response = await notion.databases.query({
+        database_id: process.env.NOTION_DATABASE_ID!,
+        filter: {
+          and: [
+            {
+              property: '철거 일정',
+              date: {
+                equals: targetDate
+              }
+            },
+            {
+              property: '행사 상태',
+              status: {
+                does_not_equal: '완료'
+              }
+            }
+          ]
+        }
+      });
+
+      console.log(`철거 예정 행사: ${response.results.length}개`);
+
+      // 각 행사에 대해 철거 배차 댓글 추가
+      for (const page of response.results) {
+        if (page.object !== 'page') continue;
+        
+        const pageId = page.id;
+        const eventData = await this.getEventDataFromNotion(pageId);
+        
+        // 철거 배차 메시지 생성
+        const dismantleDispatchInfo = this.generateDismantleDispatchMessage(eventData);
+        
+        // 댓글 추가
+        await this.addDismantleDispatchComment(pageId, dismantleDispatchInfo);
+        
+        console.log(`✅ ${eventData.eventName} - 철거 배차 알림 완료`);
+      }
+      
+    } catch (error) {
+      console.error('❌ 철거 배차 알림 실패:', error);
+    }
+  }
+
+  /**
+   * 철거 배차 정보 생성
+   */
+  private generateDismantleDispatchMessage(eventData: any) {
+    const totalModules = eventData.totalModuleCount || 0;
+    const dismantleDate = eventData.dismantleSchedule;
+    
+    // 배차 정보 계산
+    let dispatch = this.calculateTruckDispatch(totalModules);
+    
+    const plateBoxCount = Math.ceil(totalModules / 8);
+    const storageAddress = process.env.STORAGE_ADDRESS || '경기 고양시 덕양구 향동동 396, 현대테라타워DMC 337호';
+    
+    // 철거 배차 양식에 맞춘 메시지
+    const message = `🚨 철거 배차 알림 (내일 철거 예정)
+
+배차 ${dispatch.totalTrucks}대 요청드립니다.
+
+상차시간 : ${dismantleDate || '미정'}
+
+${dispatch.description}
+(리프트 1500이상 / 차고 3.2m 이하)
+-상차 : ${eventData.venue}
+-하차 : ${storageAddress}
+
+물품 : 플레이트 케이스 2단 ${plateBoxCount}개 + 시스템 비계
+(2단 1개당 950x580x1200mm)
+
+📋 행사 정보:
+- 행사명: ${eventData.eventName}
+- 고객사: ${eventData.customerName}
+- 담당자: ${eventData.contactName}
+- 연락처: ${eventData.contactPhone}
+
+⚠️ 주의사항:
+- 철거 당일 오전 중 현장 도착 필수
+- 상차 지점 및 주차 공간 사전 확인
+- 기사님께 연락처 공유 필요
+- 철거 완료 후 장비 수량 확인 필수
+
+⏰ 알림 생성 시간: ${new Date().toLocaleString()}`;
+
+    return {
+      message,
+      truckInfo: dispatch.description,
+      plateBoxCount,
+      totalModules
+    };
+  }
+
+  /**
+   * 철거 배차 댓글 추가
+   */
+  private async addDismantleDispatchComment(pageId: string, dispatchInfo: any) {
+    try {
+      const richText = await this.createRichTextWithMention(pageId, dispatchInfo.message);
+      
+      await notion.comments.create({
+        parent: { page_id: pageId },
+        rich_text: richText
+      });
+      
+      console.log('✅ 철거 배차 댓글 추가 완료 (담당자 언급 포함)');
+    } catch (error) {
+      console.error('❌ 철거 배차 댓글 추가 실패:', error);
+    }
   }
 
   /**
@@ -360,7 +630,7 @@ ${ledSummary}
   }
 
   /**
-   * 오류 댓글 추가
+   * 오류 댓글 추가 - 담당자 언급 포함
    */
   private async addErrorComment(pageId: string, title: string, error: any) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -371,11 +641,11 @@ ${ledSummary}
 
 담당자 확인이 필요합니다.`;
 
-    await this.addCommentToPage(pageId, comment);
+    await this.addCommentToPageWithMention(pageId, comment);
   }
 
   /**
-   * 댓글 추가 공통 함수
+   * 댓글 추가 공통 함수 (기존 버전 - 언급 없음)
    */
   private async addCommentToPage(pageId: string, content: string) {
     try {
@@ -384,6 +654,24 @@ ${ledSummary}
         rich_text: [{ type: 'text', text: { content } }]
       });
       console.log('✅ 댓글 추가 완료');
+    } catch (error) {
+      console.error('❌ 댓글 추가 실패:', error);
+    }
+  }
+
+  /**
+   * 댓글 추가 공통 함수 (담당자 언급 포함)
+   */
+  private async addCommentToPageWithMention(pageId: string, content: string) {
+    try {
+      const richText = await this.createRichTextWithMention(pageId, content);
+      
+      await notion.comments.create({
+        parent: { page_id: pageId },
+        rich_text: richText
+      });
+      
+      console.log('✅ 댓글 추가 완료 (담당자 언급 포함)');
     } catch (error) {
       console.error('❌ 댓글 추가 실패:', error);
     }

@@ -12,10 +12,107 @@ export class NotionPollingService {
   private lastFileCheckMap: Map<string, { hasQuote: boolean; hasRequest: boolean; lastChecked: number }> = new Map();
   private pollingInterval: NodeJS.Timeout | null = null;
   private isPolling: boolean = false;
+  private managersConfig: any;
 
   constructor() {
     this.notion = new Client({ auth: process.env.NOTION_API_KEY });
     this.automation = new NotionStatusAutomation();
+    // 담당자 설정 로드
+    this.managersConfig = JSON.parse(process.env.MANAGERS_CONFIG || '{"managers":[]}');
+  }
+
+  /**
+   * 담당자 언급을 포함한 리치 텍스트 생성
+   */
+  private async createRichTextWithMention(pageId: string, content: string): Promise<any[]> {
+    try {
+      // 페이지에서 담당자 정보 가져오기
+      const page = await this.notion.pages.retrieve({ page_id: pageId });
+      const properties = (page as any).properties;
+      const assignedPeople = properties['담당자']?.people || [];
+      
+      const richText: any[] = [
+        {
+          type: 'text',
+          text: { content }
+        }
+      ];
+
+      // 담당자 언급 추가
+      if (assignedPeople.length > 0) {
+        // 지정된 담당자가 있는 경우
+        richText.push({
+          type: 'text',
+          text: { content: '\n\n📢 담당자 확인 요청: ' },
+          annotations: { bold: true }
+        });
+
+        assignedPeople.forEach((person: any, index: number) => {
+          richText.push({
+            type: 'mention',
+            mention: {
+              type: 'user',
+              user: { id: person.id }
+            }
+          });
+
+          if (index < assignedPeople.length - 1) {
+            richText.push({
+              type: 'text',
+              text: { content: ', ' }
+            });
+          }
+        });
+      } else {
+        // 담당자가 지정되지 않은 경우 - 모든 활성 담당자 언급
+        const activeManagers = this.managersConfig.managers.filter((m: any) => m.isActive);
+        
+        if (activeManagers.length > 0) {
+          richText.push({
+            type: 'text',
+            text: { content: '\n\n📢 담당자 확인 요청: ' },
+            annotations: { bold: true }
+          });
+
+          activeManagers.forEach((manager: any, index: number) => {
+            richText.push({
+              type: 'mention',
+              mention: {
+                type: 'user',
+                user: { id: manager.notionId }
+              }
+            });
+
+            if (manager.department) {
+              richText.push({
+                type: 'text',
+                text: { content: `(${manager.department})` }
+              });
+            }
+
+            if (index < activeManagers.length - 1) {
+              richText.push({
+                type: 'text',
+                text: { content: ', ' }
+              });
+            }
+          });
+        }
+      }
+
+      richText.push({
+        type: 'text',
+        text: { content: '\n\n⏰ 빠른 확인 부탁드립니다!' },
+        annotations: { bold: true }
+      });
+
+      return richText;
+      
+    } catch (error) {
+      console.error('리치 텍스트 생성 실패:', error);
+      // 오류 시 기본 텍스트만 반환
+      return [{ type: 'text', text: { content } }];
+    }
   }
 
   /**
@@ -278,23 +375,22 @@ export class NotionPollingService {
   }
 
   /**
-   * 부분 업로드 알림 댓글
+   * 부분 업로드 알림 댓글 - 담당자 언급 포함
    */
   private async addPartialUploadComment(pageId: string, hasQuote: boolean, hasRequest: boolean) {
     const missingFile = !hasQuote ? '견적서' : '요청서';
     
+    const content = `📎 파일 업로드 확인\n\n✅ 업로드 완료: ${hasQuote ? '견적서' : '요청서'}\n❌ 업로드 대기: ${missingFile}\n\n${missingFile}를 업로드하면 자동으로 "견적 승인" 상태로 변경됩니다.\n\n⏰ 확인 시간: ${new Date().toLocaleString()}`;
+    
     try {
+      const richText = await this.createRichTextWithMention(pageId, content);
+      
       await this.notion.comments.create({
         parent: { page_id: pageId },
-        rich_text: [
-          {
-            type: 'text',
-            text: { 
-              content: `📎 파일 업로드 확인\n\n✅ 업로드 완료: ${hasQuote ? '견적서' : '요청서'}\n❌ 업로드 대기: ${missingFile}\n\n${missingFile}를 업로드하면 자동으로 "견적 승인" 상태로 변경됩니다.\n\n⏰ 확인 시간: ${new Date().toLocaleString()}` 
-            }
-          }
-        ]
+        rich_text: richText
       });
+      
+      console.log('✅ 부분 업로드 알림 댓글 추가 완료');
     } catch (error) {
       console.error('댓글 추가 실패:', error);
     }
@@ -319,17 +415,14 @@ export class NotionPollingService {
 
       console.log(`✅ 상태 변경 완료`);
 
-      // 2. 댓글 추가
+      // 2. 댓글 추가 (담당자 언급 포함)
+      const content = `✅ 파일 업로드 완료 - 자동 승인\n\n견적서와 요청서가 모두 업로드되어 자동으로 "견적 승인" 상태로 변경되었습니다.\n\n📎 업로드 파일:\n• 견적서 ✅\n• 요청서 ✅\n\n🚚 다음 단계:\n1. 배차 정보가 자동 생성됩니다\n2. 설치 인력 배정을 진행해주세요\n\n⏰ 변경 시간: ${new Date().toLocaleString()}`;
+      
+      const richText = await this.createRichTextWithMention(pageId, content);
+      
       await this.notion.comments.create({
         parent: { page_id: pageId },
-        rich_text: [
-          {
-            type: 'text',
-            text: { 
-              content: `✅ 파일 업로드 완료 - 자동 승인\n\n견적서와 요청서가 모두 업로드되어 자동으로 "견적 승인" 상태로 변경되었습니다.\n\n📎 업로드 파일:\n• 견적서 ✅\n• 요청서 ✅\n\n🚚 다음 단계:\n1. 배차 정보가 자동 생성됩니다\n2. 설치 인력 배정을 진행해주세요\n\n⏰ 변경 시간: ${new Date().toLocaleString()}` 
-            }
-          }
-        ]
+        rich_text: richText
       });
 
       // 3. 상태 변경 기록 업데이트
@@ -343,18 +436,15 @@ export class NotionPollingService {
     } catch (error) {
       console.error(`❌ 견적 승인 변경 실패 (${eventName}):`, error);
       
-      // 오류 발생 시 댓글 추가
+      // 오류 발생 시 댓글 추가 (담당자 언급 포함)
       try {
+        const errorContent = `❌ 자동 승인 실패\n\n오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n담당자가 수동으로 "견적 승인"으로 변경해주세요.\n\n⏰ 오류 발생 시간: ${new Date().toLocaleString()}`;
+        
+        const richText = await this.createRichTextWithMention(pageId, errorContent);
+        
         await this.notion.comments.create({
           parent: { page_id: pageId },
-          rich_text: [
-            {
-              type: 'text',
-              text: { 
-                content: `❌ 자동 승인 실패\n\n오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n담당자가 수동으로 "견적 승인"으로 변경해주세요.\n\n⏰ 오류 발생 시간: ${new Date().toLocaleString()}` 
-              }
-            }
-          ]
+          rich_text: richText
         });
       } catch (commentError) {
         console.error('오류 댓글 추가 실패:', commentError);
@@ -395,18 +485,15 @@ export class NotionPollingService {
     } catch (error) {
       console.error(`❌ 상태 변경 처리 실패 (${eventName}):`, error);
       
-      // 오류 발생 시 Notion에 댓글 추가
+      // 오류 발생 시 Notion에 댓글 추가 (담당자 언급 포함)
       try {
+        const errorContent = `❌ 자동화 오류 발생\n\n상태: ${oldStatus} → ${newStatus}\n오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n담당자 확인이 필요합니다.\n\n⏰ 오류 발생 시간: ${new Date().toLocaleString()}`;
+        
+        const richText = await this.createRichTextWithMention(pageId, errorContent);
+        
         await this.notion.comments.create({
           parent: { page_id: pageId },
-          rich_text: [
-            {
-              type: 'text',
-              text: { 
-                content: `❌ 자동화 오류 발생\n\n상태: ${oldStatus} → ${newStatus}\n오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n담당자 확인이 필요합니다.\n\n⏰ 오류 발생 시간: ${new Date().toLocaleString()}` 
-              }
-            }
-          ]
+          rich_text: richText
         });
       } catch (commentError) {
         console.error('댓글 추가 실패:', commentError);
