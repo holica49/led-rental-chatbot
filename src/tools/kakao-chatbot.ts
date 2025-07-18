@@ -4,6 +4,7 @@ import { calculateMultiLEDQuote } from './calculate-quote.js';
 import { notionMCPTool } from './notion-mcp.js';
 import { Client } from '@notionhq/client';
 import { startPollingService, getPollingService } from './notion-polling.js';
+import { NotionStatusAutomation } from './notion-status-automation.js';
 
 const app = express();
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
@@ -1155,5 +1156,67 @@ app.listen(PORT, async () => {
   } catch (error) {
     console.error('❌ 폴링 서비스 시작 실패:', error);
     console.log('⚠️ 나중에 /admin/start-polling 엔드포인트로 수동 시작 가능합니다.');
+  }
+});
+
+// 파일 상태 수동 확인 엔드포인트
+app.get('/admin/check-files/:pageId', async (req, res) => {
+  try {
+    const { pageId } = req.params;
+    
+    const page = await notion.pages.retrieve({ page_id: pageId });
+    const properties = (page as any).properties;
+    
+    const fileInfo = {
+      pageId,
+      eventName: properties['행사명']?.title?.[0]?.text?.content || 'Unknown',
+      status: properties['행사 상태']?.status?.name,
+      quoteFiles: properties['견적서']?.files || [],
+      requestFiles: properties['요청서']?.files || [],
+      hasQuoteFile: (properties['견적서']?.files || []).length > 0,
+      hasRequestFile: (properties['요청서']?.files || []).length > 0
+    };
+    
+    res.json({
+      success: true,
+      data: fileInfo
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// 수동으로 파일 체크 후 승인 처리
+app.post('/admin/force-approve/:pageId', async (req, res) => {
+  try {
+    const { pageId } = req.params;
+    const service = getPollingService();
+    
+    // 강제로 견적 승인으로 변경
+    await notion.pages.update({
+      page_id: pageId,
+      properties: {
+        '행사 상태': {
+          status: { name: '견적 승인' }
+        }
+      }
+    });
+    
+    // 자동화 실행
+    const automation = new NotionStatusAutomation();
+    await automation.onStatusQuoteApproved(pageId);
+    
+    res.json({
+      success: true,
+      message: '견적 승인으로 변경되었습니다.'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
 });
