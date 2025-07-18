@@ -6,7 +6,7 @@ import fs from 'fs';
 export const enhancedExcelTool = {
   definition: {
     name: 'enhanced_excel',
-    description: '디자인이 적용된 LED 렌탈 요청서/견적서 Excel 파일을 생성합니다',
+    description: '디자인이 적용된 LED 렌탈 요청서/견적서 Excel 파일을 생성하고 링크를 반환합니다',
     inputSchema: {
       type: 'object',
       properties: {
@@ -18,6 +18,11 @@ export const enhancedExcelTool = {
         data: {
           type: 'object',
           description: 'Excel에 입력할 데이터'
+        },
+        returnUrl: {
+          type: 'boolean',
+          description: '파일 URL 반환 여부 (기본값: false)',
+          default: false
         }
       },
       required: ['type', 'data']
@@ -26,15 +31,30 @@ export const enhancedExcelTool = {
 
   handler: async (args: any) => {
     try {
-      const { type, data } = args;
+      const { type, data, returnUrl = false } = args;
       
+      let result;
       if (type === 'request') {
-        return await generateStyledRequestExcel(data);
+        result = await generateStyledRequestExcel(data);
       } else if (type === 'quote') {
-        return await generateStyledQuoteExcel(data);
+        result = await generateStyledQuoteExcel(data);
       } else {
         throw new Error('지원하지 않는 파일 타입입니다.');
       }
+      
+      // URL 반환이 요청된 경우 파일 정보 포함
+      if (returnUrl && result.filePath) {
+        const baseUrl = process.env.SERVER_BASE_URL || 'http://localhost:3000';
+        const publicUrl = `${baseUrl}/files/${path.basename(result.filePath)}`;
+        
+        return {
+          ...result,
+          fileUrl: publicUrl,
+          fileName: path.basename(result.filePath)
+        };
+      }
+      
+      return result;
     } catch (error) {
       return {
         content: [{
@@ -165,7 +185,7 @@ async function generateStyledRequestExcel(data: any) {
   Object.assign(venueDescCell, STYLES.label);
   
   const venueDataCell = worksheet.getCell(`D${row}`);
-  venueDataCell.value = data.eventLocation || '';
+  venueDataCell.value = data.venue || data.eventLocation || '';
   Object.assign(venueDataCell, STYLES.data);
 
   // 가견적 헤더
@@ -248,21 +268,55 @@ async function generateStyledRequestExcel(data: any) {
   spaceCell.value = '설치 필요공간(mm)';
   Object.assign(spaceCell, STYLES.label);
 
-  // LED 사이즈
+  // LED 사양 정보 (여러 개소 지원)
   row = 15;
-  const ledSizeLabelCell = worksheet.getCell(`B${row}`);
-  ledSizeLabelCell.value = 'LED 사이즈(mm)';
-  Object.assign(ledSizeLabelCell, STYLES.label);
-  
-  const ledSizeDescCell = worksheet.getCell(`C${row}`);
-  ledSizeDescCell.value = '가로 x 높이(500mm 단위로)';
-  Object.assign(ledSizeDescCell, STYLES.label);
-  
-  const ledSizeDataCell = worksheet.getCell(`D${row}`);
-  ledSizeDataCell.value = data.ledSize || '';
-  Object.assign(ledSizeDataCell, STYLES.data);
+  if (data.ledSpecs && data.ledSpecs.length > 0) {
+    data.ledSpecs.forEach((led: any, index: number) => {
+      const currentRow = row + index * 2;
+      
+      // LED 크기
+      const ledSizeLabelCell = worksheet.getCell(`B${currentRow}`);
+      ledSizeLabelCell.value = `LED${index + 1} 사이즈(mm)`;
+      Object.assign(ledSizeLabelCell, STYLES.label);
+      
+      const ledSizeDescCell = worksheet.getCell(`C${currentRow}`);
+      ledSizeDescCell.value = '가로 x 높이(500mm 단위로)';
+      Object.assign(ledSizeDescCell, STYLES.label);
+      
+      const ledSizeDataCell = worksheet.getCell(`D${currentRow}`);
+      ledSizeDataCell.value = led.size || '';
+      Object.assign(ledSizeDataCell, STYLES.data);
+      
+      // 무대 높이
+      const stageHeightLabelCell = worksheet.getCell(`B${currentRow + 1}`);
+      stageHeightLabelCell.value = `LED${index + 1} 무대높이(mm)`;
+      Object.assign(stageHeightLabelCell, STYLES.label);
+      
+      const stageHeightDataCell = worksheet.getCell(`D${currentRow + 1}`);
+      stageHeightDataCell.value = led.stageHeight || '';
+      Object.assign(stageHeightDataCell, STYLES.data);
+    });
+    
+    row += data.ledSpecs.length * 2;
+  } else {
+    // 기본 LED 사이즈 (단일)
+    const ledSizeLabelCell = worksheet.getCell(`B${row}`);
+    ledSizeLabelCell.value = 'LED 사이즈(mm)';
+    Object.assign(ledSizeLabelCell, STYLES.label);
+    
+    const ledSizeDescCell = worksheet.getCell(`C${row}`);
+    ledSizeDescCell.value = '가로 x 높이(500mm 단위로)';
+    Object.assign(ledSizeDescCell, STYLES.label);
+    
+    const ledSizeDataCell = worksheet.getCell(`D${row}`);
+    ledSizeDataCell.value = data.ledSize || '';
+    Object.assign(ledSizeDataCell, STYLES.data);
+    
+    row += 1;
+  }
 
   // 옵션들
+  row += 1;
   const options = [
     { label: '3D', value: data.is3D ? 'O' : 'X' },
     { label: '오퍼레이터 필요', value: data.needOperator ? 'O' : 'X' },
@@ -271,22 +325,22 @@ async function generateStyledRequestExcel(data: any) {
   ];
 
   options.forEach((option, index) => {
-    row = 16 + index;
-    const optionLabelCell = worksheet.getCell(`B${row}`);
+    const currentRow = row + index;
+    const optionLabelCell = worksheet.getCell(`B${currentRow}`);
     optionLabelCell.value = option.label;
     Object.assign(optionLabelCell, STYLES.label);
     
-    const optionDescCell = worksheet.getCell(`C${row}`);
+    const optionDescCell = worksheet.getCell(`C${currentRow}`);
     optionDescCell.value = 'O / X';
     Object.assign(optionDescCell, STYLES.label);
     
-    const optionValueCell = worksheet.getCell(`D${row}`);
+    const optionValueCell = worksheet.getCell(`D${currentRow}`);
     optionValueCell.value = option.value;
     Object.assign(optionValueCell, STYLES.data);
   });
 
   // 시나리오 섹션
-  row = 22;
+  row += options.length + 1;
   const scenarioLabelCell = worksheet.getCell(`B${row}`);
   scenarioLabelCell.value = '시나리오(식순)/콘텐츠 구성';
   Object.assign(scenarioLabelCell, STYLES.label);
@@ -308,9 +362,9 @@ async function generateStyledRequestExcel(data: any) {
   };
 
   // 담당자 정보
-  row = 26;
+  row += 4;
   const contacts = [
-    { label: '현장 관리자', value: data.fieldManager || '' },
+    { label: '현장 관리자', value: data.fieldManager || data.contactName || '' },
     { label: '전기 담당자', value: data.electricManager || '' },
     { label: '무대 담당자', value: data.stageManager || '' }
   ];
@@ -331,7 +385,7 @@ async function generateStyledRequestExcel(data: any) {
   });
 
   // 파일 저장
-  const fileName = `${data.customerName}_${data.eventName || 'LED_Wall'}_요청서_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const fileName = `${data.customerName || '고객사'}_${data.eventName || 'LED_Wall'}_요청서_${new Date().toISOString().slice(0, 10)}.xlsx`;
   const filePath = path.join('data', fileName);
   
   if (!fs.existsSync('data')) {
@@ -344,11 +398,14 @@ async function generateStyledRequestExcel(data: any) {
     content: [{
       type: 'text',
       text: `✨ 스타일이 적용된 요청서 Excel 파일이 생성되었습니다!\n📁 파일명: ${fileName}\n📂 경로: ${filePath}`
-    }]
+    }],
+    filePath: filePath,
+    fileName: fileName,
+    fileType: 'request'
   };
 }
 
-// 스타일이 적용된 견적서 생성 (수정됨)
+// 스타일이 적용된 견적서 생성
 async function generateStyledQuoteExcel(data: any) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('견적서');
@@ -399,7 +456,7 @@ async function generateStyledQuoteExcel(data: any) {
 
   // 조건 정보 (테이블 형태)
   const conditionHeaders = ['Price validity', 'Payment terms', 'Delivery', 'Shipment', 'Destination', '', 'Warranty term'];
-  const conditionValues = ['발행 후 1주', '-', '협의', '협의', data.eventLocation || '', '', '전시 기간과 동일'];
+  const conditionValues = ['발행 후 1주', '-', '협의', '협의', data.eventLocation || data.venue || '', '', '전시 기간과 동일'];
 
   conditionHeaders.forEach((header, index) => {
     const col = String.fromCharCode(66 + index); // B, C, D, E, F, G, H
@@ -444,143 +501,97 @@ async function generateStyledQuoteExcel(data: any) {
     };
   });
 
-  // 견적 항목들 (수정된 버전)
+  // 견적 항목들
   let row = 22;
   const quote = data.quote;
 
-  const items = [
-    {
-      item: 'LED Wall',
-      description: 'LED 모듈(P2.9 500x500mm)',
-      unitPrice: quote.ledModules.count < 500 ? 0 : 34000,
-      quantity: quote.ledModules.count,
-      unit: '개',
-      amount: quote.ledModules.price
-    },
-    {
-      item: '',
-      description: `지지구조물(시스템 비계)\n${quote.structure.unitPriceDescription || '4m 미만 (20,000원/㎡)'}`,
-      unitPrice: quote.structure.unitPrice,
-      quantity: quote.structure.area,
-      unit: '㎡',
-      amount: quote.structure.totalPrice
-    },
-    {
-      item: '',
-      description: `LED Wall 컨트롤러 및 스위치\n- 200인치 이상 500,000원/개소\n- 200인치 미만 200,000원/개소\n(총 ${quote.controller.count || 1}개소)`,
-      unitPrice: quote.controller.count ? Math.round(quote.controller.totalPrice / quote.controller.count) : quote.controller.totalPrice,
-      quantity: quote.controller.count || 1,
-      unit: '개',
-      amount: quote.controller.totalPrice
-    },
-    {
-      item: '',
-      description: `LED 파워\n- 250인치 이상 500,000원/개소\n- 250인치 이하 무상\n(${quote.power.requiredCount || 0}개소 필요)`,
-      unitPrice: (quote.power.requiredCount && quote.power.requiredCount > 0) ? 500000 : 0,
-      quantity: quote.power.requiredCount || 0,
-      unit: '개',
-      amount: quote.power.totalPrice
-    },
-    {
-      item: '',
-      description: `설치/철거 인력\n${quote.installation.workerRange || '60개 이하 (3명)'}`,
-      unitPrice: quote.installation.pricePerWorker,
-      quantity: quote.installation.workers,
-      unit: '명',
-      amount: quote.installation.totalPrice
-    },
-    {
-      item: '',
-      description: '오퍼레이팅 인력',
-      unitPrice: quote.operation.pricePerDay || 280000,
-      quantity: quote.operation.days || 0,
-      unit: '일',
-      amount: quote.operation.totalPrice
-    },
-    {
-      item: '',
-      description: `운반비\n${quote.transport.range || '200개 이하'}`,
-      unitPrice: quote.transport.price,
-      quantity: 1,
-      unit: '식',
-      amount: quote.transport.price
-    }
-  ];
+  if (!quote) {
+    // 견적 데이터가 없는 경우 기본 항목 표시
+    const defaultItems = [
+      { item: 'LED Wall', description: 'LED 모듈(P2.9 500x500mm)', unitPrice: 0, quantity: 0, unit: '개', amount: 0 },
+      { item: '', description: '지지구조물(시스템 비계)', unitPrice: 0, quantity: 0, unit: '㎡', amount: 0 },
+      { item: '', description: 'LED Wall 컨트롤러 및 스위치', unitPrice: 0, quantity: 0, unit: '개', amount: 0 },
+      { item: '', description: '설치/철거 인력', unitPrice: 0, quantity: 0, unit: '명', amount: 0 },
+      { item: '', description: '운반비', unitPrice: 0, quantity: 1, unit: '식', amount: 0 }
+    ];
 
-  items.forEach((item, index) => {
-    const currentRow = row + index;
-    
-    const itemCell = worksheet.getCell(`B${currentRow}`);
-    itemCell.value = item.item;
-    itemCell.font = { size: 10 };
-    itemCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    itemCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
-    
-    const descCell = worksheet.getCell(`C${currentRow}`);
-    descCell.value = item.description;
-    descCell.font = { size: 10 };
-    descCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-    descCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
-    
-    const unitPriceCell = worksheet.getCell(`E${currentRow}`);
-    unitPriceCell.value = item.unitPrice;
-    unitPriceCell.font = { size: 10 };
-    unitPriceCell.alignment = { horizontal: 'right', vertical: 'middle' };
-    unitPriceCell.numFmt = '#,##0';
-    unitPriceCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
-    
-    const quantityCell = worksheet.getCell(`F${currentRow}`);
-    quantityCell.value = item.quantity;
-    quantityCell.font = { size: 10 };
-    quantityCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    quantityCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
-    
-    const unitCell = worksheet.getCell(`G${currentRow}`);
-    unitCell.value = item.unit;
-    unitCell.font = { size: 10 };
-    unitCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    unitCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
-    
-    const amountCell = worksheet.getCell(`H${currentRow}`);
-    amountCell.value = item.amount;
-    amountCell.font = { size: 10 };
-    amountCell.alignment = { horizontal: 'right', vertical: 'middle' };
-    amountCell.numFmt = '#,##0';
-    amountCell.border = {
-      top: { style: 'thin' },
-      left: { style: 'thin' },
-      bottom: { style: 'thin' },
-      right: { style: 'thin' }
-    };
-  });
+    defaultItems.forEach((item, index) => {
+      const currentRow = row + index;
+      addItemRow(worksheet, currentRow, item);
+    });
+
+    row += defaultItems.length;
+  } else {
+    // 견적 데이터가 있는 경우
+    const items = [
+      {
+        item: 'LED Wall',
+        description: 'LED 모듈(P2.9 500x500mm)',
+        unitPrice: quote.ledModules?.count < 500 ? 0 : 34000,
+        quantity: quote.ledModules?.count || 0,
+        unit: '개',
+        amount: quote.ledModules?.price || 0
+      },
+      {
+        item: '',
+        description: `지지구조물(시스템 비계)\n${quote.structure?.unitPriceDescription || '4m 미만 (20,000원/㎡)'}`,
+        unitPrice: quote.structure?.unitPrice || 20000,
+        quantity: quote.structure?.area || 0,
+        unit: '㎡',
+        amount: quote.structure?.totalPrice || 0
+      },
+      {
+        item: '',
+        description: `LED Wall 컨트롤러 및 스위치\n- 200인치 이상 500,000원/개소\n- 200인치 미만 200,000원/개소\n(총 ${quote.controller?.count || 1}개소)`,
+        unitPrice: quote.controller?.count ? Math.round((quote.controller?.totalPrice || 0) / quote.controller.count) : (quote.controller?.totalPrice || 0),
+        quantity: quote.controller?.count || 1,
+        unit: '개',
+        amount: quote.controller?.totalPrice || 0
+      },
+      {
+        item: '',
+        description: `LED 파워\n- 250인치 이상 500,000원/개소\n- 250인치 이하 무상\n(${quote.power?.requiredCount || 0}개소 필요)`,
+        unitPrice: (quote.power?.requiredCount && quote.power.requiredCount > 0) ? 500000 : 0,
+        quantity: quote.power?.requiredCount || 0,
+        unit: '개',
+        amount: quote.power?.totalPrice || 0
+      },
+      {
+        item: '',
+        description: `설치/철거 인력\n${quote.installation?.workerRange || '60개 이하 (3명)'}`,
+        unitPrice: quote.installation?.pricePerWorker || 160000,
+        quantity: quote.installation?.workers || 0,
+        unit: '명',
+        amount: quote.installation?.totalPrice || 0
+      },
+      {
+        item: '',
+        description: '오퍼레이팅 인력',
+        unitPrice: quote.operation?.pricePerDay || 280000,
+        quantity: quote.operation?.days || 0,
+        unit: '일',
+        amount: quote.operation?.totalPrice || 0
+      },
+      {
+        item: '',
+        description: `운반비\n${quote.transport?.range || '200개 이하'}`,
+        unitPrice: quote.transport?.price || 0,
+        quantity: 1,
+        unit: '식',
+        amount: quote.transport?.price || 0
+      }
+    ];
+
+    items.forEach((item, index) => {
+      const currentRow = row + index;
+      addItemRow(worksheet, currentRow, item);
+    });
+
+    row += items.length;
+  }
 
   // 합계 섹션
-  row += items.length + 1;
+  row += 1;
   
   // 소계
   const subtotalLabelCell = worksheet.getCell(`B${row}`);
@@ -588,7 +599,7 @@ async function generateStyledQuoteExcel(data: any) {
   subtotalLabelCell.font = { bold: true };
   
   const subtotalValueCell = worksheet.getCell(`H${row}`);
-  subtotalValueCell.value = quote.subtotal;
+  subtotalValueCell.value = quote?.subtotal || 0;
   subtotalValueCell.font = { bold: true, size: 10 };
   subtotalValueCell.alignment = { horizontal: 'right', vertical: 'middle' };
   subtotalValueCell.numFmt = '#,##0';
@@ -601,7 +612,7 @@ async function generateStyledQuoteExcel(data: any) {
   totalLabelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE6E6' } };
   
   const totalValueCell = worksheet.getCell(`H${row}`);
-  totalValueCell.value = quote.total;
+  totalValueCell.value = quote?.total || 0;
   totalValueCell.font = { bold: true, size: 12 };
   totalValueCell.alignment = { horizontal: 'right', vertical: 'middle' };
   totalValueCell.numFmt = '#,##0';
@@ -643,15 +654,93 @@ async function generateStyledQuoteExcel(data: any) {
   signatureCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
   // 파일 저장
-  const fileName = `${data.customerName}_견적서_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`;
+  const fileName = `${data.customerName || '고객사'}_견적서_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`;
   const filePath = path.join('data', fileName);
+  
+  if (!fs.existsSync('data')) {
+    fs.mkdirSync('data', { recursive: true });
+  }
 
   await workbook.xlsx.writeFile(filePath);
 
   return {
     content: [{
       type: 'text',
-      text: `✨ 스타일이 적용된 견적서 Excel 파일이 생성되었습니다!\n📁 파일명: ${fileName}\n📂 경로: ${filePath}\n\n💰 견적 요약:\n- 총 ${quote.ledModules.count}개 LED 모듈\n- 설치인력: ${quote.installation.workers}명 (${quote.installation.workerRange})\n- 총액: ${quote.total.toLocaleString()}원 (VAT 포함)`
-    }]
+      text: `✨ 스타일이 적용된 견적서 Excel 파일이 생성되었습니다!\n📁 파일명: ${fileName}\n📂 경로: ${filePath}\n\n💰 견적 요약:\n- 총 ${quote?.ledModules?.count || 0}개 LED 모듈\n- 설치인력: ${quote?.installation?.workers || 0}명\n- 총액: ${quote?.total?.toLocaleString() || 0}원 (VAT 포함)`
+    }],
+    filePath: filePath,
+    fileName: fileName,
+    fileType: 'quote'
+  };
+}
+
+// 견적 항목 행 추가 헬퍼 함수
+function addItemRow(worksheet: ExcelJS.Worksheet, row: number, item: any) {
+  const itemCell = worksheet.getCell(`B${row}`);
+  itemCell.value = item.item;
+  itemCell.font = { size: 10 };
+  itemCell.alignment = { horizontal: 'left', vertical: 'middle' };
+  itemCell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  };
+  
+  const descCell = worksheet.getCell(`C${row}`);
+  descCell.value = item.description;
+  descCell.font = { size: 10 };
+  descCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+  descCell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  };
+  
+  const unitPriceCell = worksheet.getCell(`E${row}`);
+  unitPriceCell.value = item.unitPrice;
+  unitPriceCell.font = { size: 10 };
+  unitPriceCell.alignment = { horizontal: 'right', vertical: 'middle' };
+  unitPriceCell.numFmt = '#,##0';
+  unitPriceCell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  };
+  
+  const quantityCell = worksheet.getCell(`F${row}`);
+  quantityCell.value = item.quantity;
+  quantityCell.font = { size: 10 };
+  quantityCell.alignment = { horizontal: 'left', vertical: 'middle' };
+  quantityCell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  };
+  
+  const unitCell = worksheet.getCell(`G${row}`);
+  unitCell.value = item.unit;
+  unitCell.font = { size: 10 };
+  unitCell.alignment = { horizontal: 'left', vertical: 'middle' };
+  unitCell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
+  };
+  
+  const amountCell = worksheet.getCell(`H${row}`);
+  amountCell.value = item.amount;
+  amountCell.font = { size: 10 };
+  amountCell.alignment = { horizontal: 'right', vertical: 'middle' };
+  amountCell.numFmt = '#,##0';
+  amountCell.border = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' }
   };
 }

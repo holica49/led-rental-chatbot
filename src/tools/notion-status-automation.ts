@@ -1,15 +1,32 @@
 import { Client } from '@notionhq/client';
-import { GoogleDriveService } from './google-drive-service.js';
 import { calculateMultiLEDQuote } from './calculate-quote.js';
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
 // 행사 상태 관리 서비스
 export class NotionStatusAutomation {
-  private driveService: GoogleDriveService;
+  private driveService: any = null;
   
   constructor() {
-    this.driveService = new GoogleDriveService();
+    try {
+      // Google Drive 서비스는 선택적으로 사용
+      // import를 동적으로 처리하여 오류 방지
+      this.initializeDriveService();
+    } catch (error) {
+      console.warn('⚠️ Google Drive 서비스 초기화 실패 (선택사항):', error);
+      this.driveService = null;
+    }
+  }
+
+  private async initializeDriveService() {
+    try {
+      const { GoogleDriveService } = await import('./google-drive-service.js');
+      this.driveService = new GoogleDriveService();
+      console.log('✅ Google Drive 서비스 초기화 완료');
+    } catch (error) {
+      console.warn('⚠️ Google Drive 서비스를 사용할 수 없습니다:', error);
+      this.driveService = null;
+    }
   }
 
   /**
@@ -17,7 +34,7 @@ export class NotionStatusAutomation {
    */
   async onStatusQuoteReview(pageId: string) {
     try {
-      console.log('📊 견적 검토 상태로 변경됨 - 견적서/요청서 자동 생성 시작');
+      console.log('📊 견적 검토 상태로 변경됨 - 자동화 시작');
       
       // 1. Notion에서 행사 정보 가져오기
       const eventData = await this.getEventDataFromNotion(pageId);
@@ -25,20 +42,29 @@ export class NotionStatusAutomation {
       // 2. 견적 계산
       const quote = this.calculateQuoteFromEventData(eventData);
       
-      // 3. 구글 드라이브에 견적서/요청서 생성
-      const driveResult = await this.driveService.generateQuoteAndRequestFiles(eventData, quote);
+      // 3. 기본 댓글 추가 (항상 실행)
+      await this.addQuoteReviewComment(pageId, eventData, quote);
       
-      // 4. Notion에 파일 링크 저장
-      await this.updateNotionWithFileLinks(pageId, driveResult);
-      
-      // 5. 완료 댓글 추가
-      await this.addQuoteReviewComment(pageId, driveResult);
+      // 4. Google Drive 서비스가 있으면 파일 생성
+      if (this.driveService) {
+        try {
+          const driveResult = await this.driveService.generateQuoteAndRequestFiles(eventData, quote);
+          await this.updateNotionWithFileLinks(pageId, driveResult);
+          console.log('✅ 구글 드라이브 파일 생성 완료');
+        } catch (driveError) {
+          console.error('❌ 구글 드라이브 파일 생성 실패:', driveError);
+          await this.addErrorComment(pageId, '구글 드라이브 파일 생성 실패', driveError);
+        }
+      } else {
+        console.log('ℹ️ 구글 드라이브 서비스가 설정되지 않음 - 기본 댓글만 추가');
+      }
       
       console.log('✅ 견적 검토 프로세스 완료');
-      return driveResult;
+      return { success: true, eventData, quote };
       
     } catch (error) {
       console.error('❌ 견적 검토 프로세스 실패:', error);
+      await this.addErrorComment(pageId, '견적 검토 자동화 실패', error);
       throw error;
     }
   }
@@ -64,6 +90,7 @@ export class NotionStatusAutomation {
       
     } catch (error) {
       console.error('❌ 배차 정보 생성 실패:', error);
+      await this.addErrorComment(pageId, '배차 정보 생성 실패', error);
       throw error;
     }
   }
@@ -85,6 +112,7 @@ export class NotionStatusAutomation {
       
     } catch (error) {
       console.error('❌ 구인 완료 프로세스 실패:', error);
+      await this.addErrorComment(pageId, '구인 완료 프로세스 실패', error);
       throw error;
     }
   }
@@ -152,6 +180,22 @@ export class NotionStatusAutomation {
    * 견적 계산
    */
   private calculateQuoteFromEventData(eventData: any) {
+    if (!eventData.ledSpecs || eventData.ledSpecs.length === 0) {
+      console.warn('⚠️ LED 사양 정보가 없습니다. 기본 견적을 생성합니다.');
+      return {
+        ledModules: { count: 0, price: 0 },
+        structure: { area: 0, unitPrice: 20000, totalPrice: 0 },
+        controller: { totalPrice: 0, count: 0 },
+        power: { totalPrice: 0, requiredCount: 0 },
+        installation: { workers: 0, totalPrice: 0 },
+        operation: { totalPrice: 0, days: 0 },
+        transport: { price: 0 },
+        subtotal: 0,
+        vat: 0,
+        total: 0
+      };
+    }
+    
     return calculateMultiLEDQuote(eventData.ledSpecs);
   }
 
@@ -159,39 +203,121 @@ export class NotionStatusAutomation {
    * Notion에 파일 링크 저장
    */
   private async updateNotionWithFileLinks(pageId: string, driveResult: any) {
-    await notion.pages.update({
-      page_id: pageId,
-      properties: {
-        '견적서 링크': {
+    try {
+      console.log('🔗 Notion에 파일 링크 저장 중...');
+      
+      const updateData: any = {};
+      
+      // 견적서 링크가 있으면 추가
+      if (driveResult.quoteFileUrl) {
+        updateData['견적서 링크'] = {
           url: driveResult.quoteFileUrl
-        },
-        '요청서 링크': {
-          url: driveResult.requestFileUrl
-        }
+        };
+        console.log(`📊 견적서 링크: ${driveResult.quoteFileUrl}`);
       }
-    });
+      
+      // 요청서 링크가 있으면 추가
+      if (driveResult.requestFileUrl) {
+        updateData['요청서 링크'] = {
+          url: driveResult.requestFileUrl
+        };
+        console.log(`📋 요청서 링크: ${driveResult.requestFileUrl}`);
+      }
+      
+      if (Object.keys(updateData).length > 0) {
+        await notion.pages.update({
+          page_id: pageId,
+          properties: updateData
+        });
+        console.log('✅ Notion에 파일 링크 저장 완료');
+      } else {
+        console.log('⚠️ 저장할 파일 링크가 없습니다.');
+      }
+      
+    } catch (error) {
+      console.error('❌ Notion 파일 링크 저장 실패:', error);
+      
+      // 속성이 없는 경우 안내 메시지
+      if (error instanceof Error && error.message.includes('property')) {
+        console.error('💡 Notion 데이터베이스에 "견적서 링크", "요청서 링크" 속성(URL 타입)을 추가해주세요.');
+      }
+      
+      // 링크 저장 실패 시 댓글로 링크 제공
+      await this.addFileLinksComment(pageId, driveResult);
+    }
+  }
+
+  /**
+   * 파일 링크 댓글 추가 (속성 저장 실패 시 대안)
+   */
+  private async addFileLinksComment(pageId: string, driveResult: any) {
+    try {
+      const linkComment = `🔗 생성된 파일 링크
+
+📊 견적서: ${driveResult.quoteFileUrl || '생성 실패'}
+📋 요청서: ${driveResult.requestFileUrl || '생성 실패'}
+
+💡 Notion 데이터베이스에 "견적서 링크", "요청서 링크" 속성(URL 타입)을 추가하면 자동으로 링크가 저장됩니다.
+
+⏰ 생성 시간: ${new Date().toLocaleString()}`;
+
+      await this.addCommentToPage(pageId, linkComment);
+      console.log('✅ 파일 링크 댓글 추가 완료');
+    } catch (error) {
+      console.error('❌ 파일 링크 댓글 추가 실패:', error);
+    }
   }
 
   /**
    * 견적 검토 완료 댓글 추가
    */
-  private async addQuoteReviewComment(pageId: string, driveResult: any) {
-    const comment = `📊 견적 검토 단계 완료
+  private async addQuoteReviewComment(pageId: string, eventData: any, quote: any) {
+    const ledSummary = eventData.ledSpecs?.map((led: any, index: number) => {
+      if (!led.size) return `LED${index + 1}: 정보 없음`;
+      
+      const [w, h] = led.size.split('x').map(Number);
+      const moduleCount = (w / 500) * (h / 500);
+      const operatorText = led.needOperator ? ` (오퍼레이터 ${led.operatorDays}일)` : '';
+      return `LED${index + 1}: ${led.size} (${moduleCount}개${operatorText})`;
+    }).join('\n') || '정보 없음';
 
-✅ 자동 생성된 파일들:
-📋 견적서: ${driveResult.quoteFileUrl}
-📄 요청서: ${driveResult.requestFileUrl}
+    const comment = `📊 견적 검토 자동화 완료
+
+✅ 견적 정보:
+• 행사명: ${eventData.eventName}
+• 고객사: ${eventData.customerName}
+• 행사장: ${eventData.venue}
+• 총 LED 모듈: ${quote.ledModules?.count || 0}개
+• 견적 금액: ${quote.total?.toLocaleString() || 0}원 (VAT 포함)
+• 설치 인력: ${quote.installation?.workers || 0}명
+
+🖥️ LED 사양:
+${ledSummary}
+
+💰 견적 세부내역:
+• LED 모듈: ${quote.ledModules?.price?.toLocaleString() || 0}원
+• 구조물: ${quote.structure?.totalPrice?.toLocaleString() || 0}원
+• 컨트롤러: ${quote.controller?.totalPrice?.toLocaleString() || 0}원
+• 파워: ${quote.power?.totalPrice?.toLocaleString() || 0}원
+• 설치인력: ${quote.installation?.totalPrice?.toLocaleString() || 0}원
+• 오퍼레이터: ${quote.operation?.totalPrice?.toLocaleString() || 0}원
+• 운반비: ${quote.transport?.price?.toLocaleString() || 0}원
+
+📎 생성된 파일:
+• 견적서와 요청서가 생성되었습니다
+• 파일 링크는 데이터베이스 속성에 자동 저장됩니다
+• Google Drive 서비스 연동 상태에 따라 파일이 생성됩니다
 
 🔄 다음 단계:
-1. 생성된 파일들을 검토해주세요
-2. 필요시 수정 사항을 반영해주세요
-3. 고객사에 견적서와 요청서를 전달해주세요
-4. 고객 승인 후 상태를 "견적 승인"으로 변경해주세요`;
+1. 견적 내용을 검토해주세요
+2. 생성된 견적서와 요청서를 확인해주세요
+3. 필요시 수정 사항을 반영해주세요
+4. 고객사에 견적을 전달해주세요
+5. 고객 승인 후 상태를 "견적 승인"으로 변경해주세요
 
-    await notion.comments.create({
-      parent: { page_id: pageId },
-      rich_text: [{ type: 'text', text: { content: comment } }]
-    });
+⏰ 자동화 실행 시간: ${new Date().toLocaleString()}`;
+
+    await this.addCommentToPage(pageId, comment);
   }
 
   /**
@@ -214,12 +340,13 @@ export class NotionStatusAutomation {
     const plateBoxCount = Math.ceil(totalModules / 8);
     
     return {
-      message: `🚚 배차 정보 (${eventData.eventName})
+      message: `🚚 배차 정보 자동 생성 (${eventData.eventName})
 
 📋 기본 정보:
 • 고객사: ${eventData.customerName}
 • 행사장: ${eventData.venue}
-• 담당자: ${eventData.contactName} (${eventData.contactPhone})
+• 담당자: ${eventData.contactName}
+• 연락처: ${eventData.contactPhone}
 
 📦 운반 물품:
 • LED 모듈: ${totalModules}개
@@ -227,15 +354,23 @@ export class NotionStatusAutomation {
 • 필요 차량: ${truckInfo}
 
 📅 일정:
-• 설치일: ${installDate}
-• 철거일: ${dismantleDate}
+• 설치일: ${installDate || '미정'}
+• 철거일: ${dismantleDate || '미정'}
 
 📍 배송지: ${eventData.venue}
 
 ⚠️ 주의사항:
 - 설치 전날까지 현장 도착 필수
 - 하차 지점 및 주차 공간 사전 확인
-- 기사님께 연락처 공유 필요`,
+- 기사님께 연락처 공유 필요
+- 현장 접근성 및 엘리베이터 사용 가능 여부 확인
+
+🔄 다음 단계:
+1. 배차 기사님께 연락처 및 현장 정보 전달
+2. 고객사 현장 담당자와 사전 협의
+3. 상태를 "구인 완료"로 변경
+
+⏰ 자동 생성 시간: ${new Date().toLocaleString()}`,
       truckInfo,
       plateBoxCount,
       totalModules
@@ -246,10 +381,7 @@ export class NotionStatusAutomation {
    * 배차 댓글 추가
    */
   private async addDispatchComment(pageId: string, dispatchInfo: any) {
-    await notion.comments.create({
-      parent: { page_id: pageId },
-      rich_text: [{ type: 'text', text: { content: dispatchInfo.message } }]
-    });
+    await this.addCommentToPage(pageId, dispatchInfo.message);
   }
 
   /**
@@ -257,7 +389,7 @@ export class NotionStatusAutomation {
    */
   private generateCompletionMessage(eventData: any) {
     return {
-      message: `✅ 배차 및 구인 완료 확인
+      message: `✅ 구인 완료 확인 (${eventData.eventName})
 
 🚚 배차 상황: 완료
 👷 인력 구인: 완료
@@ -268,9 +400,23 @@ export class NotionStatusAutomation {
 □ 고객사 현장 담당자 연락처 확인
 □ 장비 점검 완료 확인
 □ 보험 및 안전 사항 점검
+□ 현장 접근 방법 및 주차 공간 확인
+□ 전원 공급 및 전기 설치 조건 확인
+
+📞 연락처 정보:
+• 고객 담당자: ${eventData.contactName}
+• 연락처: ${eventData.contactPhone}
+• 행사장: ${eventData.venue}
+
+📅 일정 확인:
+• 설치일: ${eventData.installSchedule || '미정'}
+• 리허설: ${eventData.rehearsalSchedule || '미정'}
+• 철거일: ${eventData.dismantleSchedule || '미정'}
 
 🔄 다음 단계:
-설치일에 자동으로 "설치 중" 상태로 변경됩니다.`
+설치일에 자동으로 "설치 중" 상태로 변경됩니다.
+
+⏰ 자동 생성 시간: ${new Date().toLocaleString()}`
     };
   }
 
@@ -278,10 +424,7 @@ export class NotionStatusAutomation {
    * 구인 완료 댓글 추가
    */
   private async addCompletionComment(pageId: string, completionInfo: any) {
-    await notion.comments.create({
-      parent: { page_id: pageId },
-      rich_text: [{ type: 'text', text: { content: completionInfo.message } }]
-    });
+    await this.addCommentToPage(pageId, completionInfo.message);
   }
 
   /**
@@ -316,6 +459,36 @@ export class NotionStatusAutomation {
       
     } catch (error) {
       console.error(`❌ ${newStatus} 상태 변경 실패:`, error);
+    }
+  }
+
+  /**
+   * 오류 댓글 추가
+   */
+  private async addErrorComment(pageId: string, title: string, error: any) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const comment = `❌ ${title}
+
+오류 내용: ${errorMessage}
+발생 시간: ${new Date().toLocaleString()}
+
+담당자 확인이 필요합니다.`;
+
+    await this.addCommentToPage(pageId, comment);
+  }
+
+  /**
+   * 댓글 추가 공통 함수
+   */
+  private async addCommentToPage(pageId: string, content: string) {
+    try {
+      await notion.comments.create({
+        parent: { page_id: pageId },
+        rich_text: [{ type: 'text', text: { content } }]
+      });
+      console.log('✅ 댓글 추가 완료');
+    } catch (error) {
+      console.error('❌ 댓글 추가 실패:', error);
     }
   }
 }

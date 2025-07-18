@@ -3,6 +3,7 @@ import bodyParser from 'body-parser';
 import { calculateMultiLEDQuote } from './calculate-quote.js';
 import { notionMCPTool } from './notion-mcp.js';
 import { Client } from '@notionhq/client';
+import { startPollingService, getPollingService } from './notion-polling.js';
 
 const app = express();
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
@@ -1049,7 +1050,116 @@ function handleDefault(session: UserSession) {
   };
 }
 
+
+// 새로운 관리자 엔드포인트들 추가
+app.get('/admin/polling-status', (req, res) => {
+  try {
+    const service = getPollingService();
+    const status = service.getPollingStatus();
+    
+    res.json({
+      success: true,
+      data: {
+        isPolling: status.isPolling,
+        trackedPages: status.trackedPages,
+        message: status.isPolling ? '폴링이 실행 중입니다.' : '폴링이 중지되었습니다.',
+        lastUpdate: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+app.post('/admin/start-polling', async (req, res) => {
+  try {
+    await startPollingService();
+    res.json({
+      success: true,
+      message: 'Notion 폴링 서비스가 시작되었습니다.'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+app.post('/admin/manual-trigger', async (req, res) => {
+  try {
+    const { pageId, status } = req.body;
+    
+    if (!pageId || !status) {
+      return res.status(400).json({
+        success: false,
+        error: 'pageId와 status가 필요합니다.'
+      });
+    }
+    
+    const service = getPollingService();
+    await service.manualTrigger(pageId, status);
+    
+    res.json({
+      success: true,
+      message: `${status} 자동화가 수동으로 실행되었습니다.`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// 기존 테스트 엔드포인트 확장
+app.get('/test', (req, res) => {
+  const service = getPollingService();
+  const pollingStatus = service.getPollingStatus();
+  
+  res.json({
+    message: "서버가 정상 작동 중입니다!",
+    timestamp: new Date().toISOString(),
+    polling: {
+      isActive: pollingStatus.isPolling,
+      trackedPages: pollingStatus.trackedPages
+    }
+  });
+});
+
+// 서버 종료 시 폴링 정리
+process.on('SIGINT', () => {
+  console.log('🛑 서버 종료 중...');
+  const service = getPollingService();
+  service.stopPolling();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('🛑 서버 종료 중...');
+  const service = getPollingService();
+  service.stopPolling();
+  process.exit(0);
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`개선된 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
+});
+
+app.listen(PORT, async () => {
+  console.log(`🚀 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
+  
+  // 폴링 서비스 자동 시작
+  try {
+    console.log('🔄 Notion 상태 변경 모니터링 시작...');
+    await startPollingService();
+    console.log('✅ 폴링 서비스 시작 완료');
+  } catch (error) {
+    console.error('❌ 폴링 서비스 시작 실패:', error);
+    console.log('⚠️ 나중에 /admin/start-polling 엔드포인트로 수동 시작 가능합니다.');
+  }
 });
