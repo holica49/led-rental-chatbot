@@ -18,6 +18,21 @@ interface LEDSpec {
 
 // Notion 데이터 타입
 interface NotionData {
+  // 서비스 구분 정보
+  serviceType: '설치' | '렌탈' | '멤버쉽';
+  memberCode?: string;
+  
+  // 설치 서비스 관련
+  installEnvironment?: '실내' | '실외';
+  installRegion?: string;
+  requiredTiming?: string;
+  
+  // 렌탈 서비스 관련
+  supportStructureType?: '목공 설치' | '단독 설치';
+  rentalPeriod?: number;
+  periodSurchargeAmount?: number;
+  
+  // 기본 정보
   eventName: string;
   customerName: string;
   contactName: string;
@@ -28,11 +43,15 @@ interface NotionData {
   installSchedule: string;
   rehearsalSchedule: string;
   dismantleSchedule: string;
+  
+  // LED 정보
   led1?: LEDSpec;
   led2?: LEDSpec;
   led3?: LEDSpec;
   led4?: LEDSpec;
   led5?: LEDSpec;
+  
+  // 견적 정보
   totalQuoteAmount: number;
   totalModuleCount: number;
   ledModuleCost: number;
@@ -52,6 +71,27 @@ interface NotionData {
   transportRange: string;
   structureUnitPrice: number;
   structureUnitPriceDescription: string;
+  
+  // 추가 정보
+  additionalRequests?: string;
+  assignedManager?: string;
+  managerPhone?: string;
+}
+
+// 담당자 정보 가져오기
+function getManagerInfo(serviceType: string, installEnvironment?: string): { name: string; phone: string } {
+  // 설치 서비스는 항상 유준수 구축팀장
+  if (serviceType === '설치') {
+    return { name: '유준수 구축팀장', phone: '010-7333-3336' };
+  }
+  
+  // 렌탈 서비스 + 실외
+  if (serviceType === '렌탈' && installEnvironment === '실외') {
+    return { name: '최수삼 팀장', phone: '010-2797-2504' };
+  }
+  
+  // 기본값 (멤버쉽 또는 렌탈 실내)
+  return { name: '', phone: '' };
 }
 
 // LED 계산 함수들
@@ -165,8 +205,16 @@ export const notionMCPTool = {
     try {
       console.log('Notion 저장 시작:', data);
       
+      // 담당자 정보 자동 설정
+      const managerInfo = getManagerInfo(data.serviceType, data.installEnvironment);
+      
       // 기본 속성
       const properties: any = {
+        // 서비스 구분 정보
+        "서비스 유형": {
+          select: { name: data.serviceType }
+        },
+        
         // 기본 정보
         "행사명": {
           title: [{ text: { content: data.eventName || "" } }]
@@ -236,8 +284,66 @@ export const notionMCPTool = {
         },
         "운반 비용": {
           number: data.transportCost || null
+        },
+        
+        // 추가 정보
+        "문의요청 사항": {
+          rich_text: [{ text: { content: data.additionalRequests || "" } }]
         }
       };
+      
+      // 서비스별 추가 속성
+      if (data.serviceType === '멤버쉽' && data.memberCode) {
+        properties["멤버 코드"] = {
+          rich_text: [{ text: { content: data.memberCode } }]
+        };
+      }
+      
+      if (data.serviceType === '설치') {
+        if (data.installEnvironment) {
+          properties["설치 환경"] = {
+            select: { name: data.installEnvironment }
+          };
+        }
+        if (data.installRegion) {
+          properties["설치 지역"] = {
+            rich_text: [{ text: { content: data.installRegion } }]
+          };
+        }
+        if (data.requiredTiming) {
+          properties["필요 시기"] = {
+            rich_text: [{ text: { content: data.requiredTiming } }]
+          };
+        }
+      }
+      
+      if (data.serviceType === '렌탈') {
+        if (data.supportStructureType) {
+          properties["지지구조물 타입"] = {
+            select: { name: data.supportStructureType }
+          };
+        }
+        if (data.rentalPeriod) {
+          properties["렌탈 기간"] = {
+            number: data.rentalPeriod
+          };
+        }
+        if (data.periodSurchargeAmount) {
+          properties["기간 할증 비용"] = {
+            number: data.periodSurchargeAmount
+          };
+        }
+      }
+      
+      // 담당자 정보 (자동 설정된 경우)
+      if (managerInfo.name) {
+        properties["담당자"] = {
+          rich_text: [{ text: { content: managerInfo.name } }]
+        };
+        properties["담당자 연락처"] = {
+          phone_number: managerInfo.phone
+        };
+      }
       
       // LED 개소별 속성 추가
       const ledProperties = [
@@ -264,10 +370,15 @@ export const notionMCPTool = {
       // 조건별 정보 댓글 추가
       await this.addConditionComment(response.id, data);
       
+      // 담당자 멘션 추가 (환경변수에 설정된 경우)
+      if (data.assignedManager) {
+        await this.addManagerMention(response.id, data.assignedManager);
+      }
+      
       return {
         content: [{
           type: 'text',
-          text: `✅ Notion에 행사 정보가 저장되었습니다!\n📝 페이지 ID: ${response.id}\n🏢 고객사: ${data.customerName}\n📋 행사명: ${data.eventName}\n💰 견적 금액: ${data.totalQuoteAmount?.toLocaleString()}원`
+          text: `✅ Notion에 행사 정보가 저장되었습니다!\n📝 페이지 ID: ${response.id}\n🏢 고객사: ${data.customerName}\n📋 행사명: ${data.eventName}\n💰 견적 금액: ${data.totalQuoteAmount?.toLocaleString()}원\n🔖 서비스: ${data.serviceType}${managerInfo.name ? `\n👤 담당자: ${managerInfo.name}` : ''}`
         }],
         id: response.id
       };
@@ -281,16 +392,28 @@ export const notionMCPTool = {
   // 조건별 정보 댓글 추가
   async addConditionComment(pageId: string, data: NotionData) {
     try {
+      const serviceInfo = [
+        `🔖 서비스 유형: ${data.serviceType}`,
+        data.memberCode ? `📌 멤버 코드: ${data.memberCode}` : '',
+        data.installEnvironment ? `🏗️ 설치 환경: ${data.installEnvironment}` : '',
+        data.supportStructureType ? `🔧 지지구조물: ${data.supportStructureType}` : '',
+        data.rentalPeriod ? `📅 렌탈 기간: ${data.rentalPeriod}일` : '',
+        data.periodSurchargeAmount ? `💸 기간 할증: ${data.periodSurchargeAmount.toLocaleString()}원` : ''
+      ].filter(line => line).join('\n');
+      
       const conditionSummary = [
         `📊 조건별 정보 요약`,
+        ``,
+        serviceInfo,
         ``,
         `🏗️ 구조물: ${data.structureUnitPriceDescription || "정보 없음"}`,
         `👷 설치인력: ${data.installationWorkerRange || "정보 없음"} - ${data.installationWorkers || 0}명`,
         `🎛️ 컨트롤러: 총 ${data.controllerCount || 0}개소`,
         `⚡ 파워: ${data.powerRequiredCount || 0}개소 필요`,
         `🚚 운반비: ${data.transportRange || "정보 없음"}`,
-        `📐 최대 무대높이: ${data.maxStageHeight || 0}mm`
-      ].join('\n');
+        `📐 최대 무대높이: ${data.maxStageHeight || 0}mm`,
+        data.additionalRequests ? `\n💬 추가 요청사항: ${data.additionalRequests}` : ''
+      ].filter(line => line !== '').join('\n');
       
       const comment = await notion.comments.create({
         parent: { page_id: pageId },
@@ -307,6 +430,43 @@ export const notionMCPTool = {
       
     } catch (error) {
       console.error('조건별 정보 댓글 추가 실패:', error);
+    }
+  },
+  
+  // 담당자 멘션 추가
+  async addManagerMention(pageId: string, managerName: string) {
+    try {
+      // 환경변수에서 매니저 정보 가져오기
+      const managersConfig = process.env.MANAGERS_CONFIG ? JSON.parse(process.env.MANAGERS_CONFIG) : {};
+      const managerId = managersConfig[managerName];
+      
+      if (!managerId) {
+        console.log(`담당자 "${managerName}"의 Notion ID를 찾을 수 없습니다.`);
+        return;
+      }
+      
+      const comment = await notion.comments.create({
+        parent: { page_id: pageId },
+        rich_text: [
+          {
+            type: 'mention',
+            mention: {
+              type: 'user',
+              user: { id: managerId }
+            }
+          },
+          {
+            type: 'text',
+            text: { content: ' 님, 새로운 견적 요청이 등록되었습니다. 확인 부탁드립니다.' }
+          }
+        ]
+      });
+      
+      console.log('담당자 멘션 추가 완료:', comment.id);
+      return comment;
+      
+    } catch (error) {
+      console.error('담당자 멘션 추가 실패:', error);
     }
   }
 };

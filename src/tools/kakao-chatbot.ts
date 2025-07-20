@@ -1,6 +1,6 @@
 import express from 'express';
 import bodyParser from 'body-parser';
-import { calculateMultiLEDQuote } from './calculate-quote.js';
+import { calculateMultiLEDQuote, calculateRentalLEDQuote } from './calculate-quote.js';
 import { notionMCPTool } from './notion-mcp.js';
 import { Client } from '@notionhq/client';
 import { startPollingService, getPollingService } from './notion-polling.js';
@@ -27,7 +27,9 @@ app.use((req, res, next) => {
 // 사용자 세션 인터페이스
 interface UserSession {
   step: string;
+  serviceType?: '설치' | '렌탈' | '멤버쉽';
   data: {
+    // 공통 정보
     eventName?: string;
     venue?: string;
     customerName?: string;
@@ -36,6 +38,21 @@ interface UserSession {
     contactName?: string;
     contactTitle?: string;
     contactPhone?: string;
+    additionalRequests?: string;
+    
+    // 설치 서비스 관련
+    installEnvironment?: '실내' | '실외';
+    installRegion?: string;
+    requiredTiming?: string;
+    
+    // 렌탈 서비스 관련
+    supportStructureType?: '목공 설치' | '단독 설치';
+    rentalPeriod?: number;
+    
+    // 멤버쉽 관련
+    memberCode?: string;
+    
+    // LED 정보
     ledSpecs: Array<{
       size: string;
       stageHeight?: number;
@@ -53,79 +70,7 @@ interface UserSession {
 // 사용자 세션 관리
 const userSessions: { [key: string]: UserSession } = {};
 
-// 테스트 엔드포인트
-app.get('/test', (req, res) => {
-  const service = getPollingService();
-  const pollingStatus = service.getPollingStatus();
-  
-  res.json({
-    message: "서버가 정상 작동 중입니다!",
-    timestamp: new Date().toISOString(),
-    polling: {
-      isActive: pollingStatus.isPolling,
-      trackedPages: pollingStatus.trackedPages
-    }
-  });
-});
-
-// 카카오 스킬 서버 엔드포인트
-app.post('/skill', async (req, res) => {
-  try {
-    const { userRequest } = req.body;
-    const userId = userRequest?.user?.id || 'default_user';
-    const userMessage = userRequest?.utterance || '안녕하세요';
-    
-    // 사용자 세션 초기화
-    if (!userSessions[userId]) {
-      userSessions[userId] = {
-        step: 'start',
-        data: { ledSpecs: [] },
-        ledCount: 0,
-        currentLED: 1
-      };
-    }
-    
-    const session = userSessions[userId];
-    session.lastMessage = userMessage;
-    
-    const response = await processUserMessage(userMessage, session);
-    
-    // 카카오 스킬 응답 형식
-    const result: any = {
-      version: "2.0",
-      template: {
-        outputs: [
-          {
-            simpleText: {
-              text: response.text
-            }
-          }
-        ]
-      }
-    };
-    
-    if (response.quickReplies && response.quickReplies.length > 0) {
-      result.template.quickReplies = response.quickReplies;
-    }
-    
-    res.json(result);
-    
-  } catch (error) {
-    console.error('스킬 처리 오류:', error);
-    res.json({
-      version: "2.0",
-      template: {
-        outputs: [
-          {
-            simpleText: {
-              text: "시스템 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
-            }
-          }
-        ]
-      }
-    });
-  }
-});
+// ===== 유틸리티 함수들 =====
 
 // LED 크기 검증 함수
 function validateAndNormalizeLEDSize(input: string): { valid: boolean; size?: string; error?: string } {
@@ -226,7 +171,7 @@ function validateStageHeight(input: string): { valid: boolean; height?: number; 
 }
 
 // 행사 기간 검증 함수
-function validateEventPeriod(input: string): { valid: boolean; startDate?: string; endDate?: string; error?: string } {
+function validateEventPeriod(input: string): { valid: boolean; startDate?: string; endDate?: string; days?: number; error?: string } {
   if (!input || typeof input !== 'string') {
     return { valid: false, error: '행사 기간을 입력해주세요.' };
   }
@@ -262,7 +207,10 @@ function validateEventPeriod(input: string): { valid: boolean; startDate?: strin
         return { valid: false, error: '시작일이 종료일보다 늦을 수 없습니다.' };
       }
       
-      return { valid: true, startDate, endDate };
+      // 일수 계산 (시작일과 종료일 포함)
+      const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      
+      return { valid: true, startDate, endDate, days };
     }
   }
   
@@ -309,6 +257,44 @@ function validatePhoneNumber(input: string): { valid: boolean; phone?: string; e
   };
 }
 
+// 숫자 입력 검증 함수
+function validateNumber(input: string, min: number = 1, max: number = 10): { valid: boolean; value?: number; error?: string } {
+  const num = parseInt(input);
+  
+  if (isNaN(num)) {
+    return { valid: false, error: '숫자를 입력해주세요.' };
+  }
+  
+  if (num < min || num > max) {
+    return { valid: false, error: `${min}에서 ${max} 사이의 숫자를 입력해주세요.` };
+  }
+  
+  return { valid: true, value: num };
+}
+
+// 날짜 계산 함수
+function calculateScheduleDates(startDate: string, endDate: string) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  // 설치 일정: 시작일 하루 전
+  const installDate = new Date(start);
+  installDate.setDate(installDate.getDate() - 1);
+  
+  // 리허설 일정: 시작일 하루 전 (설치일과 같음)
+  const rehearsalDate = new Date(installDate);
+  
+  // 철거 일정: 마지막 날
+  const dismantleDate = new Date(end);
+  
+  return {
+    eventSchedule: `${startDate} ~ ${endDate}`,
+    installSchedule: installDate.toISOString().split('T')[0],
+    rehearsalSchedule: rehearsalDate.toISOString().split('T')[0],
+    dismantleSchedule: dismantleDate.toISOString().split('T')[0]
+  };
+}
+
 // 담당자 언급 알림 함수
 async function addMentionToPage(pageId: string, eventData: any) {
   try {
@@ -327,6 +313,11 @@ async function addMentionToPage(pageId: string, eventData: any) {
         type: 'text',
         text: { content: '🚨 새로운 견적 요청이 접수되었습니다!\n\n' },
         annotations: { bold: true, color: 'red' }
+      },
+      {
+        type: 'text',
+        text: { content: `🔖 서비스 유형: ${eventData.serviceType}\n` },
+        annotations: { bold: true }
       },
       {
         type: 'text',
@@ -435,59 +426,11 @@ async function addMentionToPage(pageId: string, eventData: any) {
   }
 }
 
-// 사용자 메시지 처리 함수 (기존 코드 유지)
-async function processUserMessage(message: string, session: UserSession) {
-  // 수정 요청 처리
-  if (isModificationRequest(message)) {
-    return handleModificationRequest(message, session);
-  }
-  
-  // 초기화 요청 처리
-  if (isResetRequest(message)) {
-    return handleResetRequest(session);
-  }
-  
-  switch (session.step) {
-    case 'start':
-      return handleStart(session);
-    case 'confirm_customer':
-      return handleCustomerConfirm(message, session);
-    case 'get_event_info':
-      return handleEventInfo(message, session);
-    case 'get_led_count':
-      return handleLEDCount(message, session);
-    case 'get_led_specs':
-      return handleLEDSpecs(message, session);
-    case 'get_stage_height':
-      return handleStageHeight(message, session);
-    case 'get_operator_needs':
-      return handleOperatorNeeds(message, session);
-    case 'get_operator_days':
-      return handleOperatorDays(message, session);
-    case 'get_prompter_connection':
-      return handlePrompterConnection(message, session);
-    case 'get_relay_connection':
-      return handleRelayConnection(message, session);
-    case 'get_event_period':
-      return handleEventPeriod(message, session);
-    case 'get_contact_name':
-      return handleContactName(message, session);
-    case 'get_contact_title':
-      return handleContactTitle(message, session);
-    case 'get_contact_phone':
-      return handleContactPhone(message, session);
-    case 'final_confirmation':
-      return handleFinalConfirmation(message, session);
-    default:
-      return handleDefault(session);
-  }
-}
-
 // 수정 요청 감지
 function isModificationRequest(message: string): boolean {
   const modificationKeywords = [
     '수정', '바꾸', '변경', '다시', '틀렸', '잘못', '돌아가', '이전',
-    '고쳐', '바꿔', '뒤로', '취소', '행사 정보 수정', 'LED 개수 수정'
+    '고쳐', '바꿔', '뒤로', '취소'
   ];
   return modificationKeywords.some(keyword => message.includes(keyword));
 }
@@ -498,41 +441,15 @@ function isResetRequest(message: string): boolean {
   return resetKeywords.some(keyword => message.includes(keyword));
 }
 
-// 나머지 핸들러 함수들... (기존 코드 유지)
-// 이 부분에는 기존의 모든 핸들러 함수들이 포함됩니다.
-// 여기서는 공간을 절약하기 위해 주요 함수만 포함합니다.
+// ===== 핸들러 함수들 =====
 
 // 수정 요청 처리
 function handleModificationRequest(message: string, session: UserSession) {
-  if (message.includes('행사 정보 수정')) {
-    session.step = 'get_event_info';
-    return {
-      text: '행사 정보를 다시 입력해주세요.\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀',
-      quickReplies: []
-    };
-  }
-  
-  if (message.includes('LED 개수 수정')) {
-    session.step = 'get_led_count';
-    session.data.ledSpecs = [];
-    return {
-      text: 'LED 개수를 다시 선택해주세요.\n\n몇 개소의 LED가 필요하신가요?',
-      quickReplies: [
-        { label: '1개소', action: 'message', messageText: '1' },
-        { label: '2개소', action: 'message', messageText: '2' },
-        { label: '3개소', action: 'message', messageText: '3' },
-        { label: '4개소', action: 'message', messageText: '4' },
-        { label: '5개소', action: 'message', messageText: '5' }
-      ]
-    };
-  }
-  
   return {
-    text: '어떤 정보를 수정하시겠습니까?',
+    text: '처음부터 다시 시작하시겠습니까?',
     quickReplies: [
-      { label: '행사 정보', action: 'message', messageText: '행사 정보 수정' },
-      { label: 'LED 개수', action: 'message', messageText: 'LED 개수 수정' },
-      { label: '처음부터', action: 'message', messageText: '처음부터 시작' }
+      { label: '예, 처음부터', action: 'message', messageText: '처음부터 시작' },
+      { label: '아니요, 계속', action: 'message', messageText: '계속' }
     ]
   };
 }
@@ -540,46 +457,449 @@ function handleModificationRequest(message: string, session: UserSession) {
 // 초기화 처리
 function handleResetRequest(session: UserSession) {
   session.step = 'start';
+  session.serviceType = undefined;
   session.data = { ledSpecs: [] };
   session.ledCount = 0;
   session.currentLED = 1;
   
   return {
-    text: '견적 요청을 처음부터 다시 시작합니다.\n\n안녕하세요! LED 렌탈 자동화 시스템, 오비스입니다.\n\n혹시 LED렌탈 요청이신가요?',
+    text: '처음부터 다시 시작합니다.\n\n안녕하세요! LED 전문 기업 오비스입니다. 😊\n\n어떤 서비스를 도와드릴까요?',
     quickReplies: [
-      { label: '네, 맞습니다', action: 'message', messageText: '네' },
-      { label: '아니요', action: 'message', messageText: '아니요' }
+      { label: '🏗️ LED 설치', action: 'message', messageText: '설치' },
+      { label: '📦 LED 렌탈', action: 'message', messageText: '렌탈' },
+      { label: '👥 멤버쉽 서비스', action: 'message', messageText: '멤버쉽' }
     ]
   };
 }
 
 // 시작 처리
 function handleStart(session: UserSession) {
-  session.step = 'confirm_customer';
+  session.step = 'select_service';
   
   return {
-    text: '안녕하세요! LED 렌탈 자동화 시스템, 오비스입니다.\n\n혹시 LED렌탈 요청이신가요?',
+    text: '안녕하세요! LED 전문 기업 오비스입니다. 😊\n\n어떤 서비스를 도와드릴까요?',
     quickReplies: [
-      { label: '네, 맞습니다', action: 'message', messageText: '네' },
+      { label: '🏗️ LED 설치', action: 'message', messageText: '설치' },
+      { label: '📦 LED 렌탈', action: 'message', messageText: '렌탈' },
+      { label: '👥 멤버쉽 서비스', action: 'message', messageText: '멤버쉽' }
+    ]
+  };
+}
+
+// 서비스 선택
+function handleSelectService(message: string, session: UserSession) {
+  if (message.includes('설치')) {
+    session.serviceType = '설치';
+    session.step = 'install_environment';
+    return {
+      text: '🏗️ LED 설치 서비스를 선택하셨습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n설치 환경을 선택해주세요.',
+      quickReplies: [
+        { label: '🏢 실내 설치', action: 'message', messageText: '실내' },
+        { label: '🌳 실외 설치', action: 'message', messageText: '실외' }
+      ]
+    };
+  } else if (message.includes('렌탈')) {
+    session.serviceType = '렌탈';
+    session.step = 'rental_indoor_outdoor';
+    session.data.customerName = '메쎄이상';
+    return {
+      text: '📦 LED 렌탈 서비스를 선택하셨습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀',
+      quickReplies: []
+    };
+  } else if (message.includes('멤버쉽')) {
+    session.serviceType = '멤버쉽';
+    session.step = 'membership_code';
+    return {
+      text: '👥 멤버쉽 서비스를 선택하셨습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n멤버 코드를 입력해주세요.',
+      quickReplies: []
+    };
+  } else {
+    return {
+      text: '서비스를 선택해주세요.',
+      quickReplies: [
+        { label: '🏗️ LED 설치', action: 'message', messageText: '설치' },
+        { label: '📦 LED 렌탈', action: 'message', messageText: '렌탈' },
+        { label: '👥 멤버쉽 서비스', action: 'message', messageText: '멤버쉽' }
+      ]
+    };
+  }
+}
+
+// ===== 설치 서비스 핸들러 =====
+function handleInstallEnvironment(message: string, session: UserSession) {
+  if (message.includes('실내')) {
+    session.data.installEnvironment = '실내';
+  } else if (message.includes('실외')) {
+    session.data.installEnvironment = '실외';
+  } else {
+    return {
+      text: '설치 환경을 선택해주세요.',
+      quickReplies: [
+        { label: '🏢 실내 설치', action: 'message', messageText: '실내' },
+        { label: '🌳 실외 설치', action: 'message', messageText: '실외' }
+      ]
+    };
+  }
+  
+  session.step = 'install_region';
+  return {
+    text: `✅ ${session.data.installEnvironment} 설치로 선택하셨습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n설치하실 지역을 입력해주세요.\n예: 서울, 경기, 부산 등`,
+    quickReplies: []
+  };
+}
+
+function handleInstallRegion(message: string, session: UserSession) {
+  if (!message || message.trim().length === 0) {
+    return {
+      text: '설치 지역을 입력해주세요.\n예: 서울, 경기, 부산 등',
+      quickReplies: []
+    };
+  }
+  
+  session.data.installRegion = message.trim();
+  session.data.venue = message.trim(); // 행사장으로도 사용
+  session.step = 'install_timing';
+  
+  return {
+    text: `✅ 설치 지역: ${session.data.installRegion}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n언제 필요하신가요?\n예: 2025년 8월, 3개월 후, 내년 상반기 등`,
+    quickReplies: []
+  };
+}
+
+function handleInstallTiming(message: string, session: UserSession) {
+  if (!message || message.trim().length === 0) {
+    return {
+      text: '필요 시기를 입력해주세요.\n예: 2025년 8월, 3개월 후, 내년 상반기 등',
+      quickReplies: []
+    };
+  }
+  
+  session.data.requiredTiming = message.trim();
+  session.data.eventName = `LED 설치 프로젝트`; // 기본 행사명
+  session.step = 'get_additional_requests';
+  
+  return {
+    text: `✅ 필요 시기: ${session.data.requiredTiming}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
+    quickReplies: [
+      { label: '없음', action: 'message', messageText: '없음' }
+    ]
+  };
+}
+
+// ===== 렌탈 서비스 핸들러 =====
+function handleRentalIndoorOutdoor(message: string, session: UserSession) {
+  const parts = message.split('/').map(part => part.trim());
+  
+  if (parts.length >= 2) {
+    session.data.eventName = parts[0];
+    session.data.venue = parts[1];
+    session.step = 'rental_structure_type';
+    
+    return {
+      text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n실내 행사인가요, 실외 행사인가요?`,
+      quickReplies: [
+        { label: '🏢 실내', action: 'message', messageText: '실내' },
+        { label: '🌳 실외', action: 'message', messageText: '실외' }
+      ]
+    };
+  } else {
+    return {
+      text: '❌ 형식이 올바르지 않습니다.\n\n올바른 형식으로 다시 입력해주세요:\n📝 행사명 / 행사장\n\n예시:\n• 커피박람회 / 수원메쎄 2홀\n• 전시회 / 킨텍스 1홀',
+      quickReplies: []
+    };
+  }
+}
+
+function handleRentalStructureType(message: string, session: UserSession) {
+  if (message.includes('실외')) {
+    // 실외 선택 시 최수삼 팀장 안내
+    session.step = 'start';
+    session.data = { ledSpecs: [] };
+    
+    return {
+      text: `🌳 실외 행사는 별도 상담이 필요합니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당: 최수삼 팀장\n📞 연락처: 010-2797-2504\n\n위 담당자에게 직접 연락 부탁드립니다.\n감사합니다! 😊`,
+      quickReplies: [
+        { label: '처음으로', action: 'message', messageText: '처음부터' }
+      ]
+    };
+  }
+  
+  session.step = 'rental_led_count';
+  return {
+    text: `✅ 실내 행사로 확인되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n지지구조물 타입을 선택해주세요.`,
+    quickReplies: [
+      { label: '🔨 목공 설치', action: 'message', messageText: '목공 설치' },
+      { label: '🏗️ 단독 설치', action: 'message', messageText: '단독 설치' }
+    ]
+  };
+}
+
+function handleRentalLEDCount(message: string, session: UserSession) {
+  if (message.includes('목공')) {
+    session.data.supportStructureType = '목공 설치';
+  } else if (message.includes('단독')) {
+    session.data.supportStructureType = '단독 설치';
+  } else {
+    return {
+      text: '지지구조물 타입을 선택해주세요.',
+      quickReplies: [
+        { label: '🔨 목공 설치', action: 'message', messageText: '목공 설치' },
+        { label: '🏗️ 단독 설치', action: 'message', messageText: '단독 설치' }
+      ]
+    };
+  }
+  
+  session.step = 'rental_led_specs';
+  return {
+    text: `✅ 지지구조물: ${session.data.supportStructureType}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n몇 개의 LED가 필요하신가요? (1-5개)`,
+    quickReplies: [
+      { label: '1개', action: 'message', messageText: '1' },
+      { label: '2개', action: 'message', messageText: '2' },
+      { label: '3개', action: 'message', messageText: '3' },
+      { label: '4개', action: 'message', messageText: '4' },
+      { label: '5개', action: 'message', messageText: '5' }
+    ]
+  };
+}
+
+function handleRentalLEDSpecs(message: string, session: UserSession) {
+  // LED 개수 입력
+  if (session.ledCount === 0) {
+    const validation = validateNumber(message, 1, 5);
+    if (!validation.valid || !validation.value) {
+      return {
+        text: `❌ ${validation.error}\n\n1-5개 사이의 숫자를 선택해주세요.`,
+        quickReplies: [
+          { label: '1개', action: 'message', messageText: '1' },
+          { label: '2개', action: 'message', messageText: '2' },
+          { label: '3개', action: 'message', messageText: '3' },
+          { label: '4개', action: 'message', messageText: '4' },
+          { label: '5개', action: 'message', messageText: '5' }
+        ]
+      };
+    }
+    
+    session.ledCount = validation.value;
+    session.currentLED = 1;
+    session.data.ledSpecs = [];
+    
+    return {
+      text: `✅ 총 ${session.ledCount}개의 LED 설정을 진행하겠습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번의 크기를 알려주세요.\n\n예시: 4000x2500, 6000x3000`,
+      quickReplies: [
+        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
+        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
+        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
+      ]
+    };
+  }
+  
+  // LED 크기 입력
+  const validation = validateAndNormalizeLEDSize(message);
+  if (!validation.valid || !validation.size) {
+    return {
+      text: `❌ ${validation.error}\n\n다시 입력해주세요.`,
+      quickReplies: [
+        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
+        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
+        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
+      ]
+    };
+  }
+  
+  session.data.ledSpecs.push({
+    size: validation.size,
+    needOperator: false,
+    operatorDays: 0,
+    prompterConnection: false,
+    relayConnection: false
+  });
+  
+  session.step = 'rental_stage_height';
+  
+  return {
+    text: `✅ LED ${session.currentLED}번: ${validation.size}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📐 무대 높이를 알려주세요. (mm 단위)`,
+    quickReplies: [
+      { label: '600mm', action: 'message', messageText: '600mm' },
+      { label: '800mm', action: 'message', messageText: '800mm' },
+      { label: '1000mm', action: 'message', messageText: '1000mm' }
+      ]
+  };
+}
+
+function handleRentalStageHeight(message: string, session: UserSession) {
+  const validation = validateStageHeight(message);
+  
+  if (!validation.valid || validation.height === undefined) {
+    return {
+      text: `❌ ${validation.error}\n\n다시 입력해주세요.`,
+      quickReplies: [
+        { label: '600mm', action: 'message', messageText: '600mm' },
+        { label: '800mm', action: 'message', messageText: '800mm' },
+        { label: '1000mm', action: 'message', messageText: '1000mm' }
+      ]
+    };
+  }
+  
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  session.data.ledSpecs[currentLedIndex].stageHeight = validation.height;
+  
+  session.step = 'rental_operator_needs';
+  
+  return {
+    text: `✅ 무대 높이: ${validation.height}mm\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👨‍💼 오퍼레이터가 필요하신가요?`,
+    quickReplies: [
+      { label: '네, 필요합니다', action: 'message', messageText: '네' },
       { label: '아니요', action: 'message', messageText: '아니요' }
     ]
   };
 }
 
-// 고객 확인 처리 (기존 코드 유지)
-function handleCustomerConfirm(message: string, session: UserSession) {
-  if (message.includes('네') || message.includes('맞') || message.includes('예')) {
-    session.step = 'get_event_info';
-    session.data.customerName = '메쎄이상';
+function handleRentalOperatorNeeds(message: string, session: UserSession) {
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const needsOperator = message.includes('네') || message.includes('필요');
+  
+  session.data.ledSpecs[currentLedIndex].needOperator = needsOperator;
+  
+  if (needsOperator) {
+    session.step = 'rental_operator_days';
+    return {
+      text: `✅ 오퍼레이터 필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?`,
+      quickReplies: [
+        { label: '1일', action: 'message', messageText: '1' },
+        { label: '2일', action: 'message', messageText: '2' },
+        { label: '3일', action: 'message', messageText: '3' },
+        { label: '4일', action: 'message', messageText: '4' },
+        { label: '5일', action: 'message', messageText: '5' }
+      ]
+    };
+  } else {
+    session.step = 'rental_prompter';
+    return {
+      text: `✅ 오퍼레이터 불필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
+      quickReplies: [
+        { label: '네, 필요합니다', action: 'message', messageText: '네' },
+        { label: '아니요', action: 'message', messageText: '아니요' }
+      ]
+    };
+  }
+}
+
+function handleRentalOperatorDays(message: string, session: UserSession) {
+  const validation = validateNumber(message, 1, 10);
+  
+  if (!validation.valid || !validation.value) {
+    return {
+      text: `❌ ${validation.error}`,
+      quickReplies: [
+        { label: '1일', action: 'message', messageText: '1' },
+        { label: '2일', action: 'message', messageText: '2' },
+        { label: '3일', action: 'message', messageText: '3' },
+        { label: '4일', action: 'message', messageText: '4' },
+        { label: '5일', action: 'message', messageText: '5' }
+      ]
+    };
+  }
+  
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  session.data.ledSpecs[currentLedIndex].operatorDays = validation.value;
+  
+  session.step = 'rental_prompter';
+  
+  return {
+    text: `✅ 오퍼레이터 ${validation.value}일\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
+    quickReplies: [
+      { label: '네, 필요합니다', action: 'message', messageText: '네' },
+      { label: '아니요', action: 'message', messageText: '아니요' }
+    ]
+  };
+}
+
+function handleRentalPrompter(message: string, session: UserSession) {
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const needsPrompter = message.includes('네') || message.includes('필요');
+  
+  session.data.ledSpecs[currentLedIndex].prompterConnection = needsPrompter;
+  
+  session.step = 'rental_relay';
+  
+  return {
+    text: `✅ 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📹 중계카메라 연결이 필요하신가요?`,
+    quickReplies: [
+      { label: '네, 필요합니다', action: 'message', messageText: '네' },
+      { label: '아니요', action: 'message', messageText: '아니요' }
+    ]
+  };
+}
+
+function handleRentalRelay(message: string, session: UserSession) {
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const needsRelay = message.includes('네') || message.includes('필요');
+  
+  session.data.ledSpecs[currentLedIndex].relayConnection = needsRelay;
+  
+  // 다음 LED로 이동 또는 행사 기간으로
+  if (session.currentLED < session.ledCount) {
+    session.currentLED++;
+    session.step = 'rental_led_specs';
     
     return {
-      text: '신청자님 안녕하세요! 😊\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀\n\n💡 나중에 수정하고 싶으시면 "수정"이라고 말씀해주세요.',
+      text: `✅ LED ${session.currentLED - 1}번 설정 완료\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번의 크기를 알려주세요.`,
+      quickReplies: [
+        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
+        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
+        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
+      ]
+    };
+  } else {
+    session.step = 'rental_period';
+    
+    return {
+      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 행사 기간을 알려주세요.\n예: 2025-07-09 ~ 2025-07-11`,
+      quickReplies: []
+    };
+  }
+}
+
+function handleRentalPeriod(message: string, session: UserSession) {
+  const validation = validateEventPeriod(message);
+  
+  if (!validation.valid || !validation.startDate || !validation.endDate || !validation.days) {
+    return {
+      text: `❌ ${validation.error}\n\n다시 입력해주세요.\n예: 2025-07-09 ~ 2025-07-11`,
+      quickReplies: []
+    };
+  }
+  
+  session.data.eventStartDate = validation.startDate;
+  session.data.eventEndDate = validation.endDate;
+  session.data.rentalPeriod = validation.days;
+  
+  session.step = 'get_additional_requests';
+  
+  return {
+    text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate} (${validation.days}일)\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
+    quickReplies: [
+      { label: '없음', action: 'message', messageText: '없음' }
+    ]
+  };
+}
+
+// ===== 멤버쉽 서비스 핸들러 =====
+function handleMembershipCode(message: string, session: UserSession) {
+  const code = message.trim();
+  
+  if (code === '001') {
+    session.data.memberCode = code;
+    session.data.customerName = '메쎄이상';
+    session.step = 'membership_event_info';
+    
+    return {
+      text: `✅ 멤버 코드 확인: ${code} (메쎄이상)\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀`,
       quickReplies: []
     };
   } else {
-    session.step = 'start';
     return {
-      text: '죄송합니다. 현재는 LED렌탈 전용 서비스입니다.\n다른 문의사항이 있으시면 담당자에게 연락해주세요.',
+      text: `❌ 유효하지 않은 멤버 코드입니다.\n\n다시 확인 후 입력해주세요.`,
       quickReplies: [
         { label: '처음으로', action: 'message', messageText: '처음부터' }
       ]
@@ -587,17 +907,17 @@ function handleCustomerConfirm(message: string, session: UserSession) {
   }
 }
 
-// 행사 정보 처리
-function handleEventInfo(message: string, session: UserSession) {
+// 멤버쉽 이벤트 정보부터는 기존 프로세스와 동일
+function handleMembershipEventInfo(message: string, session: UserSession) {
   const parts = message.split('/').map(part => part.trim());
   
   if (parts.length >= 2) {
     session.data.eventName = parts[0];
     session.data.venue = parts[1];
-    session.step = 'get_led_count';
+    session.step = 'membership_led_count';
     
     return {
-      text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n몇 개소의 LED가 필요하신가요? (1-5개소)\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n몇 개소의 LED가 필요하신가요? (1-5개소)`,
       quickReplies: [
         { label: '1개소', action: 'message', messageText: '1' },
         { label: '2개소', action: 'message', messageText: '2' },
@@ -608,33 +928,19 @@ function handleEventInfo(message: string, session: UserSession) {
     };
   } else {
     return {
-      text: '❌ 형식이 올바르지 않습니다.\n\n올바른 형식으로 다시 입력해주세요:\n📝 행사명 / 행사장\n\n예시:\n• 커피박람회 / 수원메쎄 2홀\n• 전시회 / 킨텍스 1홀\n• 컨퍼런스 / 코엑스 컨벤션홀',
+      text: '❌ 형식이 올바르지 않습니다.\n\n올바른 형식으로 다시 입력해주세요:\n📝 행사명 / 행사장',
       quickReplies: []
     };
   }
 }
 
-// LED 개수 처리
-function handleLEDCount(message: string, session: UserSession) {
-  const count = parseInt(message);
+// 나머지 멤버쉽 핸들러들은 렌탈과 유사하지만 step 이름이 다름
+function handleMembershipLEDCount(message: string, session: UserSession) {
+  const validation = validateNumber(message, 1, 5);
   
-  if (count >= 1 && count <= 5) {
-    session.ledCount = count;
-    session.currentLED = 1;
-    session.step = 'get_led_specs';
-    session.data.ledSpecs = [];
-    
+  if (!validation.valid || !validation.value) {
     return {
-      text: `✅ 총 ${count}개소의 LED 설정을 진행하겠습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED 1번째 개소의 크기를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 4000x2500\n• 4000*2500\n• 4000×2500\n• 4000 x 2500\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
-      quickReplies: [
-        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
-        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
-        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
-      ]
-    };
-  } else {
-    return {
-      text: '❌ 1-5개소 사이의 숫자를 선택해주세요.\n\n최대 5개소까지 설정 가능합니다.',
+      text: `❌ ${validation.error}`,
       quickReplies: [
         { label: '1개소', action: 'message', messageText: '1' },
         { label: '2개소', action: 'message', messageText: '2' },
@@ -644,34 +950,28 @@ function handleLEDCount(message: string, session: UserSession) {
       ]
     };
   }
+  
+  session.ledCount = validation.value;
+  session.currentLED = 1;
+  session.data.ledSpecs = [];
+  session.step = 'membership_led_specs';
+  
+  return {
+    text: `✅ 총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번째 개소의 크기를 알려주세요.`,
+    quickReplies: [
+      { label: '6000x3000', action: 'message', messageText: '6000x3000' },
+      { label: '4000x3000', action: 'message', messageText: '4000x3000' },
+      { label: '4000x2500', action: 'message', messageText: '4000x2500' }
+    ]
+  };
 }
 
-// LED 사양 처리
-function handleLEDSpecs(message: string, session: UserSession) {
+function handleMembershipLEDSpecs(message: string, session: UserSession) {
   const validation = validateAndNormalizeLEDSize(message);
   
-  if (validation.valid && validation.size) {
-    session.data.ledSpecs.push({
-      size: validation.size,
-      needOperator: false,
-      operatorDays: 0,
-      prompterConnection: false,
-      relayConnection: false
-    });
-    
-    session.step = 'get_stage_height';
-    
+  if (!validation.valid || !validation.size) {
     return {
-      text: `✅ LED ${session.currentLED}번째 개소: ${validation.size}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📐 이 LED의 무대 높이를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 600 (mm)\n• 600mm\n• 60cm\n• 0.6m\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
-      quickReplies: [
-        { label: '600mm', action: 'message', messageText: '600mm' },
-        { label: '500mm', action: 'message', messageText: '500mm' },
-        { label: '1000mm', action: 'message', messageText: '1000mm' }
-      ]
-    };
-  } else {
-    return {
-      text: `❌ ${validation.error}\n\n다시 입력해주세요:\n\n✅ 올바른 형식:\n• 4000x2500\n• 4000*2500\n• 4000×2500\n• 4000 x 2500\n\n💡 500mm 단위로만 입력 가능합니다.`,
+      text: `❌ ${validation.error}`,
       quickReplies: [
         { label: '6000x3000', action: 'message', messageText: '6000x3000' },
         { label: '4000x3000', action: 'message', messageText: '4000x3000' },
@@ -679,134 +979,145 @@ function handleLEDSpecs(message: string, session: UserSession) {
       ]
     };
   }
+  
+  session.data.ledSpecs.push({
+    size: validation.size,
+    needOperator: false,
+    operatorDays: 0,
+    prompterConnection: false,
+    relayConnection: false
+  });
+  
+  session.step = 'membership_stage_height';
+  
+  return {
+    text: `✅ LED ${session.currentLED}번째 개소: ${validation.size}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📐 이 LED의 무대 높이를 알려주세요.`,
+    quickReplies: [
+      { label: '600mm', action: 'message', messageText: '600mm' },
+      { label: '800mm', action: 'message', messageText: '800mm' },
+      { label: '1000mm', action: 'message', messageText: '1000mm' }
+    ]
+  };
 }
 
-// 무대 높이 처리
-function handleStageHeight(message: string, session: UserSession) {
+function handleMembershipStageHeight(message: string, session: UserSession) {
   const validation = validateStageHeight(message);
   
-  if (validation.valid && validation.height !== undefined) {
-    const currentLedIndex = session.data.ledSpecs.length - 1;
-    session.data.ledSpecs[currentLedIndex].stageHeight = validation.height;
-    
-    session.step = 'get_operator_needs';
-    
+  if (!validation.valid || validation.height === undefined) {
     return {
-      text: `✅ LED ${session.currentLED}번째 개소 무대 높이: ${validation.height}mm\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👨‍💼 이 LED에 오퍼레이터가 필요하신가요?\n\n오퍼레이터는 LED 화면 조작 및 콘텐츠 관리를 담당합니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
-      quickReplies: [
-        { label: '네, 필요합니다', action: 'message', messageText: '네' },
-        { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
-      ]
-    };
-  } else {
-    return {
-      text: `❌ ${validation.error}\n\n다시 입력해주세요:\n\n✅ 올바른 형식:\n• 600 (mm 단위)\n• 600mm\n• 60cm\n• 0.6m\n\n📏 일반적인 무대 높이: 600mm~1000mm`,
+      text: `❌ ${validation.error}`,
       quickReplies: [
         { label: '600mm', action: 'message', messageText: '600mm' },
-        { label: '500mm', action: 'message', messageText: '500mm' },
+        { label: '800mm', action: 'message', messageText: '800mm' },
         { label: '1000mm', action: 'message', messageText: '1000mm' }
       ]
     };
   }
+  
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  session.data.ledSpecs[currentLedIndex].stageHeight = validation.height;
+  
+  session.step = 'membership_operator_needs';
+  
+  return {
+    text: `✅ LED ${session.currentLED}번째 개소 무대 높이: ${validation.height}mm\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👨‍💼 이 LED에 오퍼레이터가 필요하신가요?`,
+    quickReplies: [
+      { label: '네, 필요합니다', action: 'message', messageText: '네' },
+      { label: '아니요', action: 'message', messageText: '아니요' }
+    ]
+  };
 }
 
-// 오퍼레이터 필요 여부 처리
-function handleOperatorNeeds(message: string, session: UserSession) {
+function handleMembershipOperatorNeeds(message: string, session: UserSession) {
   const currentLedIndex = session.data.ledSpecs.length - 1;
   const needsOperator = message.includes('네') || message.includes('필요');
   
   session.data.ledSpecs[currentLedIndex].needOperator = needsOperator;
   
   if (needsOperator) {
-    session.step = 'get_operator_days';
+    session.step = 'membership_operator_days';
     return {
-      text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?\n\n일반적으로 행사 기간과 동일합니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 오퍼레이터 필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?`,
       quickReplies: [
-        { label: '1일', action: 'message', messageText: '1일' },
-        { label: '2일', action: 'message', messageText: '2일' },
-        { label: '3일', action: 'message', messageText: '3일' },
-        { label: '4일', action: 'message', messageText: '4일' },
-        { label: '5일', action: 'message', messageText: '5일' }
+        { label: '1일', action: 'message', messageText: '1' },
+        { label: '2일', action: 'message', messageText: '2' },
+        { label: '3일', action: 'message', messageText: '3' },
+        { label: '4일', action: 'message', messageText: '4' },
+        { label: '5일', action: 'message', messageText: '5' }
       ]
     };
   } else {
-    session.data.ledSpecs[currentLedIndex].operatorDays = 0;
-    session.step = 'get_prompter_connection';
-    
+    session.step = 'membership_prompter';
     return {
-      text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 불필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?\n\n프롬프터는 발표자가 자료를 보면서 발표할 수 있도록 도와주는 모니터입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 오퍼레이터 불필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
       quickReplies: [
         { label: '네, 필요합니다', action: 'message', messageText: '네' },
-        { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
+        { label: '아니요', action: 'message', messageText: '아니요' }
       ]
     };
   }
 }
 
-// 오퍼레이터 일수 처리
-function handleOperatorDays(message: string, session: UserSession) {
-  const currentLedIndex = session.data.ledSpecs.length - 1;
-  const dayMatch = message.match(/(\d+)/);
+function handleMembershipOperatorDays(message: string, session: UserSession) {
+  const validation = validateNumber(message, 1, 10);
   
-  if (dayMatch) {
-    const days = parseInt(dayMatch[1]);
-    if (days >= 1 && days <= 10) {
-      session.data.ledSpecs[currentLedIndex].operatorDays = days;
-      session.step = 'get_prompter_connection';
-      
-      return {
-        text: `✅ LED ${session.currentLED}번째 개소: 오퍼레이터 ${days}일\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?\n\n프롬프터는 발표자가 대본을 보면서 발표할 수 있도록 도와주는 장치입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
-        quickReplies: [
-          { label: '네, 필요합니다', action: 'message', messageText: '네' },
-          { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
-        ]
-      };
-    }
+  if (!validation.valid || !validation.value) {
+    return {
+      text: `❌ ${validation.error}`,
+      quickReplies: [
+        { label: '1일', action: 'message', messageText: '1' },
+        { label: '2일', action: 'message', messageText: '2' },
+        { label: '3일', action: 'message', messageText: '3' },
+        { label: '4일', action: 'message', messageText: '4' },
+        { label: '5일', action: 'message', messageText: '5' }
+      ]
+    };
   }
   
+  const currentLedIndex = session.data.ledSpecs.length - 1;
+  session.data.ledSpecs[currentLedIndex].operatorDays = validation.value;
+  
+  session.step = 'membership_prompter';
+  
   return {
-    text: '❌ 올바른 일수를 입력해주세요.\n\n1일~10일 사이로 입력해주세요.',
+    text: `✅ 오퍼레이터 ${validation.value}일\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
     quickReplies: [
-      { label: '1일', action: 'message', messageText: '1일' },
-      { label: '2일', action: 'message', messageText: '2일' },
-      { label: '3일', action: 'message', messageText: '3일' },
-      { label: '4일', action: 'message', messageText: '4일' },
-      { label: '5일', action: 'message', messageText: '5일' }
+      { label: '네, 필요합니다', action: 'message', messageText: '네' },
+      { label: '아니요', action: 'message', messageText: '아니요' }
     ]
   };
 }
 
-// 프롬프터 연결 처리
-function handlePrompterConnection(message: string, session: UserSession) {
+function handleMembershipPrompter(message: string, session: UserSession) {
   const currentLedIndex = session.data.ledSpecs.length - 1;
   const needsPrompter = message.includes('네') || message.includes('필요');
   
   session.data.ledSpecs[currentLedIndex].prompterConnection = needsPrompter;
-  session.step = 'get_relay_connection';
+  
+  session.step = 'membership_relay';
   
   return {
-    text: `✅ LED ${session.currentLED}번째 개소: 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📹 중계카메라 연결이 필요하신가요?\n\n중계카메라는 행사 진행 상황을 실시간으로 LED에 송출하는 기능입니다.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+    text: `✅ 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📹 중계카메라 연결이 필요하신가요?`,
     quickReplies: [
       { label: '네, 필요합니다', action: 'message', messageText: '네' },
-      { label: '아니요, 필요 없습니다', action: 'message', messageText: '아니요' }
+      { label: '아니요', action: 'message', messageText: '아니요' }
     ]
   };
 }
 
-// 중계카메라 연결 처리
-function handleRelayConnection(message: string, session: UserSession) {
+function handleMembershipRelay(message: string, session: UserSession) {
   const currentLedIndex = session.data.ledSpecs.length - 1;
   const needsRelay = message.includes('네') || message.includes('필요');
   
   session.data.ledSpecs[currentLedIndex].relayConnection = needsRelay;
   
-  // 다음 LED로 이동하거나 행사 기간 입력으로 이동
+  // 다음 LED로 이동 또는 행사 기간으로
   if (session.currentLED < session.ledCount) {
     session.currentLED++;
-    session.step = 'get_led_specs';
+    session.step = 'membership_led_specs';
     
     return {
-      text: `✅ LED ${session.currentLED - 1}번째 개소 설정 완료\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번째 개소의 크기를 알려주세요.\n\n다양한 형식으로 입력 가능:\n• 4000x2500\n• 4000*2500\n• 4000×2500`,
+      text: `✅ LED ${session.currentLED - 1}번째 개소 설정 완료\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번째 개소의 크기를 알려주세요.`,
       quickReplies: [
         { label: '6000x3000', action: 'message', messageText: '6000x3000' },
         { label: '4000x3000', action: 'message', messageText: '4000x3000' },
@@ -814,83 +1125,116 @@ function handleRelayConnection(message: string, session: UserSession) {
       ]
     };
   } else {
-    session.step = 'get_event_period';
+    session.step = 'membership_period';
     
-    // 확장된 LED 설정 요약 생성
-    const enhancedLedSummary = session.data.ledSpecs.map((led, index) => {
+    const ledSummary = session.data.ledSpecs.map((led, index) => {
       const [w, h] = led.size.split('x').map(Number);
       const moduleCount = (w / 500) * (h / 500);
-      const prompterText = led.prompterConnection ? ', 프롬프터 연결' : '';
-      const relayText = led.relayConnection ? ', 중계카메라 연결' : '';
-      const operatorText = led.needOperator ? `, 오퍼레이터 ${led.operatorDays}일` : '';
-      
-      return `LED${index + 1}: ${led.size} (${led.stageHeight}mm, ${moduleCount}개${operatorText}${prompterText}${relayText})`;
+      return `LED${index + 1}: ${led.size} (${led.stageHeight}mm, ${moduleCount}개)`;
     }).join('\n');
     
     return {
-      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${enhancedLedSummary}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 행사 기간을 알려주세요.\n시작일과 종료일을 모두 입력해주세요.\n\n예시: 2025-07-09 ~ 2025-07-11\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
+      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${ledSummary}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 행사 기간을 알려주세요.\n예: 2025-07-09 ~ 2025-07-11`,
       quickReplies: []
     };
   }
 }
 
-// 행사 기간 처리
-function handleEventPeriod(message: string, session: UserSession) {
+function handleMembershipPeriod(message: string, session: UserSession) {
   const validation = validateEventPeriod(message);
   
-  if (validation.valid && validation.startDate && validation.endDate) {
-    session.data.eventStartDate = validation.startDate;
-    session.data.eventEndDate = validation.endDate;
-    session.step = 'get_contact_name';
-    
+  if (!validation.valid || !validation.startDate || !validation.endDate) {
     return {
-      text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
-      quickReplies: []
-    };
-  } else {
-    return {
-      text: `❌ ${validation.error}\n\n다시 입력해주세요:\n\n✅ 올바른 형식:\n• 2025-07-09 ~ 2025-07-11\n• 2025-07-09 - 2025-07-11\n• 2025-07-09부터 2025-07-11까지\n\n💡 시작일과 종료일을 모두 입력해주세요.`,
+      text: `❌ ${validation.error}\n\n다시 입력해주세요.\n예: 2025-07-09 ~ 2025-07-11`,
       quickReplies: []
     };
   }
+  
+  session.data.eventStartDate = validation.startDate;
+  session.data.eventEndDate = validation.endDate;
+  
+  session.step = 'get_additional_requests';
+  
+  return {
+    text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
+    quickReplies: [
+      { label: '없음', action: 'message', messageText: '없음' }
+    ]
+  };
+}
+
+// ===== 공통 핸들러 =====
+function handleAdditionalRequests(message: string, session: UserSession) {
+  if (message.trim() === '없음' || message.trim() === '') {
+    session.data.additionalRequests = '없음';
+  } else {
+    session.data.additionalRequests = message.trim();
+  }
+  
+  // 설치 서비스는 담당자 정보를 기본값으로 설정
+  if (session.serviceType === '설치') {
+    session.data.customerName = '고객사';
+    session.step = 'get_contact_name';
+    
+    return {
+      text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사명을 알려주세요.`,
+      quickReplies: []
+    };
+  }
+  
+  session.step = 'get_contact_name';
+  
+  return {
+    text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
+    quickReplies: []
+  };
 }
 
 // 담당자 이름 처리
 function handleContactName(message: string, session: UserSession) {
-  if (message && message.trim().length > 0) {
-    session.data.contactName = message.trim();
-    session.step = 'get_contact_title';
+  // 설치 서비스에서 고객사명 입력 처리
+  if (session.serviceType === '설치' && !session.data.contactName) {
+    if (!message || message.trim().length === 0) {
+      return {
+        text: '고객사명을 입력해주세요.',
+        quickReplies: []
+      };
+    }
+    
+    session.data.customerName = message.trim();
     
     return {
-      text: `✅ 담당자: ${session.data.contactName}님\n\n💼 직급을 알려주세요.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n예시: 매니저, 책임, 팀장, 이사 등\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
-      quickReplies: [
-        { label: '매니저', action: 'message', messageText: '매니저' },
-        { label: '책임', action: 'message', messageText: '책임' },
-        { label: '팀장', action: 'message', messageText: '팀장' },
-        { label: '이사', action: 'message', messageText: '이사' }
-      ]
-    };
-  } else {
-    return {
-      text: '❌ 담당자 성함을 입력해주세요.\n\n예시: 김철수, 이영희 등',
+      text: `✅ 고객사: ${session.data.customerName}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
       quickReplies: []
     };
   }
+  
+  if (!message || message.trim().length === 0) {
+    return {
+      text: '담당자 성함을 입력해주세요.',
+      quickReplies: []
+    };
+  }
+  
+  session.data.contactName = message.trim();
+  session.step = 'get_contact_title';
+  
+  return {
+    text: `✅ 담당자: ${session.data.contactName}님\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n💼 직급을 알려주세요.`,
+    quickReplies: [
+      { label: '매니저', action: 'message', messageText: '매니저' },
+      { label: '책임', action: 'message', messageText: '책임' },
+      { label: '팀장', action: 'message', messageText: '팀장' },
+      { label: '이사', action: 'message', messageText: '이사' }
+    ]
+  };
 }
 
 // 담당자 직급 처리
 function handleContactTitle(message: string, session: UserSession) {
-  if (message && message.trim().length > 0) {
-    session.data.contactTitle = message.trim();
-    session.step = 'get_contact_phone';
-    
+  if (!message || message.trim().length === 0) {
     return {
-      text: `✅ 직급: ${session.data.contactTitle}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📞 연락처를 알려주세요.\n\n예시: 010-1234-5678, 02-1234-5678\n\n💡 수정하려면 "수정"이라고 말씀해주세요.`,
-      quickReplies: []
-    };
-  } else {
-    return {
-      text: '❌ 직급을 입력해주세요.\n\n예시: 매니저, 책임, 팀장, 이사 등',
+      text: '직급을 입력해주세요.',
       quickReplies: [
         { label: '매니저', action: 'message', messageText: '매니저' },
         { label: '책임', action: 'message', messageText: '책임' },
@@ -899,94 +1243,198 @@ function handleContactTitle(message: string, session: UserSession) {
       ]
     };
   }
+  
+  session.data.contactTitle = message.trim();
+  session.step = 'get_contact_phone';
+  
+  return {
+    text: `✅ 직급: ${session.data.contactTitle}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📞 연락처를 알려주세요.\n예: 010-1234-5678`,
+    quickReplies: []
+  };
 }
 
 // 담당자 연락처 처리
 function handleContactPhone(message: string, session: UserSession) {
   const validation = validatePhoneNumber(message);
   
-  if (validation.valid && validation.phone) {
-    session.data.contactPhone = validation.phone;
-    session.step = 'final_confirmation';
-    
-    // 최종 확인 요약 생성
-    const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
-      const [w, h] = led.size.split('x').map(Number);
-      const moduleCount = (w / 500) * (h / 500);
-      const prompterText = led.prompterConnection ? ', 프롬프터 연결' : '';
-      const relayText = led.relayConnection ? ', 중계카메라 연결' : '';
-      const operatorText = led.needOperator ? `, 오퍼레이터 ${led.operatorDays}일` : '';
-      
-      return `LED${index + 1}: ${led.size} (${led.stageHeight}mm, ${moduleCount}개${operatorText}${prompterText}${relayText})`;
-    }).join('\n');
-    
+  if (!validation.valid || !validation.phone) {
     return {
-      text: `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}\n\n👤 담당자 정보:\n• 성함: ${session.data.contactName}\n• 직급: ${session.data.contactTitle}\n• 연락처: ${session.data.contactPhone}\n\n🖥️ LED 사양:\n${ledSummary}\n\n담당자에게 전달드리겠습니다!`,
-      quickReplies: [
-        { label: '네, 전달해주세요', action: 'message', messageText: '네' },
-        { label: '수정하고 싶어요', action: 'message', messageText: '수정' }
-      ]
-    };
-  } else {
-    return {
-      text: `❌ ${validation.error}\n\n다시 입력해주세요:\n\n✅ 올바른 형식:\n• 010-1234-5678\n• 02-1234-5678\n• 070-1234-5678\n\n💡 하이픈(-) 없이 입력하셔도 됩니다.`,
+      text: `❌ ${validation.error}\n\n다시 입력해주세요.`,
       quickReplies: []
     };
   }
+  
+  session.data.contactPhone = validation.phone;
+  session.step = 'final_confirmation';
+  
+  // 서비스별 최종 확인 메시지 생성
+  let confirmationMessage = '';
+  
+  if (session.serviceType === '설치') {
+    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: LED 설치\n🏗️ 설치 환경: ${session.data.installEnvironment}\n📍 설치 지역: ${session.data.installRegion}\n📅 필요 시기: ${session.data.requiredTiming}\n💬 요청사항: ${session.data.additionalRequests}\n\n🏢 고객사: ${session.data.customerName}\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n\n상담 요청을 진행하시겠습니까?`;
+  } else if (session.serviceType === '렌탈') {
+    const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
+      const [w, h] = led.size.split('x').map(Number);
+      const moduleCount = (w / 500) * (h / 500);
+      return `LED${index + 1}: ${led.size} (${moduleCount}개)`;
+    }).join('\n');
+    
+    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: LED 렌탈\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)\n🔧 지지구조물: ${session.data.supportStructureType}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n견적을 요청하시겠습니까?`;
+  } else {
+    const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
+      const [w, h] = led.size.split('x').map(Number);
+      const moduleCount = (w / 500) * (h / 500);
+      return `LED${index + 1}: ${led.size} (${moduleCount}개)`;
+    }).join('\n');
+    
+    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: 멤버쉽 (${session.data.memberCode})\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n견적을 요청하시겠습니까?`;
+  }
+  
+  return {
+    text: confirmationMessage,
+    quickReplies: [
+      { label: '네, 요청합니다', action: 'message', messageText: '네' },
+      { label: '취소', action: 'message', messageText: '취소' }
+    ]
+  };
 }
 
 // 최종 확인 처리
 async function handleFinalConfirmation(message: string, session: UserSession) {
-  if (message.includes('네') || message.includes('전달')) {
+  if (message.includes('취소')) {
+    session.step = 'start';
+    session.data = { ledSpecs: [] };
+    
+    return {
+      text: '요청이 취소되었습니다.\n\n처음부터 다시 시작하시려면 아무 메시지나 입력해주세요.',
+      quickReplies: [
+        { label: '처음으로', action: 'message', messageText: '처음부터' }
+      ]
+    };
+  }
+  
+  if (message.includes('네') || message.includes('요청')) {
     try {
-      // 견적 계산
-      const quote = calculateMultiLEDQuote(session.data.ledSpecs);
-      
-      // 일정 계산
-      const schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
-      
-      // Notion에 저장할 데이터 준비
-      const notionData = {
-        eventName: session.data.eventName,
-        customerName: session.data.customerName,
-        eventSchedule: schedules.eventSchedule,
-        installSchedule: schedules.installSchedule,
-        rehearsalSchedule: schedules.rehearsalSchedule,
-        dismantleSchedule: schedules.dismantleSchedule,
-        venue: session.data.venue,
+      let notionData: any = {
+        serviceType: session.serviceType!,
+        eventName: session.data.eventName || 'LED 프로젝트',
+        customerName: session.data.customerName || '고객사',
+        venue: session.data.venue || '',
         contactName: session.data.contactName,
         contactTitle: session.data.contactTitle,
         contactPhone: session.data.contactPhone,
-        ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
-          acc[`led${index + 1}`] = led;
-          return acc;
-        }, {}),
-        totalQuoteAmount: quote.total,
-        totalModuleCount: quote.totalModuleCount,
-        ledModuleCost: quote.ledModules.price,
-        structureCost: quote.structure.totalPrice,
-        controllerCost: quote.controller.totalPrice,
-        powerCost: quote.power.totalPrice,
-        installationCost: quote.installation.totalPrice,
-        operatorCost: quote.operation.totalPrice,
-        transportCost: quote.transport.price,
-        
-        // 상세 조건 정보 추가
-        maxStageHeight: quote.maxStageHeight,
-        installationWorkers: quote.installationWorkers,
-        installationWorkerRange: quote.installationWorkerRange,
-        controllerCount: quote.controllerCount,
-        powerRequiredCount: quote.powerRequiredCount,
-        transportRange: quote.transportRange,
-        structureUnitPrice: quote.structureUnitPrice,
-        structureUnitPriceDescription: quote.structureUnitPriceDescription
+        additionalRequests: session.data.additionalRequests
       };
+      
+      if (session.serviceType === '설치') {
+        // 설치 서비스 처리
+        notionData = {
+          ...notionData,
+          installEnvironment: session.data.installEnvironment,
+          installRegion: session.data.installRegion,
+          requiredTiming: session.data.requiredTiming,
+          eventSchedule: session.data.requiredTiming,
+          totalQuoteAmount: 0 // 설치는 견적 계산 없음
+        };
+        
+        // Notion에 저장
+        const notionResult = await notionMCPTool.handler(notionData);
+        
+        // 담당자 언급 알림
+        await addMentionToPage(notionResult.id, {
+          serviceType: '설치',
+          eventName: notionData.eventName,
+          customerName: notionData.customerName,
+          contactName: notionData.contactName,
+          contactTitle: notionData.contactTitle,
+          contactPhone: notionData.contactPhone,
+          eventPeriod: notionData.requiredTiming,
+          venue: notionData.installRegion,
+          totalAmount: 0
+        });
+        
+        // 세션 초기화
+        session.step = 'start';
+        session.data = { ledSpecs: [] };
+        
+        return {
+          text: `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자: 유준수 구축팀장\n📞 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n감사합니다! 😊`,
+          quickReplies: [
+            { label: '처음으로', action: 'message', messageText: '처음부터' }
+          ]
+        };
+        
+      } else if (session.serviceType === '렌탈') {
+        // 렌탈 견적 계산
+        const quote = calculateRentalLEDQuote(session.data.ledSpecs, session.data.rentalPeriod!);
+        const schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
+        
+        notionData = {
+          ...notionData,
+          supportStructureType: session.data.supportStructureType,
+          rentalPeriod: session.data.rentalPeriod,
+          periodSurchargeAmount: quote.periodSurcharge.surchargeAmount,
+          eventSchedule: schedules.eventSchedule,
+          installSchedule: schedules.installSchedule,
+          rehearsalSchedule: schedules.rehearsalSchedule,
+          dismantleSchedule: schedules.dismantleSchedule,
+          ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
+            acc[`led${index + 1}`] = led;
+            return acc;
+          }, {}),
+          totalQuoteAmount: quote.total,
+          totalModuleCount: quote.totalModuleCount,
+          ledModuleCost: quote.ledModules.price,
+          structureCost: 0, // 렌탈은 구조물비 없음
+          controllerCost: 0,
+          powerCost: 0,
+          installationCost: 0,
+          operatorCost: 0,
+          transportCost: quote.transport.price
+        };
+        
+      } else {
+        // 멤버쉽 견적 계산
+        const quote = calculateMultiLEDQuote(session.data.ledSpecs);
+        const schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
+        
+        notionData = {
+          ...notionData,
+          memberCode: session.data.memberCode,
+          eventSchedule: schedules.eventSchedule,
+          installSchedule: schedules.installSchedule,
+          rehearsalSchedule: schedules.rehearsalSchedule,
+          dismantleSchedule: schedules.dismantleSchedule,
+          ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
+            acc[`led${index + 1}`] = led;
+            return acc;
+          }, {}),
+          totalQuoteAmount: quote.total,
+          totalModuleCount: quote.totalModuleCount,
+          ledModuleCost: quote.ledModules.price,
+          structureCost: quote.structure.totalPrice,
+          controllerCost: quote.controller.totalPrice,
+          powerCost: quote.power.totalPrice,
+          installationCost: quote.installation.totalPrice,
+          operatorCost: quote.operation.totalPrice,
+          transportCost: quote.transport.price,
+          maxStageHeight: quote.maxStageHeight,
+          installationWorkers: quote.installationWorkers,
+          installationWorkerRange: quote.installationWorkerRange,
+          controllerCount: quote.controllerCount,
+          powerRequiredCount: quote.powerRequiredCount,
+          transportRange: quote.transportRange,
+          structureUnitPrice: quote.structureUnitPrice,
+          structureUnitPriceDescription: quote.structureUnitPriceDescription
+        };
+      }
       
       // Notion에 저장
       const notionResult = await notionMCPTool.handler(notionData);
       
-      // 담당자 언급 알림 추가
+      // 담당자 언급 알림
       await addMentionToPage(notionResult.id, {
+        serviceType: session.serviceType,
         eventName: notionData.eventName,
         customerName: notionData.customerName,
         contactName: notionData.contactName,
@@ -1001,500 +1449,209 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
       // 세션 초기화
       session.step = 'start';
       session.data = { ledSpecs: [] };
-      session.ledCount = 0;
-      session.currentLED = 1;
+      session.serviceType = undefined;
       
       return {
-        text: `✅ 견적 요청이 성공적으로 접수되었습니다!\n\n📋 ${notionData.eventName}\n👤 담당자: ${notionData.contactName} ${notionData.contactTitle}\n📞 연락처: ${notionData.contactPhone}\n\n📝 담당자에게 전달되었으며, 곧 연락드리겠습니다!\n\n🔄 새로운 견적을 원하시면 "안녕하세요"라고 말씀해주세요.`,
+        text: `✅ 견적 요청이 성공적으로 접수되었습니다!\n\n📋 ${notionData.eventName}\n👤 담당자: ${notionData.contactName} ${notionData.contactTitle}\n📞 연락처: ${notionData.contactPhone}\n💰 견적 금액: ${notionData.totalQuoteAmount.toLocaleString()}원 (VAT 포함)\n\n📝 담당자에게 전달되었으며, 곧 연락드리겠습니다!\n\n감사합니다! 😊`,
         quickReplies: [
-          { label: '새 견적 요청', action: 'message', messageText: '안녕하세요' },
-          { label: '문의사항', action: 'message', messageText: '문의' }
+          { label: '새 견적 요청', action: 'message', messageText: '처음부터' }
         ]
       };
+      
     } catch (error) {
       console.error('견적 처리 실패:', error);
       return {
-        text: `❌ 견적 처리 중 오류가 발생했습니다.\n\n다시 시도해주세요.\n\n오류가 계속되면 담당자에게 문의해주세요.`,
+        text: `❌ 견적 처리 중 오류가 발생했습니다.\n\n다시 시도해주세요.`,
         quickReplies: [
           { label: '다시 시도', action: 'message', messageText: '네' },
           { label: '처음부터', action: 'message', messageText: '처음부터' }
         ]
       };
     }
-  } else {
-    return handleModificationRequest(message, session);
   }
+  
+  return {
+    text: '요청을 진행하시겠습니까?',
+    quickReplies: [
+      { label: '네, 요청합니다', action: 'message', messageText: '네' },
+      { label: '취소', action: 'message', messageText: '취소' }
+    ]
+  };
 }
 
 // 기본 처리
 function handleDefault(session: UserSession) {
   session.step = 'start';
   return {
-    text: '안녕하세요! LED 렌탈 자동화 시스템, 오비스입니다.\n\n견적을 시작하시겠습니까?',
+    text: '안녕하세요! LED 전문 기업 오비스입니다.\n\n어떤 서비스를 도와드릴까요?',
     quickReplies: [
-      { label: '견적 시작', action: 'message', messageText: '네' },
-      { label: '도움말', action: 'message', messageText: '도움말' }
+      { label: '🏗️ LED 설치', action: 'message', messageText: '설치' },
+      { label: '📦 LED 렌탈', action: 'message', messageText: '렌탈' },
+      { label: '👥 멤버쉽 서비스', action: 'message', messageText: '멤버쉽' }
     ]
   };
 }
 
-// 날짜 계산 함수
-function calculateScheduleDates(startDate: string, endDate: string) {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+// 사용자 메시지 처리 함수
+async function processUserMessage(message: string, session: UserSession) {
+  // 수정 요청 처리
+  if (isModificationRequest(message)) {
+    return handleModificationRequest(message, session);
+  }
   
-  // 설치 일정: 시작일 하루 전
-  const installDate = new Date(start);
-  installDate.setDate(installDate.getDate() - 1);
+  // 초기화 요청 처리
+  if (isResetRequest(message)) {
+    return handleResetRequest(session);
+  }
   
-  // 리허설 일정: 시작일 하루 전 (설치일과 같음)
-  const rehearsalDate = new Date(installDate);
-  
-  // 철거 일정: 마지막 날
-  const dismantleDate = new Date(end);
-  
-  return {
-    eventSchedule: `${startDate} ~ ${endDate}`,
-    installSchedule: installDate.toISOString().split('T')[0],
-    rehearsalSchedule: rehearsalDate.toISOString().split('T')[0],
-    dismantleSchedule: dismantleDate.toISOString().split('T')[0]
-  };
+  switch (session.step) {
+    // 공통 단계
+    case 'start':
+      return handleStart(session);
+    case 'select_service':
+      return handleSelectService(message, session);
+    
+    // 설치 서비스 단계
+    case 'install_environment':
+      return handleInstallEnvironment(message, session);
+    case 'install_region':
+      return handleInstallRegion(message, session);
+    case 'install_timing':
+      return handleInstallTiming(message, session);
+    
+    // 렌탈 서비스 단계
+    case 'rental_indoor_outdoor':
+      return handleRentalIndoorOutdoor(message, session);
+    case 'rental_structure_type':
+      return handleRentalStructureType(message, session);
+    case 'rental_led_count':
+      return handleRentalLEDCount(message, session);
+    case 'rental_led_specs':
+      return handleRentalLEDSpecs(message, session);
+    case 'rental_stage_height':
+      return handleRentalStageHeight(message, session);
+    case 'rental_operator_needs':
+      return handleRentalOperatorNeeds(message, session);
+    case 'rental_operator_days':
+      return handleRentalOperatorDays(message, session);
+    case 'rental_prompter':
+      return handleRentalPrompter(message, session);
+    case 'rental_relay':
+      return handleRentalRelay(message, session);
+    case 'rental_period':
+      return handleRentalPeriod(message, session);
+    
+    // 멤버쉽 서비스 단계
+    case 'membership_code':
+      return handleMembershipCode(message, session);
+    case 'membership_event_info':
+      return handleMembershipEventInfo(message, session);
+    case 'membership_led_count':
+      return handleMembershipLEDCount(message, session);
+    case 'membership_led_specs':
+      return handleMembershipLEDSpecs(message, session);
+    case 'membership_stage_height':
+      return handleMembershipStageHeight(message, session);
+    case 'membership_operator_needs':
+      return handleMembershipOperatorNeeds(message, session);
+    case 'membership_operator_days':
+      return handleMembershipOperatorDays(message, session);
+    case 'membership_prompter':
+      return handleMembershipPrompter(message, session);
+    case 'membership_relay':
+      return handleMembershipRelay(message, session);
+    case 'membership_period':
+      return handleMembershipPeriod(message, session);
+    
+    // 공통 마지막 단계
+    case 'get_additional_requests':
+      return handleAdditionalRequests(message, session);
+    case 'get_contact_name':
+      return handleContactName(message, session);
+    case 'get_contact_title':
+      return handleContactTitle(message, session);
+    case 'get_contact_phone':
+      return handleContactPhone(message, session);
+    case 'final_confirmation':
+      return handleFinalConfirmation(message, session);
+      
+    default:
+      return handleDefault(session);
+  }
 }
 
-// 관리자 엔드포인트들
-app.get('/admin/polling-status', (req, res) => {
-  try {
-    const service = getPollingService();
-    const status = service.getPollingStatus();
-    
-    res.json({
-      success: true,
-      data: {
-        isPolling: status.isPolling,
-        trackedPages: status.trackedPages,
-        message: status.isPolling ? '폴링이 실행 중입니다.' : '폴링이 중지되었습니다.',
-        lastUpdate: new Date().toISOString()
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
+// ===== API 엔드포인트 =====
+
+// 테스트 엔드포인트
+app.get('/test', (req, res) => {
+  const service = getPollingService();
+  const pollingStatus = service.getPollingStatus();
+  
+  res.json({
+    message: "서버가 정상 작동 중입니다!",
+    timestamp: new Date().toISOString(),
+    polling: {
+      isActive: pollingStatus.isPolling,
+      trackedPages: pollingStatus.trackedPages
+    }
+  });
 });
 
-app.post('/admin/start-polling', async (req, res) => {
+// 카카오 스킬 서버 엔드포인트
+app.post('/skill', async (req, res) => {
   try {
-    await startPollingService();
-    res.json({
-      success: true,
-      message: 'Notion 폴링 서비스가 시작되었습니다.'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
-});
-
-app.post('/admin/manual-trigger', async (req, res) => {
-  try {
-    const { pageId, status } = req.body;
+    const { userRequest } = req.body;
+    const userId = userRequest?.user?.id || 'default_user';
+    const userMessage = userRequest?.utterance || '안녕하세요';
     
-    if (!pageId || !status) {
-      return res.status(400).json({
-        success: false,
-        error: 'pageId와 status가 필요합니다.'
-      });
+    // 사용자 세션 초기화
+    if (!userSessions[userId]) {
+      userSessions[userId] = {
+        step: 'start',
+        data: { ledSpecs: [] },
+        ledCount: 0,
+        currentLED: 1
+      };
     }
     
-    const service = getPollingService();
-    await service.manualTrigger(pageId, status);
+    const session = userSessions[userId];
+    session.lastMessage = userMessage;
     
-    res.json({
-      success: true,
-      message: `${status} 자동화가 수동으로 실행되었습니다.`
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
-});
-
-// 특정 페이지의 상세 정보 확인
-app.get('/admin/page-details/:pageId', async (req, res) => {
-  try {
-    const { pageId } = req.params;
+    const response = await processUserMessage(userMessage, session);
     
-    const page = await notion.pages.retrieve({ page_id: pageId });
-    const properties = (page as any).properties;
-    
-    res.json({
-      success: true,
-      data: {
-        pageId,
-        eventName: properties['행사명']?.title?.[0]?.text?.content || 'Unknown',
-        status: properties['행사 상태']?.status?.name,
-        quoteFiles: properties['견적서'],
-        requestFiles: properties['요청서'],
-        lastEditedTime: (page as any).last_edited_time,
-        lastEditedBy: (page as any).last_edited_by,
-        // 파일 속성 상세 정보
-        quoteFileDetails: {
-          type: properties['견적서']?.type,
-          files: properties['견적서']?.files || [],
-          fileCount: (properties['견적서']?.files || []).length
-        },
-        requestFileDetails: {
-          type: properties['요청서']?.type,
-          files: properties['요청서']?.files || [],
-          fileCount: (properties['요청서']?.files || []).length
-        }
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
-});
-
-// 수동으로 파일 체크 트리거
-app.post('/admin/manual-file-check/:pageId', async (req, res) => {
-  try {
-    const { pageId } = req.params;
-    const service = getPollingService();
-    
-    // 페이지 정보 가져오기
-    const page = await notion.pages.retrieve({ page_id: pageId });
-    const properties = (page as any).properties;
-    const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
-    
-    // 파일 체크 수동 실행 (private 메서드이므로 직접 실행)
-    const hasQuoteFile = properties['견적서']?.files?.length > 0;
-    const hasRequestFile = properties['요청서']?.files?.length > 0;
-    
-    console.log(`🔍 수동 파일 체크 - ${eventName} (${pageId})`);
-    console.log(`   견적서: ${hasQuoteFile ? '✅' : '❌'}`);
-    console.log(`   요청서: ${hasRequestFile ? '✅' : '❌'}`);
-    
-    // 두 파일이 모두 있으면 승인으로 변경
-    if (hasQuoteFile && hasRequestFile) {
-      console.log('✅ 두 파일 모두 업로드됨. 견적 승인으로 변경합니다.');
-      
-      await notion.pages.update({
-        page_id: pageId,
-        properties: {
-          '행사 상태': {
-            status: { name: '견적 승인' }
+    // 카카오 스킬 응답 형식
+    const result: any = {
+      version: "2.0",
+      template: {
+        outputs: [
+          {
+            simpleText: {
+              text: response.text
+            }
           }
-        }
-      });
-      
-      // 자동화 실행
-      const automation = new NotionStatusAutomation();
-      await automation.onStatusQuoteApproved(pageId);
-      
-      res.json({
-        success: true,
-        message: '파일이 모두 확인되어 견적 승인으로 변경되었습니다.',
-        data: {
-          hasQuoteFile,
-          hasRequestFile,
-          statusChanged: true
-        }
-      });
-    } else {
-      res.json({
-        success: true,
-        message: '파일이 아직 모두 업로드되지 않았습니다.',
-        data: {
-          hasQuoteFile,
-          hasRequestFile,
-          statusChanged: false,
-          missingFiles: [
-            !hasQuoteFile && '견적서',
-            !hasRequestFile && '요청서'
-          ].filter(Boolean)
-        }
-      });
+        ]
+      }
+    };
+    
+    if (response.quickReplies && response.quickReplies.length > 0) {
+      result.template.quickReplies = response.quickReplies;
     }
+    
+    res.json(result);
+    
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
+    console.error('스킬 처리 오류:', error);
+    res.json({
+      version: "2.0",
+      template: {
+        outputs: [
+          {
+            simpleText: {
+              text: "시스템 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+            }
+          }
+        ]
+      }
     });
   }
-});
-
-// 파일 상태 수동 확인 엔드포인트
-app.get('/admin/check-files/:pageId', async (req, res) => {
-  try {
-    const { pageId } = req.params;
-    
-    const page = await notion.pages.retrieve({ page_id: pageId });
-    const properties = (page as any).properties;
-    const fileInfo = {
-     pageId,
-     eventName: properties['행사명']?.title?.[0]?.text?.content || 'Unknown',
-     status: properties['행사 상태']?.status?.name,
-     quoteFiles: properties['견적서']?.files || [],
-     requestFiles: properties['요청서']?.files || [],
-     hasQuoteFile: (properties['견적서']?.files || []).length > 0,
-     hasRequestFile: (properties['요청서']?.files || []).length > 0
-   };
-   
-   res.json({
-     success: true,
-     data: fileInfo
-   });
- } catch (error) {
-   res.status(500).json({
-     success: false,
-     error: error instanceof Error ? error.message : String(error)
-   });
- }
-});
-
-// 수동으로 파일 체크 후 승인 처리
-app.post('/admin/force-approve/:pageId', async (req, res) => {
- try {
-   const { pageId } = req.params;
-   const service = getPollingService();
-   
-   // 강제로 견적 승인으로 변경
-   await notion.pages.update({
-     page_id: pageId,
-     properties: {
-       '행사 상태': {
-         status: { name: '견적 승인' }
-       }
-     }
-   });
-   
-   // 자동화 실행
-   const automation = new NotionStatusAutomation();
-   await automation.onStatusQuoteApproved(pageId);
-   
-   res.json({
-     success: true,
-     message: '견적 승인으로 변경되었습니다.'
-   });
- } catch (error) {
-   res.status(500).json({
-     success: false,
-     error: error instanceof Error ? error.message : String(error)
-   });
- }
-});
-
-// 전체 파일 상태 확인 (견적 검토 상태인 모든 페이지)
-app.get('/admin/check-all-files', async (req, res) => {
- try {
-   const databaseId = process.env.NOTION_DATABASE_ID!;
-   
-   // 견적 검토 상태인 페이지들 조회
-   const response = await notion.databases.query({
-     database_id: databaseId,
-     filter: {
-       property: '행사 상태',
-       status: {
-         equals: '견적 검토'
-       }
-     }
-   });
-   
-   const fileStatuses = [];
-   
-   for (const page of response.results) {
-     if (page.object !== 'page') continue;
-     
-     const properties = (page as any).properties;
-     const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
-     const hasQuoteFile = (properties['견적서']?.files || []).length > 0;
-     const hasRequestFile = (properties['요청서']?.files || []).length > 0;
-     
-     fileStatuses.push({
-       pageId: page.id,
-       eventName,
-       hasQuoteFile,
-       hasRequestFile,
-       bothFilesUploaded: hasQuoteFile && hasRequestFile,
-       lastEditedTime: (page as any).last_edited_time
-     });
-   }
-   
-   // 파일이 모두 업로드된 페이지 찾기
-   const readyForApproval = fileStatuses.filter(p => p.bothFilesUploaded);
-   
-   res.json({
-     success: true,
-     data: {
-       total: fileStatuses.length,
-       readyForApproval: readyForApproval.length,
-       pages: fileStatuses,
-       summary: {
-         withBothFiles: readyForApproval.length,
-         withQuoteOnly: fileStatuses.filter(p => p.hasQuoteFile && !p.hasRequestFile).length,
-         withRequestOnly: fileStatuses.filter(p => !p.hasQuoteFile && p.hasRequestFile).length,
-         withNoFiles: fileStatuses.filter(p => !p.hasQuoteFile && !p.hasRequestFile).length
-       }
-     }
-   });
- } catch (error) {
-   res.status(500).json({
-     success: false,
-     error: error instanceof Error ? error.message : String(error)
-   });
- }
-});
-
-// 일괄 승인 처리 (파일이 모두 업로드된 페이지들)
-app.post('/admin/batch-approve', async (req, res) => {
- try {
-   const databaseId = process.env.NOTION_DATABASE_ID!;
-   
-   // 견적 검토 상태인 페이지들 조회
-   const response = await notion.databases.query({
-     database_id: databaseId,
-     filter: {
-       property: '행사 상태',
-       status: {
-         equals: '견적 검토'
-       }
-     }
-   });
-   
-   const results = [];
-   const automation = new NotionStatusAutomation();
-   
-   for (const page of response.results) {
-     if (page.object !== 'page') continue;
-     
-     const properties = (page as any).properties;
-     const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
-     const hasQuoteFile = (properties['견적서']?.files || []).length > 0;
-     const hasRequestFile = (properties['요청서']?.files || []).length > 0;
-     
-     if (hasQuoteFile && hasRequestFile) {
-       try {
-         // 견적 승인으로 변경
-         await notion.pages.update({
-           page_id: page.id,
-           properties: {
-             '행사 상태': {
-               status: { name: '견적 승인' }
-             }
-           }
-         });
-         
-         // 자동화 실행
-         await automation.onStatusQuoteApproved(page.id);
-         
-         results.push({
-           pageId: page.id,
-           eventName,
-           success: true,
-           message: '승인 완료'
-         });
-         
-         console.log(`✅ ${eventName} - 견적 승인 처리 완료`);
-         
-       } catch (error) {
-         results.push({
-           pageId: page.id,
-           eventName,
-           success: false,
-           message: error instanceof Error ? error.message : '처리 실패'
-         });
-         
-         console.error(`❌ ${eventName} - 처리 실패:`, error);
-       }
-     } else {
-       results.push({
-         pageId: page.id,
-         eventName,
-         success: false,
-         message: `파일 누락 (견적서: ${hasQuoteFile ? '✅' : '❌'}, 요청서: ${hasRequestFile ? '✅' : '❌'})`
-       });
-     }
-   }
-   
-   const successCount = results.filter(r => r.success).length;
-   
-   res.json({
-     success: true,
-     message: `총 ${results.length}개 중 ${successCount}개 승인 완료`,
-     results
-   });
-   
- } catch (error) {
-   res.status(500).json({
-     success: false,
-     error: error instanceof Error ? error.message : String(error)
-   });
- }
-});
-
-// 폴링 재시작 엔드포인트
-app.post('/admin/restart-polling', async (req, res) => {
- try {
-   const service = getPollingService();
-   
-   // 기존 폴링 중지
-   service.stopPolling();
-   
-   // 잠시 대기
-   await new Promise(resolve => setTimeout(resolve, 1000));
-   
-   // 폴링 재시작
-   await service.startPolling();
-   
-   res.json({
-     success: true,
-     message: '폴링 서비스가 재시작되었습니다.',
-     status: service.getPollingStatus()
-   });
- } catch (error) {
-   res.status(500).json({
-     success: false,
-     error: error instanceof Error ? error.message : String(error)
-   });
- }
-});
-
-// 서버 종료 시 폴링 정리
-process.on('SIGINT', () => {
- console.log('🛑 서버 종료 중...');
- const service = getPollingService();
- service.stopPolling();
- process.exit(0);
-});
-
-process.on('SIGTERM', () => {
- console.log('🛑 서버 종료 중...');
- const service = getPollingService();
- service.stopPolling();
- process.exit(0);
-});
-
-// 서버 시작 (중복 제거)
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
- console.log(`🚀 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
- 
- // 폴링 서비스 자동 시작
- try {
-   console.log('🔄 Notion 상태 변경 모니터링 시작...');
-   await startPollingService();
-   console.log('✅ 폴링 서비스 시작 완료');
- } catch (error) {
-   console.error('❌ 폴링 서비스 시작 실패:', error);
-   console.log('⚠️ 나중에 /admin/start-polling 엔드포인트로 수동 시작 가능합니다.');
- }
 });

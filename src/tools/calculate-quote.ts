@@ -3,6 +3,7 @@ import { TransportInfo } from '../types/index.js';
 // 가격 상수
 const PRICES = {
   LED_MODULE: 34000,          // LED 모듈 단가 (500개 이상 시)
+  LED_MODULE_RENTAL: 50000,   // 렌탈 LED 모듈 단가
   STRUCTURE_UNDER_4M: 20000,  // 4m 미만 구조물 (원/㎡)
   STRUCTURE_OVER_4M: 25000,   // 4m 이상 구조물 (원/㎡)
   CONTROLLER_UNDER_200: 200000, // 200인치 미만 컨트롤러
@@ -15,6 +16,16 @@ const PRICES = {
 
 // LED 입력 타입
 interface LEDSpecInput {
+  size: string;
+  stageHeight?: number;
+  needOperator: boolean;
+  operatorDays: number;
+  prompterConnection?: boolean;
+  relayConnection?: boolean;
+}
+
+// 렌탈 LED 입력 타입
+interface RentalLEDSpecInput {
   size: string;
   stageHeight?: number;
   needOperator: boolean;
@@ -72,6 +83,20 @@ function calculateTransportCost(totalModules: number): number {
   return 700000;
 }
 
+// 렌탈 운반비 계산 (렌탈 서비스용)
+function calculateRentalTransportCost(totalModules: number): number {
+  if (totalModules <= 60) return 300000;
+  if (totalModules <= 100) return 400000;
+  return 500000;
+}
+
+// 렌탈 운반비 구간 구분
+function getRentalTransportRange(totalModules: number): string {
+  if (totalModules <= 60) return "60개 이하";
+  if (totalModules <= 100) return "61-100개";
+  return "101개 이상";
+}
+
 // 배차 정보 계산
 function calculateTransport(moduleCount: number): TransportInfo {
   const plateBoxCount = Math.ceil(moduleCount / 8);
@@ -92,7 +117,20 @@ function calculateTransport(moduleCount: number): TransportInfo {
   }
 }
 
-// 다중 LED 견적 계산 함수
+// 렌탈 기간 할증률 계산
+function calculateRentalSurchargeRate(days: number): { rate: number; description: string } {
+  if (days <= 5) {
+    return { rate: 0, description: "5일 이하 (할증 없음)" };
+  } else if (days < 15) {
+    return { rate: 0.2, description: "5일 초과~15일 미만 (20%)" };
+  } else if (days < 30) {
+    return { rate: 0.3, description: "15일 이상~30일 미만 (30%)" };
+  } else {
+    return { rate: 0.3, description: "30일 이상 (30%)" };
+  }
+}
+
+// 다중 LED 견적 계산 함수 (멤버쉽용)
 export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
   let totalModules = 0;
   let totalStructureArea = 0;
@@ -208,7 +246,98 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
   return quote;
 }
 
-// 다중 LED 견적 계산 도구
+// 렌탈 LED 견적 계산 함수
+export function calculateRentalLEDQuote(ledSpecs: RentalLEDSpecInput[], rentalDays: number) {
+  let totalModules = 0;
+  const ledDetails: any[] = [];
+
+  // 각 LED 개소별 계산
+  ledSpecs.forEach((specs, index) => {
+    if (!specs.size) return;
+
+    const [width, height] = specs.size.split('x').map(Number);
+    
+    // LED 모듈 수량
+    const moduleCount = (width / 500) * (height / 500);
+    totalModules += moduleCount;
+    
+    ledDetails.push({
+      index: index + 1,
+      size: specs.size,
+      moduleCount: moduleCount,
+      stageHeight: specs.stageHeight || 0,
+      needOperator: specs.needOperator,
+      operatorDays: specs.operatorDays,
+      prompterConnection: specs.prompterConnection || false,
+      relayConnection: specs.relayConnection || false
+    });
+  });
+
+  // 기본 비용 계산
+  const moduleCost = totalModules * PRICES.LED_MODULE_RENTAL;
+  const transportCost = calculateRentalTransportCost(totalModules);
+  
+  // 기간 할증 계산
+  const surchargeInfo = calculateRentalSurchargeRate(rentalDays);
+  const surchargeCost = Math.round((moduleCost + transportCost) * surchargeInfo.rate);
+
+  const quote = {
+    ledModules: {
+      count: totalModules,
+      unitPrice: PRICES.LED_MODULE_RENTAL,
+      price: moduleCost
+    },
+    transport: {
+      price: transportCost,
+      range: getRentalTransportRange(totalModules)
+    },
+    periodSurcharge: {
+      days: rentalDays,
+      rate: surchargeInfo.rate,
+      description: surchargeInfo.description,
+      baseAmount: moduleCost + transportCost,
+      surchargeAmount: surchargeCost
+    },
+    
+    // 렌탈에서 제외되는 항목들 (0원 처리)
+    structure: {
+      totalPrice: 0
+    },
+    controller: {
+      totalPrice: 0
+    },
+    power: {
+      totalPrice: 0
+    },
+    installation: {
+      totalPrice: 0
+    },
+    operation: {
+      totalPrice: 0
+    },
+    
+    // LED 상세 정보
+    ledDetails: ledDetails,
+    
+    // 추가 정보
+    totalModuleCount: totalModules,
+    rentalPeriod: rentalDays,
+    
+    subtotal: 0,
+    vat: 0,
+    total: 0
+  };
+
+  // 소계 계산 (모듈비 + 운송비 + 기간할증)
+  quote.subtotal = quote.ledModules.price + quote.transport.price + quote.periodSurcharge.surchargeAmount;
+  
+  quote.vat = Math.round(quote.subtotal * PRICES.VAT_RATE);
+  quote.total = quote.subtotal + quote.vat;
+
+  return quote;
+}
+
+// 다중 LED 견적 계산 도구 (멤버쉽용)
 export const calculateMultiQuoteTool = {
   definition: {
     name: 'calculate_multi_quote',
@@ -284,6 +413,95 @@ export const calculateMultiQuoteTool = {
         content: [{
           type: 'text',
           text: `다중 견적 계산 실패: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        isError: true
+      };
+    }
+  }
+};
+
+// 렌탈 견적 계산 도구
+export const calculateRentalQuoteTool = {
+  definition: {
+    name: 'calculate_rental_quote',
+    description: '렌탈 LED의 견적을 자동으로 계산합니다',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ledSpecs: {
+          type: 'array',
+          description: 'LED 개소별 사양 배열',
+          items: {
+            type: 'object',
+            properties: {
+              size: { type: 'string', description: 'LED 크기 (예: "4000x2500")' },
+              stageHeight: { type: 'number', description: '무대 높이 (mm)' },
+              needOperator: { type: 'boolean', description: '오퍼레이터 필요 여부' },
+              operatorDays: { type: 'number', description: '오퍼레이터 일수' },
+              prompterConnection: { type: 'boolean', description: '프롬프터 연결 여부' },
+              relayConnection: { type: 'boolean', description: '중계카메라 연결 여부' }
+            },
+            required: ['size', 'needOperator', 'operatorDays']
+          }
+        },
+        rentalDays: {
+          type: 'number',
+          description: '렌탈 기간 (일수)'
+        },
+        customerName: {
+          type: 'string',
+          description: '고객사명'
+        }
+      },
+      required: ['ledSpecs', 'rentalDays', 'customerName']
+    }
+  },
+
+  handler: async (args: any) => {
+    try {
+      const { ledSpecs, rentalDays, customerName } = args;
+
+      // 각 LED 크기 검증
+      for (const specs of ledSpecs) {
+        if (!specs.size || typeof specs.size !== 'string') {
+          throw new Error('LED 크기를 입력해주세요.');
+        }
+        
+        const [width, height] = specs.size.split('x').map(Number);
+        if (width % 500 !== 0 || height % 500 !== 0) {
+          throw new Error(`LED 크기는 500mm 단위로 입력해주세요: ${specs.size}`);
+        }
+      }
+
+      // 렌탈 견적 계산
+      const quote = calculateRentalLEDQuote(ledSpecs, rentalDays);
+
+      // 배차 정보 계산
+      const transport = calculateTransport(quote.ledModules.count);
+
+      // LED 개소별 요약 정보
+      const ledSummary = ledSpecs.map((specs: RentalLEDSpecInput, index: number) => {
+        const [width, height] = specs.size.split('x').map(Number);
+        const moduleCount = (width / 500) * (height / 500);
+        return `LED${index + 1}: ${specs.size} (${moduleCount}개)`;
+      }).join(', ');
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            quote,
+            transport,
+            ledSummary,
+            summary: `렌탈 견적 완료: ${customerName} - ${ledSpecs.length}개소 LED, ${rentalDays}일간, 총 ${quote.total.toLocaleString()}원 (VAT 포함)`
+          }, null, 2)
+        }]
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: 'text',
+          text: `렌탈 견적 계산 실패: ${error instanceof Error ? error.message : String(error)}`
         }],
         isError: true
       };
