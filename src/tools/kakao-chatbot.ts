@@ -1159,7 +1159,7 @@ function handleAdditionalRequests(message: string, session: UserSession) {
   
   // 설치 서비스는 담당자 정보를 기본값으로 설정
   if (session.serviceType === '설치') {
-    session.data.customerName = '고객사';
+    // session.data.customerName = '고객사';  // ← 이 줄을 삭제하거나 주석처리
     session.step = 'get_contact_name';
     
     return {
@@ -1179,7 +1179,7 @@ function handleAdditionalRequests(message: string, session: UserSession) {
 // 담당자 이름 처리
 function handleContactName(message: string, session: UserSession) {
   // 설치 서비스에서 고객사명 입력 처리
-  if (session.serviceType === '설치' && !session.data.contactName) {
+  if (session.serviceType === '설치' && !session.data.customerName) {  // ← 여기를 customerName으로 변경
     if (!message || message.trim().length === 0) {
       return {
         text: '고객사명을 입력해주세요.',
@@ -1195,6 +1195,7 @@ function handleContactName(message: string, session: UserSession) {
     };
   }
   
+  // 담당자 이름 처리
   if (!message || message.trim().length === 0) {
     return {
       text: '담당자 성함을 입력해주세요.',
