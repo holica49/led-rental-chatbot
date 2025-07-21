@@ -1,7 +1,10 @@
 // tools/notionUserFinder.js
 // Notion 워크스페이스의 사용자 ID를 찾는 도구
 
-const { Client } = require('@notionhq/client');
+import { Client } from '@notionhq/client';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 class NotionUserFinder {
   constructor() {
@@ -166,8 +169,6 @@ async function runUserFinder() {
 }
 
 // 직접 실행 시
-if (require.main === module) {
-  runUserFinder();
-}
+runUserFinder();
 
-module.exports = NotionUserFinder;
+export default NotionUserFinder;
