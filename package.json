@@ -1,39 +1,56 @@
 {
   "name": "led-rental-mcp",
-  "version": "1.0.0",
-  "main": "index.js",
-  "directories": {
-    "test": "test"
-  },
+  "version": "0.1.0",
+  "description": "A Model Context Protocol server for LED rental automation",
   "type": "module",
-  "scripts": {
-    "dev": "node --loader ts-node/esm src/index.ts",
-    "build": "echo 'Build skipped for Railway'",
-    "start": "node dist/index.js",
-    "chatbot": "node --loader ts-node/esm src/tools/kakao-chatbot.ts",
-    "dev-chatbot": "nodemon --exec \"node --loader ts-node/esm src/tools/kakao-chatbot.ts\"",
-    "railway-start": "node --loader ts-node/esm src/tools/kakao-chatbot.ts"
+  "bin": {
+    "led-rental-mcp": "./dist/index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "mcp.json"
+  ],
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "test": "tsx src/test.ts",
+    "prepare": "npm run build",
+    "railway-start": "tsx src/index.ts",
+    "railway-build": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "ai-assistant",
+    "led-rental",
+    "automation"
+  ],
+  "author": "허지성",
+  "license": "오리온디스플레이",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.15.1",
-    "@notionhq/client": "^4.0.1",
-    "axios": "^1.10.0",
-    "body-parser": "^2.2.0",
-    "dotenv": "^17.2.0",
-    "exceljs": "^4.4.0",
-    "express": "^5.1.0",
-    "pdf-lib": "^1.17.1",
-    "sqlite3": "^5.1.7"
+    "@modelcontextprotocol/sdk": "^0.6.0",
+    "@notionhq/client": "^2.2.14",
+    "body-parser": "^1.20.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.21.1",
+    "node-cron": "^3.0.3",
+    "prettier": "^3.1.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@types/express": "^5.0.3",
-    "@types/node": "^24.0.14",
-    "nodemon": "^3.1.10",
-    "tsx": "^4.20.3",
-    "typescript": "^5.8.3"
+    "@types/body-parser": "^1.19.5",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.16.11",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.7.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }
