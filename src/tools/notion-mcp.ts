@@ -40,9 +40,9 @@ interface NotionData {
   contactPhone: string;
   venue: string;
   eventSchedule: string;
-  installSchedule: string;
-  rehearsalSchedule: string;
-  dismantleSchedule: string;
+  installSchedule?: string;
+  rehearsalSchedule?: string;
+  dismantleSchedule?: string;
   
   // LED 정보
   led1?: LEDSpec;
@@ -53,24 +53,24 @@ interface NotionData {
   
   // 견적 정보
   totalQuoteAmount: number;
-  totalModuleCount: number;
-  ledModuleCost: number;
-  structureCost: number;
-  controllerCost: number;
-  powerCost: number;
-  installationCost: number;
-  operatorCost: number;
-  transportCost: number;
+  totalModuleCount?: number;
+  ledModuleCost?: number;
+  structureCost?: number;
+  controllerCost?: number;
+  powerCost?: number;
+  installationCost?: number;
+  operatorCost?: number;
+  transportCost?: number;
   
   // 상세 조건 정보
-  maxStageHeight: number;
-  installationWorkers: number;
-  installationWorkerRange: string;
-  controllerCount: number;
-  powerRequiredCount: number;
-  transportRange: string;
-  structureUnitPrice: number;
-  structureUnitPriceDescription: string;
+  maxStageHeight?: number;
+  installationWorkers?: number;
+  installationWorkerRange?: string;
+  controllerCount?: number;
+  powerRequiredCount?: number;
+  transportRange?: string;
+  structureUnitPrice?: number;
+  structureUnitPriceDescription?: string;
   
   // 추가 정보
   additionalRequests?: string;
@@ -161,7 +161,7 @@ function calculateTotalModuleCount(data: NotionData): number {
 
 // LED 속성 생성 함수
 function createLEDProperties(ledData: LEDSpec | undefined, prefix: string) {
-  if (!ledData) return {};
+  if (!ledData || !ledData.size) return {};
   
   return {
     [`${prefix} 크기`]: {
@@ -171,19 +171,19 @@ function createLEDProperties(ledData: LEDSpec | undefined, prefix: string) {
       number: ledData.stageHeight || null
     },
     [`${prefix} 모듈 수량`]: {
-      number: ledData.size ? calculateModuleCount(ledData.size) : null
+      number: calculateModuleCount(ledData.size)
     },
     [`${prefix} 대각선 인치`]: {
-      rich_text: [{ text: { content: ledData.size ? `${calculateInches(ledData.size)}인치` : "" } }]
+      rich_text: [{ text: { content: `${calculateInches(ledData.size)}인치` } }]
     },
     [`${prefix} 해상도`]: {
-      rich_text: [{ text: { content: ledData.size ? calculateLEDResolution(ledData.size) : "" } }]
+      rich_text: [{ text: { content: calculateLEDResolution(ledData.size) } }]
     },
     [`${prefix} 소비전력`]: {
-      rich_text: [{ text: { content: ledData.size ? calculateLEDPowerConsumption(ledData.size) : "" } }]
+      rich_text: [{ text: { content: calculateLEDPowerConsumption(ledData.size) } }]
     },
     [`${prefix} 전기설치 방식`]: {
-      rich_text: [{ text: { content: ledData.size ? calculateElectricalInstallation(ledData.size) : "" } }]
+      rich_text: [{ text: { content: calculateElectricalInstallation(ledData.size) } }]
     },
     [`${prefix} 프롬프터 연결`]: {
       checkbox: ledData.prompterConnection || false
@@ -220,7 +220,7 @@ export const notionMCPTool = {
           title: [{ text: { content: data.eventName || "" } }]
         },
         "고객사": {
-          select: { name: data.customerName || "메쎄이상" }
+          select: { name: data.customerName || "고객사" }
         },
         "고객담당자": {
           rich_text: [{ text: { content: data.contactName && data.contactTitle ? `${data.contactName} ${data.contactTitle}` : (data.contactName || "") } }]
@@ -239,21 +239,7 @@ export const notionMCPTool = {
         "행사 일정": {
           rich_text: [{ text: { content: data.eventSchedule || "" } }]
         },
-        "설치 일정": {
-          date: data.installSchedule ? { start: data.installSchedule } : null
-        },
-        "리허설 일정": {
-          date: data.rehearsalSchedule ? { start: data.rehearsalSchedule } : null
-        },
-        "철거 일정": {
-          date: data.dismantleSchedule ? { start: data.dismantleSchedule } : null
-        },
         
-        // 총 LED 모듈 수량
-        "총 LED 모듈 수량": {
-          number: calculateTotalModuleCount(data)
-        },
-
         // 견적 정보
         "견적 금액": {
           number: data.totalQuoteAmount || null
@@ -263,34 +249,63 @@ export const notionMCPTool = {
         },
         "요청서": {
           files: []  // 파일은 나중에 수동으로 업로드
-        },
-        "LED 모듈 비용": {
-          number: data.ledModuleCost || null
-        },
-        "지지구조물 비용": {
-          number: data.structureCost || null
-        },
-        "컨트롤러 및 스위치 비용": {
-          number: data.controllerCost || null
-        },
-        "파워 비용": {
-          number: data.powerCost || null
-        },
-        "설치철거인력 비용": {
-          number: data.installationCost || null
-        },
-        "오퍼레이터 비용": {
-          number: data.operatorCost || null
-        },
-        "운반 비용": {
-          number: data.transportCost || null
-        },
-        
-        // 추가 정보
-        "문의요청 사항": {
-          rich_text: [{ text: { content: data.additionalRequests || "" } }]
         }
       };
+      
+      // 설치 일정 정보 (설치 서비스가 아닌 경우만)
+      if (data.serviceType !== '설치') {
+        if (data.installSchedule) {
+          properties["설치 일정"] = {
+            date: { start: data.installSchedule }
+          };
+        }
+        if (data.rehearsalSchedule) {
+          properties["리허설 일정"] = {
+            date: { start: data.rehearsalSchedule }
+          };
+        }
+        if (data.dismantleSchedule) {
+          properties["철거 일정"] = {
+            date: { start: data.dismantleSchedule }
+          };
+        }
+      }
+      
+      // 견적 상세 정보 (설치 서비스가 아닌 경우)
+      if (data.serviceType !== '설치') {
+        properties["총 LED 모듈 수량"] = {
+          number: calculateTotalModuleCount(data) || data.totalModuleCount || null
+        };
+        
+        if (data.ledModuleCost !== undefined) {
+          properties["LED 모듈 비용"] = { number: data.ledModuleCost };
+        }
+        if (data.structureCost !== undefined) {
+          properties["지지구조물 비용"] = { number: data.structureCost };
+        }
+        if (data.controllerCost !== undefined) {
+          properties["컨트롤러 및 스위치 비용"] = { number: data.controllerCost };
+        }
+        if (data.powerCost !== undefined) {
+          properties["파워 비용"] = { number: data.powerCost };
+        }
+        if (data.installationCost !== undefined) {
+          properties["설치철거인력 비용"] = { number: data.installationCost };
+        }
+        if (data.operatorCost !== undefined) {
+          properties["오퍼레이터 비용"] = { number: data.operatorCost };
+        }
+        if (data.transportCost !== undefined) {
+          properties["운반 비용"] = { number: data.transportCost };
+        }
+      }
+      
+      // 추가 정보
+      if (data.additionalRequests) {
+        properties["문의요청 사항"] = {
+          rich_text: [{ text: { content: data.additionalRequests } }]
+        };
+      }
       
       // 서비스별 추가 속성
       if (data.serviceType === '멤버쉽' && data.memberCode) {
@@ -328,7 +343,7 @@ export const notionMCPTool = {
             number: data.rentalPeriod
           };
         }
-        if (data.periodSurchargeAmount) {
+        if (data.periodSurchargeAmount !== undefined) {
           properties["기간 할증 비용"] = {
             number: data.periodSurchargeAmount
           };
@@ -345,19 +360,21 @@ export const notionMCPTool = {
         };
       }
       
-      // LED 개소별 속성 추가
-      const ledProperties = [
-        createLEDProperties(data.led1, 'LED1'),
-        createLEDProperties(data.led2, 'LED2'),
-        createLEDProperties(data.led3, 'LED3'),
-        createLEDProperties(data.led4, 'LED4'),
-        createLEDProperties(data.led5, 'LED5')
-      ];
-      
-      // 모든 LED 속성 병합
-      ledProperties.forEach(ledProp => {
-        Object.assign(properties, ledProp);
-      });
+      // LED 개소별 속성 추가 (설치 서비스가 아닌 경우)
+      if (data.serviceType !== '설치') {
+        const ledProperties = [
+          createLEDProperties(data.led1, 'LED1'),
+          createLEDProperties(data.led2, 'LED2'),
+          createLEDProperties(data.led3, 'LED3'),
+          createLEDProperties(data.led4, 'LED4'),
+          createLEDProperties(data.led5, 'LED5')
+        ];
+        
+        // 모든 LED 속성 병합
+        ledProperties.forEach(ledProp => {
+          Object.assign(properties, ledProp);
+        });
+      }
       
       // Notion 페이지 생성
       const response = await notion.pages.create({
@@ -367,8 +384,10 @@ export const notionMCPTool = {
       
       console.log('Notion 저장 완료:', response.id);
       
-      // 조건별 정보 댓글 추가
-      await this.addConditionComment(response.id, data);
+      // 조건별 정보 댓글 추가 (설치 서비스가 아닌 경우)
+      if (data.serviceType !== '설치') {
+        await this.addConditionComment(response.id, data);
+      }
       
       // 담당자 멘션 추가 (환경변수에 설정된 경우)
       if (data.assignedManager) {
@@ -378,7 +397,7 @@ export const notionMCPTool = {
       return {
         content: [{
           type: 'text',
-          text: `✅ Notion에 행사 정보가 저장되었습니다!\n📝 페이지 ID: ${response.id}\n🏢 고객사: ${data.customerName}\n📋 행사명: ${data.eventName}\n💰 견적 금액: ${data.totalQuoteAmount?.toLocaleString()}원\n🔖 서비스: ${data.serviceType}${managerInfo.name ? `\n👤 담당자: ${managerInfo.name}` : ''}`
+          text: `✅ Notion에 ${data.serviceType} 정보가 저장되었습니다!\n📝 페이지 ID: ${response.id}\n🏢 고객사: ${data.customerName}\n📋 행사명: ${data.eventName}\n💰 견적 금액: ${data.totalQuoteAmount?.toLocaleString() || '계산 중'}원\n🔖 서비스: ${data.serviceType}${managerInfo.name ? `\n👤 담당자: ${managerInfo.name}` : ''}`
         }],
         id: response.id
       };
@@ -398,20 +417,23 @@ export const notionMCPTool = {
         data.installEnvironment ? `🏗️ 설치 환경: ${data.installEnvironment}` : '',
         data.supportStructureType ? `🔧 지지구조물: ${data.supportStructureType}` : '',
         data.rentalPeriod ? `📅 렌탈 기간: ${data.rentalPeriod}일` : '',
-        data.periodSurchargeAmount ? `💸 기간 할증: ${data.periodSurchargeAmount.toLocaleString()}원` : ''
+        data.periodSurchargeAmount !== undefined ? `💸 기간 할증: ${data.periodSurchargeAmount.toLocaleString()}원` : ''
       ].filter(line => line).join('\n');
+      
+      const structureInfo = data.structureUnitPriceDescription || (data.serviceType === '렌탈' ? "렌탈은 구조물비 제외" : "정보 없음");
+      const installInfo = data.installationWorkerRange || (data.serviceType === '렌탈' ? "렌탈은 설치인력비 제외" : "정보 없음");
       
       const conditionSummary = [
         `📊 조건별 정보 요약`,
         ``,
         serviceInfo,
         ``,
-        `🏗️ 구조물: ${data.structureUnitPriceDescription || "정보 없음"}`,
-        `👷 설치인력: ${data.installationWorkerRange || "정보 없음"} - ${data.installationWorkers || 0}명`,
-        `🎛️ 컨트롤러: 총 ${data.controllerCount || 0}개소`,
-        `⚡ 파워: ${data.powerRequiredCount || 0}개소 필요`,
+        `🏗️ 구조물: ${structureInfo}`,
+        `👷 설치인력: ${installInfo}${data.installationWorkers ? ` - ${data.installationWorkers}명` : ''}`,
+        `🎛️ 컨트롤러: ${data.controllerCount ? `총 ${data.controllerCount}개소` : (data.serviceType === '렌탈' ? '렌탈은 제외' : '정보 없음')}`,
+        `⚡ 파워: ${data.powerRequiredCount ? `${data.powerRequiredCount}개소 필요` : (data.serviceType === '렌탈' ? '렌탈은 제외' : '정보 없음')}`,
         `🚚 운반비: ${data.transportRange || "정보 없음"}`,
-        `📐 최대 무대높이: ${data.maxStageHeight || 0}mm`,
+        data.maxStageHeight ? `📐 최대 무대높이: ${data.maxStageHeight}mm` : '',
         data.additionalRequests ? `\n💬 추가 요청사항: ${data.additionalRequests}` : ''
       ].filter(line => line !== '').join('\n');
       
@@ -430,6 +452,7 @@ export const notionMCPTool = {
       
     } catch (error) {
       console.error('조건별 정보 댓글 추가 실패:', error);
+      return null;
     }
   },
   
@@ -442,24 +465,26 @@ export const notionMCPTool = {
       
       if (!managerId) {
         console.log(`담당자 "${managerName}"의 Notion ID를 찾을 수 없습니다.`);
-        return;
+        return null;
       }
+      
+      // Notion API의 rich_text 타입에 맞춰 작성
+      const richTextArray: any[] = [
+        {
+          type: 'mention',
+          mention: {
+            user: { id: managerId }
+          }
+        },
+        {
+          type: 'text',
+          text: { content: ' 님, 새로운 견적 요청이 등록되었습니다. 확인 부탁드립니다.' }
+        }
+      ];
       
       const comment = await notion.comments.create({
         parent: { page_id: pageId },
-        rich_text: [
-          {
-            type: 'mention',
-            mention: {
-              type: 'user',
-              user: { id: managerId }
-            }
-          },
-          {
-            type: 'text',
-            text: { content: ' 님, 새로운 견적 요청이 등록되었습니다. 확인 부탁드립니다.' }
-          }
-        ]
+        rich_text: richTextArray
       });
       
       console.log('담당자 멘션 추가 완료:', comment.id);
@@ -467,6 +492,7 @@ export const notionMCPTool = {
       
     } catch (error) {
       console.error('담당자 멘션 추가 실패:', error);
+      return null;
     }
   }
 };

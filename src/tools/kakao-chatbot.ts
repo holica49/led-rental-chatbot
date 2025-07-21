@@ -3,8 +3,8 @@ import bodyParser from 'body-parser';
 import { calculateMultiLEDQuote, calculateRentalLEDQuote } from './calculate-quote.js';
 import { notionMCPTool } from './notion-mcp.js';
 import { Client } from '@notionhq/client';
-import { startPollingService, getPollingService } from './notion-polling.js';
-import { NotionStatusAutomation } from './notion-status-automation.js';
+// import { startPollingService, getPollingService } from './notion-polling.js';
+// import { NotionStatusAutomation } from './notion-status-automation.js';
 
 const app = express();
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
@@ -444,7 +444,7 @@ function isResetRequest(message: string): boolean {
 // ===== 핸들러 함수들 =====
 
 // 수정 요청 처리
-function handleModificationRequest(message: string, session: UserSession) {
+function handleModificationRequest(_message: string, _session: UserSession) {
   return {
     text: '처음부터 다시 시작하시겠습니까?',
     quickReplies: [
@@ -1373,7 +1373,7 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
           ...notionData,
           supportStructureType: session.data.supportStructureType,
           rentalPeriod: session.data.rentalPeriod,
-          periodSurchargeAmount: quote.periodSurcharge.surchargeAmount,
+          periodSurchargeAmount: quote.periodSurcharge?.surchargeAmount || 0,
           eventSchedule: schedules.eventSchedule,
           installSchedule: schedules.installSchedule,
           rehearsalSchedule: schedules.rehearsalSchedule,
@@ -1583,17 +1583,17 @@ async function processUserMessage(message: string, session: UserSession) {
 // ===== API 엔드포인트 =====
 
 // 테스트 엔드포인트
-app.get('/test', (req, res) => {
-  const service = getPollingService();
-  const pollingStatus = service.getPollingStatus();
+app.get('/test', (_req, res) => {
+  // const service = getPollingService();
+  // const pollingStatus = service.getPollingStatus();
   
   res.json({
     message: "서버가 정상 작동 중입니다!",
     timestamp: new Date().toISOString(),
-    polling: {
-      isActive: pollingStatus.isPolling,
-      trackedPages: pollingStatus.trackedPages
-    }
+    // polling: {
+    //   isActive: pollingStatus.isPolling,
+    //   trackedPages: pollingStatus.trackedPages
+    // }
   });
 });
 

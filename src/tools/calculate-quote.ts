@@ -2,15 +2,24 @@ import { TransportInfo } from '../types/index.js';
 
 // 가격 상수
 const PRICES = {
-  LED_MODULE: 34000,          // LED 모듈 단가 (500개 이상 시)
+  // 기본 가격
+  LED_MODULE: 34000,          // LED 모듈 단가 (멤버쉽용 - 500개 이상 시)
   LED_MODULE_RENTAL: 50000,   // 렌탈 LED 모듈 단가
+  
+  // 구조물 가격
   STRUCTURE_UNDER_4M: 20000,  // 4m 미만 구조물 (원/㎡)
   STRUCTURE_OVER_4M: 25000,   // 4m 이상 구조물 (원/㎡)
+  
+  // 장비 가격
   CONTROLLER_UNDER_200: 200000, // 200인치 미만 컨트롤러
   CONTROLLER_OVER_200: 500000,  // 200인치 이상 컨트롤러
   POWER_OVER_250: 500000,       // 250인치 이상 파워
+  
+  // 인건비
   INSTALLATION_PER_WORKER: 160000, // 설치 인력 단가
   OPERATOR_PER_DAY: 280000,     // 오퍼레이터 일당
+  
+  // 세금
   VAT_RATE: 0.1                 // 부가세율
 };
 
@@ -24,15 +33,70 @@ interface LEDSpecInput {
   relayConnection?: boolean;
 }
 
-// 렌탈 LED 입력 타입
-interface RentalLEDSpecInput {
-  size: string;
-  stageHeight?: number;
-  needOperator: boolean;
-  operatorDays: number;
-  prompterConnection?: boolean;
-  relayConnection?: boolean;
+// 견적 결과 타입
+export interface QuoteResult {
+  ledModules: {
+    count: number;
+    unitPrice?: number;
+    price: number;
+  };
+  structure: {
+    area?: number;
+    unitPrice?: number;
+    unitPriceDescription?: string;
+    totalPrice: number;
+  };
+  controller: {
+    totalPrice: number;
+    count?: number;
+  };
+  power: {
+    totalPrice: number;
+    requiredCount?: number;
+  };
+  installation: {
+    workers?: number;
+    workerRange?: string;
+    pricePerWorker?: number;
+    totalPrice: number;
+  };
+  operation: {
+    totalPrice: number;
+    days?: number;
+    pricePerDay?: number;
+  };
+  transport: {
+    price: number;
+    range: string;
+  };
+  periodSurcharge?: {
+    days: number;
+    rate: number;
+    description: string;
+    baseAmount: number;
+    surchargeAmount: number;
+  };
+  
+  // 추가 정보
+  totalModuleCount: number;
+  maxStageHeight?: number;
+  installationWorkers?: number;
+  installationWorkerRange?: string;
+  controllerCount?: number;
+  powerRequiredCount?: number;
+  transportRange?: string;
+  structureUnitPrice?: number;
+  structureUnitPriceDescription?: string;
+  rentalPeriod?: number;
+  ledDetails?: any[];
+  
+  // 합계
+  subtotal: number;
+  vat: number;
+  total: number;
 }
+
+// ===== 공통 유틸리티 함수 =====
 
 // 총 LED 모듈 수량에 따른 설치 인력 계산
 function calculateInstallationWorkers(totalModules: number): number {
@@ -54,7 +118,7 @@ function getInstallationWorkerRange(totalModules: number): string {
 
 // 구조물 단가 구분 (무대 높이 기준)
 function getStructureUnitPrice(stageHeights: number[]): { unitPrice: number; description: string } {
-  const maxHeight = Math.max(...stageHeights.filter(h => h > 0));
+  const maxHeight = Math.max(...stageHeights.filter(h => h > 0), 0);
   
   if (maxHeight >= 4000) {
     return {
@@ -69,36 +133,8 @@ function getStructureUnitPrice(stageHeights: number[]): { unitPrice: number; des
   }
 }
 
-// 운반비 구간 구분
-function getTransportRange(totalModules: number): string {
-  if (totalModules <= 200) return "200개 이하";
-  if (totalModules <= 400) return "201-400개";
-  return "400개 초과";
-}
-
-// 운반비 계산
-function calculateTransportCost(totalModules: number): number {
-  if (totalModules <= 200) return 200000;
-  if (totalModules <= 400) return 400000;
-  return 700000;
-}
-
-// 렌탈 운반비 계산 (렌탈 서비스용)
-function calculateRentalTransportCost(totalModules: number): number {
-  if (totalModules <= 60) return 300000;
-  if (totalModules <= 100) return 400000;
-  return 500000;
-}
-
-// 렌탈 운반비 구간 구분
-function getRentalTransportRange(totalModules: number): string {
-  if (totalModules <= 60) return "60개 이하";
-  if (totalModules <= 100) return "61-100개";
-  return "101개 이상";
-}
-
 // 배차 정보 계산
-function calculateTransport(moduleCount: number): TransportInfo {
+export function calculateTransport(moduleCount: number): TransportInfo {
   const plateBoxCount = Math.ceil(moduleCount / 8);
   
   if (moduleCount <= 80) {
@@ -117,6 +153,38 @@ function calculateTransport(moduleCount: number): TransportInfo {
   }
 }
 
+// ===== 멤버쉽 서비스 관련 함수 =====
+
+// 운반비 구간 구분 (멤버쉽)
+function getTransportRange(totalModules: number): string {
+  if (totalModules <= 200) return "200개 이하";
+  if (totalModules <= 400) return "201-400개";
+  return "400개 초과";
+}
+
+// 운반비 계산 (멤버쉽)
+function calculateTransportCost(totalModules: number): number {
+  if (totalModules <= 200) return 200000;
+  if (totalModules <= 400) return 400000;
+  return 700000;
+}
+
+// ===== 렌탈 서비스 관련 함수 =====
+
+// 렌탈 운반비 구간 구분
+function getRentalTransportRange(totalModules: number): string {
+  if (totalModules <= 60) return "60개 이하";
+  if (totalModules <= 100) return "61-100개";
+  return "101개 이상";
+}
+
+// 렌탈 운반비 계산
+function calculateRentalTransportCost(totalModules: number): number {
+  if (totalModules <= 60) return 300000;
+  if (totalModules <= 100) return 400000;
+  return 500000;
+}
+
 // 렌탈 기간 할증률 계산
 function calculateRentalSurchargeRate(days: number): { rate: number; description: string } {
   if (days <= 5) {
@@ -130,8 +198,8 @@ function calculateRentalSurchargeRate(days: number): { rate: number; description
   }
 }
 
-// 다중 LED 견적 계산 함수 (멤버쉽용)
-export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
+// ===== 멤버쉽 견적 계산 함수 =====
+export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]): QuoteResult {
   let totalModules = 0;
   let totalStructureArea = 0;
   let totalControllerCost = 0;
@@ -183,9 +251,10 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
   // 설치 인력 계산 (총 모듈 수 기준)
   const installationWorkers = calculateInstallationWorkers(totalModules);
 
-  const quote = {
+  const quote: QuoteResult = {
     ledModules: {
       count: totalModules,
+      unitPrice: PRICES.LED_MODULE,
       price: totalModules < 500 ? 0 : totalModules * PRICES.LED_MODULE
     },
     structure: {
@@ -218,7 +287,7 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
       range: getTransportRange(totalModules)
     },
     
-    // 추가 정보 (상세 조건 정보)
+    // 추가 정보
     totalModuleCount: totalModules,
     maxStageHeight: Math.max(...stageHeights.filter(h => h > 0), 0),
     installationWorkers: installationWorkers,
@@ -246,8 +315,8 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpecInput[]) {
   return quote;
 }
 
-// 렌탈 LED 견적 계산 함수
-export function calculateRentalLEDQuote(ledSpecs: RentalLEDSpecInput[], rentalDays: number) {
+// ===== 렌탈 견적 계산 함수 =====
+export function calculateRentalLEDQuote(ledSpecs: LEDSpecInput[], rentalDays: number): QuoteResult {
   let totalModules = 0;
   const ledDetails: any[] = [];
 
@@ -281,7 +350,7 @@ export function calculateRentalLEDQuote(ledSpecs: RentalLEDSpecInput[], rentalDa
   const surchargeInfo = calculateRentalSurchargeRate(rentalDays);
   const surchargeCost = Math.round((moduleCost + transportCost) * surchargeInfo.rate);
 
-  const quote = {
+  const quote: QuoteResult = {
     ledModules: {
       count: totalModules,
       unitPrice: PRICES.LED_MODULE_RENTAL,
@@ -322,6 +391,7 @@ export function calculateRentalLEDQuote(ledSpecs: RentalLEDSpecInput[], rentalDa
     // 추가 정보
     totalModuleCount: totalModules,
     rentalPeriod: rentalDays,
+    transportRange: getRentalTransportRange(totalModules),
     
     subtotal: 0,
     vat: 0,
@@ -329,7 +399,7 @@ export function calculateRentalLEDQuote(ledSpecs: RentalLEDSpecInput[], rentalDa
   };
 
   // 소계 계산 (모듈비 + 운송비 + 기간할증)
-  quote.subtotal = quote.ledModules.price + quote.transport.price + quote.periodSurcharge.surchargeAmount;
+  quote.subtotal = quote.ledModules.price + quote.transport.price + (quote.periodSurcharge?.surchargeAmount || 0);
   
   quote.vat = Math.round(quote.subtotal * PRICES.VAT_RATE);
   quote.total = quote.subtotal + quote.vat;
@@ -337,11 +407,13 @@ export function calculateRentalLEDQuote(ledSpecs: RentalLEDSpecInput[], rentalDa
   return quote;
 }
 
-// 다중 LED 견적 계산 도구 (멤버쉽용)
+// ===== MCP 도구 정의 =====
+
+// 멤버쉽 견적 계산 도구
 export const calculateMultiQuoteTool = {
   definition: {
     name: 'calculate_multi_quote',
-    description: '다중 LED 개소의 렌탈 견적을 자동으로 계산합니다',
+    description: '멤버쉽 서비스의 다중 LED 견적을 자동으로 계산합니다',
     inputSchema: {
       type: 'object',
       properties: {
@@ -354,7 +426,9 @@ export const calculateMultiQuoteTool = {
               size: { type: 'string', description: 'LED 크기 (예: "4000x2500")' },
               stageHeight: { type: 'number', description: '무대 높이 (mm)' },
               needOperator: { type: 'boolean', description: '오퍼레이터 필요 여부' },
-              operatorDays: { type: 'number', description: '오퍼레이터 일수' }
+              operatorDays: { type: 'number', description: '오퍼레이터 일수' },
+              prompterConnection: { type: 'boolean', description: '프롬프터 연결 여부' },
+              relayConnection: { type: 'boolean', description: '중계카메라 연결 여부' }
             },
             required: ['size', 'needOperator', 'operatorDays']
           }
@@ -384,7 +458,7 @@ export const calculateMultiQuoteTool = {
         }
       }
 
-      // 다중 LED 견적 계산
+      // 멤버쉽 견적 계산
       const quote = calculateMultiLEDQuote(ledSpecs);
 
       // 배차 정보 계산
@@ -404,7 +478,7 @@ export const calculateMultiQuoteTool = {
             quote,
             transport,
             ledSummary,
-            summary: `다중 견적 완료: ${customerName} - ${ledSpecs.length}개소 LED, 총 ${quote.total.toLocaleString()}원 (VAT 포함)`
+            summary: `멤버쉽 견적 완료: ${customerName} - ${ledSpecs.length}개소 LED, 총 ${quote.total.toLocaleString()}원 (VAT 포함)`
           }, null, 2)
         }]
       };
@@ -412,7 +486,7 @@ export const calculateMultiQuoteTool = {
       return {
         content: [{
           type: 'text',
-          text: `다중 견적 계산 실패: ${error instanceof Error ? error.message : String(error)}`
+          text: `멤버쉽 견적 계산 실패: ${error instanceof Error ? error.message : String(error)}`
         }],
         isError: true
       };
@@ -424,7 +498,7 @@ export const calculateMultiQuoteTool = {
 export const calculateRentalQuoteTool = {
   definition: {
     name: 'calculate_rental_quote',
-    description: '렌탈 LED의 견적을 자동으로 계산합니다',
+    description: '렌탈 서비스의 LED 견적을 자동으로 계산합니다',
     inputSchema: {
       type: 'object',
       properties: {
@@ -480,7 +554,7 @@ export const calculateRentalQuoteTool = {
       const transport = calculateTransport(quote.ledModules.count);
 
       // LED 개소별 요약 정보
-      const ledSummary = ledSpecs.map((specs: RentalLEDSpecInput, index: number) => {
+      const ledSummary = ledSpecs.map((specs: LEDSpecInput, index: number) => {
         const [width, height] = specs.size.split('x').map(Number);
         const moduleCount = (width / 500) * (height / 500);
         return `LED${index + 1}: ${specs.size} (${moduleCount}개)`;

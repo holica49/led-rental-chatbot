@@ -28,14 +28,15 @@
     "led-rental",
     "automation"
   ],
-  "author": "허지성",
-  "license": "오리온디스플레이",
+  "author": "오승수",
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.6.0",
     "@notionhq/client": "^2.2.14",
     "body-parser": "^1.20.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "exceljs": "^4.4.0",
     "express": "^4.21.1",
     "node-cron": "^3.0.3",
     "prettier": "^3.1.0",
