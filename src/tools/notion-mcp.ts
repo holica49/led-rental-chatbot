@@ -337,7 +337,7 @@ export const notionMCPTool = {
 
       if (data.serviceType === '렌탈') {
         if (data.supportStructureType) {
-          properties["지지구조물 타입"] = {
+          properties["지지구조물 방식"] = {
             select: { name: data.supportStructureType }
           };
         }

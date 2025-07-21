@@ -574,26 +574,27 @@ function handleInstallTiming(message: string, session: UserSession) {
 
 // ===== 렌탈 서비스 핸들러 =====
 function handleRentalIndoorOutdoor(message: string, session: UserSession) {
- const parts = message.split('/').map(part => part.trim());
- 
- if (parts.length >= 2) {
-   session.data.eventName = parts[0];
-   session.data.venue = parts[1];
-   session.step = 'rental_structure_type';
-   
-   return {
-     text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n실내 행사인가요, 실외 행사인가요?`,
-     quickReplies: [
-       { label: '🏢 실내', action: 'message', messageText: '실내' },
-       { label: '🌳 실외', action: 'message', messageText: '실외' }
-     ]
-   };
- } else {
-   return {
-     text: '❌ 형식이 올바르지 않습니다.\n\n올바른 형식으로 다시 입력해주세요:\n📝 행사명 / 행사장\n\n예시:\n• 커피박람회 / 수원메쎄 2홀\n• 전시회 / 킨텍스 1홀',
-     quickReplies: []
-   };
- }
+  const parts = message.split('/').map(part => part.trim());
+  
+  if (parts.length >= 2) {
+    session.data.eventName = parts[0];
+    session.data.venue = parts[1];
+    session.step = 'rental_structure_type';
+    // session.data.customerName = '메쎄이상'; // 이 줄 삭제!
+    
+    return {
+      text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n실내 행사인가요, 실외 행사인가요?`,
+      quickReplies: [
+        { label: '🏢 실내', action: 'message', messageText: '실내' },
+        { label: '🌳 실외', action: 'message', messageText: '실외' }
+      ]
+    };
+  } else {
+    return {
+      text: '❌ 형식이 올바르지 않습니다.\n\n올바른 형식으로 다시 입력해주세요:\n📝 행사명 / 행사장\n\n예시:\n• 커피박람회 / 수원메쎄 2홀\n• 전시회 / 킨텍스 1홀',
+      quickReplies: []
+    };
+  }
 }
 
 function handleRentalStructureType(message: string, session: UserSession) {
@@ -1153,28 +1154,56 @@ function handleMembershipPeriod(message: string, session: UserSession) {
 
 // ===== 공통 핸들러 =====
 function handleAdditionalRequests(message: string, session: UserSession) {
- if (message.trim() === '없음' || message.trim() === '') {
-   session.data.additionalRequests = '없음';
- } else {
-   session.data.additionalRequests = message.trim();
- }
- 
- // 설치 서비스는 담당자 정보를 기본값으로 설정
- if (session.serviceType === '설치') {
-   session.step = 'get_contact_name';
-   
-   return {
-     text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사명을 알려주세요.`,
-     quickReplies: []
-   };
- }
- 
- session.step = 'get_contact_name';
- 
- return {
-   text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
-   quickReplies: []
- };
+  if (message.trim() === '없음' || message.trim() === '') {
+    session.data.additionalRequests = '없음';
+  } else {
+    session.data.additionalRequests = message.trim();
+  }
+  
+  // 렌탈 서비스는 고객사 입력 단계 추가
+  if (session.serviceType === '렌탈') {
+    session.step = 'get_customer_company';
+    
+    return {
+      text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사명을 알려주세요.`,
+      quickReplies: []
+    };
+  }
+  
+  // 설치 서비스는 담당자 정보를 기본값으로 설정
+  if (session.serviceType === '설치') {
+    session.step = 'get_contact_name';
+    
+    return {
+      text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사명을 알려주세요.`,
+      quickReplies: []
+    };
+  }
+  
+  // 멤버쉽은 기존 로직 유지
+  session.step = 'get_contact_name';
+  
+  return {
+    text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
+    quickReplies: []
+  };
+}
+// 고객사 처리 함수 (렌탈 전용)
+function handleCustomerCompany(message: string, session: UserSession) {
+  if (!message || message.trim().length === 0) {
+    return {
+      text: '고객사명을 입력해주세요.',
+      quickReplies: []
+    };
+  }
+  
+  session.data.customerName = message.trim();
+  session.step = 'get_contact_name';
+  
+  return {
+    text: `✅ 고객사: ${session.data.customerName}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
+    quickReplies: []
+  };
 }
 
 // 담당자 이름 처리
@@ -1259,15 +1288,15 @@ function handleContactPhone(message: string, session: UserSession) {
  
  if (session.serviceType === '설치') {
    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: LED 설치\n🏗️ 설치 환경: ${session.data.installEnvironment}\n📍 설치 지역: ${session.data.installRegion}\n📅 필요 시기: ${session.data.requiredTiming}\n💬 요청사항: ${session.data.additionalRequests}\n\n🏢 고객사: ${session.data.customerName}\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n\n상담 요청을 진행하시겠습니까?`;
- } else if (session.serviceType === '렌탈') {
-   const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
-     const [w, h] = led.size.split('x').map(Number);
-     const moduleCount = (w / 500) * (h / 500);
-     return `LED${index + 1}: ${led.size} (${moduleCount}개)`;
-   }).join('\n');
-   
-   confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: LED 렌탈\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)\n🔧 지지구조물: ${session.data.supportStructureType}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n견적을 요청하시겠습니까?`;
- } else {
+  } else if (session.serviceType === '렌탈') {
+    const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
+      const [w, h] = led.size.split('x').map(Number);
+      const moduleCount = (w / 500) * (h / 500);
+      return `LED${index + 1}: ${led.size} (${moduleCount}개)`;
+    }).join('\n');
+    
+    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: LED 렌탈\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)\n🔧 지지구조물: ${session.data.supportStructureType}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n견적을 요청하시겠습니까?`;
+  } else {
    const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
      const [w, h] = led.size.split('x').map(Number);
      const moduleCount = (w / 500) * (h / 500);
@@ -1319,9 +1348,11 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
      // 설치 서비스는 견적 계산하지 않음
 
      // 빠른 응답 반환 
-     const responseText = sessionCopy.serviceType === '설치' 
-       ? `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사: ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n🏗️ 설치 환경: ${sessionCopy.data.installEnvironment}\n📍 설치 지역: ${sessionCopy.data.installRegion}\n📅 필요 시기: ${sessionCopy.data.requiredTiming}\n\n👤 담당자: 유준수 구축팀장\n📞 담당자 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n감사합니다! 😊`
-       : `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 담당자에게 전달 중입니다...`;
+    const responseText = sessionCopy.serviceType === '설치' 
+      ? `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사: ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n🏗️ 설치 환경: ${sessionCopy.data.installEnvironment}\n📍 설치 지역: ${sessionCopy.data.installRegion}\n📅 필요 시기: ${sessionCopy.data.requiredTiming}\n\n👤 담당자: 유준수 구축팀장\n📞 담당자 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n감사합니다! 😊`
+      : sessionCopy.serviceType === '렌탈'
+      ? `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n🏢 ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 예상 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 담당자에게 전달 중입니다...\n\n⚠️ 상기 금액은 예상 견적이며, 담당자와 협의 후 조정될 수 있습니다.`
+      : `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 담당자에게 전달 중입니다...`;
  
      // 세션 초기화
      session.step = 'start';
@@ -1542,6 +1573,8 @@ async function processUserMessage(message: string, session: UserSession) {
    // 공통 마지막 단계
    case 'get_additional_requests':
      return handleAdditionalRequests(message, session);
+   case 'get_customer_company':
+     return handleCustomerCompany(message, session);
    case 'get_contact_name':
      return handleContactName(message, session);
    case 'get_contact_title':
