@@ -1315,144 +1315,56 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
   
   if (message.includes('네') || message.includes('요청')) {
     try {
-      let notionData: any = {
-        serviceType: session.serviceType!,
-        eventName: session.data.eventName || 'LED 프로젝트',
-        customerName: session.data.customerName || '고객사',
-        venue: session.data.venue || '',
-        contactName: session.data.contactName,
-        contactTitle: session.data.contactTitle,
-        contactPhone: session.data.contactPhone,
-        additionalRequests: session.data.additionalRequests
-      };
+      // 견적 계산 (빠른 처리)
+      let quote: any = null;
+      let schedules: any = null;
       
-      if (session.serviceType === '설치') {
-        // 설치 서비스 처리
-        notionData = {
-          ...notionData,
-          installEnvironment: session.data.installEnvironment,
-          installRegion: session.data.installRegion,
-          requiredTiming: session.data.requiredTiming,
-          eventSchedule: session.data.requiredTiming,
-          totalQuoteAmount: 0 // 설치는 견적 계산 없음
-        };
-        
-        // Notion에 저장
-        const notionResult = await notionMCPTool.handler(notionData);
-        
-        // 담당자 언급 알림
-        await addMentionToPage(notionResult.id, {
-          serviceType: '설치',
-          eventName: notionData.eventName,
-          customerName: notionData.customerName,
-          contactName: notionData.contactName,
-          contactTitle: notionData.contactTitle,
-          contactPhone: notionData.contactPhone,
-          eventPeriod: notionData.requiredTiming,
-          venue: notionData.installRegion,
-          totalAmount: 0
-        });
-        
-        // 세션 초기화
-        session.step = 'start';
-        session.data = { ledSpecs: [] };
-        
-        return {
-          text: `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자: 유준수 구축팀장\n📞 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n감사합니다! 😊`,
-          quickReplies: [
-            { label: '처음으로', action: 'message', messageText: '처음부터' }
-          ]
-        };
-        
-      } else if (session.serviceType === '렌탈') {
-        // 렌탈 견적 계산
-        const quote = calculateRentalLEDQuote(session.data.ledSpecs, session.data.rentalPeriod!);
-        const schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
-        
-        notionData = {
-          ...notionData,
-          supportStructureType: session.data.supportStructureType,
-          rentalPeriod: session.data.rentalPeriod,
-          periodSurchargeAmount: quote.periodSurcharge?.surchargeAmount || 0,
-          eventSchedule: schedules.eventSchedule,
-          installSchedule: schedules.installSchedule,
-          rehearsalSchedule: schedules.rehearsalSchedule,
-          dismantleSchedule: schedules.dismantleSchedule,
-          ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
-            acc[`led${index + 1}`] = led;
-            return acc;
-          }, {}),
-          totalQuoteAmount: quote.total,
-          totalModuleCount: quote.totalModuleCount,
-          ledModuleCost: quote.ledModules.price,
-          structureCost: 0, // 렌탈은 구조물비 없음
-          controllerCost: 0,
-          powerCost: 0,
-          installationCost: 0,
-          operatorCost: 0,
-          transportCost: quote.transport.price
-        };
-        
-      } else {
-        // 멤버쉽 견적 계산
-        const quote = calculateMultiLEDQuote(session.data.ledSpecs);
-        const schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
-        
-        notionData = {
-          ...notionData,
-          memberCode: session.data.memberCode,
-          eventSchedule: schedules.eventSchedule,
-          installSchedule: schedules.installSchedule,
-          rehearsalSchedule: schedules.rehearsalSchedule,
-          dismantleSchedule: schedules.dismantleSchedule,
-          ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
-            acc[`led${index + 1}`] = led;
-            return acc;
-          }, {}),
-          totalQuoteAmount: quote.total,
-          totalModuleCount: quote.totalModuleCount,
-          ledModuleCost: quote.ledModules.price,
-          structureCost: quote.structure.totalPrice,
-          controllerCost: quote.controller.totalPrice,
-          powerCost: quote.power.totalPrice,
-          installationCost: quote.installation.totalPrice,
-          operatorCost: quote.operation.totalPrice,
-          transportCost: quote.transport.price,
-          maxStageHeight: quote.maxStageHeight,
-          installationWorkers: quote.installationWorkers,
-          installationWorkerRange: quote.installationWorkerRange,
-          controllerCount: quote.controllerCount,
-          powerRequiredCount: quote.powerRequiredCount,
-          transportRange: quote.transportRange,
-          structureUnitPrice: quote.structureUnitPrice,
-          structureUnitPriceDescription: quote.structureUnitPriceDescription
-        };
+      if (session.serviceType === '렌탈') {
+        quote = calculateRentalLEDQuote(session.data.ledSpecs, session.data.rentalPeriod!);
+        schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
+      } else if (session.serviceType === '멤버쉽') {
+        quote = calculateMultiLEDQuote(session.data.ledSpecs);
+        schedules = calculateScheduleDates(session.data.eventStartDate!, session.data.eventEndDate!);
       }
       
-      // Notion에 저장
-      const notionResult = await notionMCPTool.handler(notionData);
-      
-      // 담당자 언급 알림
-      await addMentionToPage(notionResult.id, {
-        serviceType: session.serviceType,
-        eventName: notionData.eventName,
-        customerName: notionData.customerName,
-        contactName: notionData.contactName,
-        contactTitle: notionData.contactTitle,
-        contactPhone: notionData.contactPhone,
-        eventPeriod: notionData.eventSchedule,
-        venue: notionData.venue,
-        totalAmount: notionData.totalQuoteAmount,
-        ledSpecs: session.data.ledSpecs
-      });
+      // 빠른 응답 반환
+      const responseText = session.serviceType === '설치' 
+        ? `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자: 유준수 구축팀장\n📞 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n감사합니다! 😊`
+        : `✅ 견적 요청이 접수되었습니다!\n\n📋 ${session.data.eventName}\n👤 담당자: ${session.data.contactName} ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💰 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 담당자에게 전달 중입니다...`;
       
       // 세션 초기화
       session.step = 'start';
       session.data = { ledSpecs: [] };
       session.serviceType = undefined;
       
+      // Notion 저장은 비동기로 처리 (응답 후 백그라운드에서)
+      setImmediate(async () => {
+        try {
+          const notionData = prepareNotionData(session, quote, schedules);
+          const notionResult = await notionMCPTool.handler(notionData);
+          
+          // 담당자 언급 알림
+          await addMentionToPage(notionResult.id, {
+            serviceType: session.serviceType,
+            eventName: notionData.eventName,
+            customerName: notionData.customerName,
+            contactName: notionData.contactName,
+            contactTitle: notionData.contactTitle,
+            contactPhone: notionData.contactPhone,
+            eventPeriod: notionData.eventSchedule || notionData.requiredTiming,
+            venue: notionData.venue || notionData.installRegion,
+            totalAmount: notionData.totalQuoteAmount,
+            ledSpecs: session.data.ledSpecs
+          });
+          
+          console.log('✅ Notion 저장 완료');
+        } catch (error) {
+          console.error('❌ Notion 저장 실패:', error);
+        }
+      });
+      
       return {
-        text: `✅ 견적 요청이 성공적으로 접수되었습니다!\n\n📋 ${notionData.eventName}\n👤 담당자: ${notionData.contactName} ${notionData.contactTitle}\n📞 연락처: ${notionData.contactPhone}\n💰 견적 금액: ${notionData.totalQuoteAmount.toLocaleString()}원 (VAT 포함)\n\n📝 담당자에게 전달되었으며, 곧 연락드리겠습니다!\n\n감사합니다! 😊`,
+        text: responseText,
         quickReplies: [
           { label: '새 견적 요청', action: 'message', messageText: '처음부터' }
         ]
@@ -1477,6 +1389,83 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
       { label: '취소', action: 'message', messageText: '취소' }
     ]
   };
+}
+
+// Notion 데이터 준비 함수 (분리)
+function prepareNotionData(session: UserSession, quote: any, schedules: any): any {
+  let notionData: any = {
+    serviceType: session.serviceType!,
+    eventName: session.data.eventName || 'LED 프로젝트',
+    customerName: session.data.customerName || '고객사',
+    venue: session.data.venue || '',
+    contactName: session.data.contactName,
+    contactTitle: session.data.contactTitle,
+    contactPhone: session.data.contactPhone,
+    additionalRequests: session.data.additionalRequests
+  };
+  
+  if (session.serviceType === '설치') {
+    notionData = {
+      ...notionData,
+      installEnvironment: session.data.installEnvironment,
+      installRegion: session.data.installRegion,
+      requiredTiming: session.data.requiredTiming,
+      eventSchedule: session.data.requiredTiming,
+      totalQuoteAmount: 0
+    };
+  } else if (session.serviceType === '렌탈') {
+    notionData = {
+      ...notionData,
+      supportStructureType: session.data.supportStructureType,
+      rentalPeriod: session.data.rentalPeriod,
+      periodSurchargeAmount: quote.periodSurcharge?.surchargeAmount || 0,
+      eventSchedule: schedules.eventSchedule,
+      installSchedule: schedules.installSchedule,
+      rehearsalSchedule: schedules.rehearsalSchedule,
+      dismantleSchedule: schedules.dismantleSchedule,
+      ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
+        acc[`led${index + 1}`] = led;
+        return acc;
+      }, {}),
+      totalQuoteAmount: quote.total,
+      totalModuleCount: quote.totalModuleCount,
+      ledModuleCost: quote.ledModules.price,
+      transportCost: quote.transport.price
+    };
+  } else {
+    // 멤버쉽
+    notionData = {
+      ...notionData,
+      memberCode: session.data.memberCode,
+      eventSchedule: schedules.eventSchedule,
+      installSchedule: schedules.installSchedule,
+      rehearsalSchedule: schedules.rehearsalSchedule,
+      dismantleSchedule: schedules.dismantleSchedule,
+      ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
+        acc[`led${index + 1}`] = led;
+        return acc;
+      }, {}),
+      totalQuoteAmount: quote.total,
+      totalModuleCount: quote.totalModuleCount,
+      ledModuleCost: quote.ledModules.price,
+      structureCost: quote.structure.totalPrice,
+      controllerCost: quote.controller.totalPrice,
+      powerCost: quote.power.totalPrice,
+      installationCost: quote.installation.totalPrice,
+      operatorCost: quote.operation.totalPrice,
+      transportCost: quote.transport.price,
+      maxStageHeight: quote.maxStageHeight,
+      installationWorkers: quote.installationWorkers,
+      installationWorkerRange: quote.installationWorkerRange,
+      controllerCount: quote.controllerCount,
+      powerRequiredCount: quote.powerRequiredCount,
+      transportRange: quote.transportRange,
+      structureUnitPrice: quote.structureUnitPrice,
+      structureUnitPriceDescription: quote.structureUnitPriceDescription
+    };
+  }
+  
+  return notionData;
 }
 
 // 기본 처리
@@ -1582,6 +1571,11 @@ async function processUserMessage(message: string, session: UserSession) {
 
 // ===== API 엔드포인트 =====
 
+// 헬스체크 엔드포인트 (카카오톡 챗봇 설정용)
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // 테스트 엔드포인트
 app.get('/test', (_req, res) => {
   // const service = getPollingService();
@@ -1604,6 +1598,8 @@ app.post('/skill', async (req, res) => {
     const userId = userRequest?.user?.id || 'default_user';
     const userMessage = userRequest?.utterance || '안녕하세요';
     
+    console.log(`📥 요청 받음 - User: ${userId}, Message: ${userMessage}`);
+    
     // 사용자 세션 초기화
     if (!userSessions[userId]) {
       userSessions[userId] = {
@@ -1617,7 +1613,19 @@ app.post('/skill', async (req, res) => {
     const session = userSessions[userId];
     session.lastMessage = userMessage;
     
-    const response = await processUserMessage(userMessage, session);
+    // 즉시 처리 가능한 응답 생성
+    let response;
+    try {
+      response = await processUserMessage(userMessage, session);
+    } catch (error) {
+      console.error('메시지 처리 오류:', error);
+      response = {
+        text: '죄송합니다. 일시적인 오류가 발생했습니다. 다시 시도해주세요.',
+        quickReplies: [
+          { label: '처음으로', action: 'message', messageText: '처음부터' }
+        ]
+      };
+    }
     
     // 카카오 스킬 응답 형식
     const result: any = {
@@ -1637,10 +1645,13 @@ app.post('/skill', async (req, res) => {
       result.template.quickReplies = response.quickReplies;
     }
     
+    // 즉시 응답 반환
     res.json(result);
+    console.log(`✅ 응답 전송 완료`);
     
   } catch (error) {
     console.error('스킬 처리 오류:', error);
+    // 에러 시에도 5초 이내 응답
     res.json({
       version: "2.0",
       template: {
