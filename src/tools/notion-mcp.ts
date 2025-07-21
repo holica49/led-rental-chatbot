@@ -210,12 +210,7 @@ export const notionMCPTool = {
       
       // 기본 속성
       const properties: any = {
-        // 서비스 구분 정보
-        "서비스 유형": {
-          select: { name: data.serviceType }
-        },
-        
-        // 기본 정보
+        // 기본 정보만 먼저 설정
         "행사명": {
           title: [{ text: { content: data.eventName || "" } }]
         },
@@ -245,12 +240,19 @@ export const notionMCPTool = {
           number: data.totalQuoteAmount || null
         },
         "견적서": {
-          files: []  // 파일은 나중에 수동으로 업로드
+          files: []
         },
         "요청서": {
-          files: []  // 파일은 나중에 수동으로 업로드
+          files: []
         }
       };
+
+      // 서비스 유형 추가 (null 체크)
+      if (data.serviceType) {
+        properties["서비스 유형"] = {
+          select: { name: data.serviceType }
+        };
+      }
       
       // 설치 일정 정보 (설치 서비스가 아닌 경우만)
       if (data.serviceType !== '설치') {
@@ -313,7 +315,7 @@ export const notionMCPTool = {
           rich_text: [{ text: { content: data.memberCode } }]
         };
       }
-      
+
       if (data.serviceType === '설치') {
         if (data.installEnvironment) {
           properties["설치 환경"] = {
@@ -331,7 +333,7 @@ export const notionMCPTool = {
           };
         }
       }
-      
+
       if (data.serviceType === '렌탈') {
         if (data.supportStructureType) {
           properties["지지구조물 타입"] = {
