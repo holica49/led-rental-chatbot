@@ -6,23 +6,9 @@ import { Client } from '@notionhq/client';
 // import { startPollingService, getPollingService } from './notion-polling.js';
 // import { NotionStatusAutomation } from './notion-status-automation.js';
 
-const app = express();
+// Express 라우터 생성
+export const skillRouter = express.Router();
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-
-// 미들웨어 설정
-app.use(bodyParser.json());
-app.use((req, res, next) => {
-  res.setHeader('ngrok-skip-browser-warning', 'true');
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-});
 
 // 사용자 세션 인터페이스
 interface UserSession {
@@ -1571,28 +1557,16 @@ async function processUserMessage(message: string, session: UserSession) {
 
 // ===== API 엔드포인트 =====
 
-// 헬스체크 엔드포인트 (카카오톡 챗봇 설정용)
-app.get('/health', (_req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
 // 테스트 엔드포인트
-app.get('/test', (_req, res) => {
-  // const service = getPollingService();
-  // const pollingStatus = service.getPollingStatus();
-  
+skillRouter.get('/test', (_req, res) => {
   res.json({
     message: "서버가 정상 작동 중입니다!",
-    timestamp: new Date().toISOString(),
-    // polling: {
-    //   isActive: pollingStatus.isPolling,
-    //   trackedPages: pollingStatus.trackedPages
-    // }
+    timestamp: new Date().toISOString()
   });
 });
 
 // 카카오 스킬 서버 엔드포인트
-app.post('/skill', async (req, res) => {
+skillRouter.post('/skill', async (req, res) => {
   try {
     const { userRequest } = req.body;
     const userId = userRequest?.user?.id || 'default_user';
