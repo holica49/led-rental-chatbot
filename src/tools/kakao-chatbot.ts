@@ -99,6 +99,17 @@ function validateAndNormalizeLEDSize(input: string): { valid: boolean; size?: st
  };
 }
 
+// LED 소비전력 계산 함수
+function calculateLEDPower(size: string): string {
+  if (!size) return '';
+  
+  const [width, height] = size.split('x').map(Number);
+  const moduleCount = (width / 500) * (height / 500);
+  const totalPower = moduleCount * 0.2;
+  
+  return `${totalPower.toFixed(1)}kW`;
+}
+
 // 무대 높이 검증 함수
 function validateStageHeight(input: string): { valid: boolean; height?: number; error?: string } {
   if (!input || typeof input !== 'string') {
@@ -478,7 +489,7 @@ function handleSelectService(message: string, session: UserSession) {
    session.serviceType = '설치';
    session.step = 'install_environment';
    return {
-     text: '🏗️ LED 설치 서비스를 선택하셨습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n설치 환경을 선택해주세요.',
+     text: '🏗️ LED 설치 서비스를 선택하셨습니다.\n\n━━━━━━\n\n설치 환경을 선택해주세요.',
      quickReplies: [
        { label: '🏢 실내 설치', action: 'message', messageText: '실내' },
        { label: '🌳 실외 설치', action: 'message', messageText: '실외' }
@@ -489,14 +500,14 @@ function handleSelectService(message: string, session: UserSession) {
    session.step = 'rental_indoor_outdoor';
    session.data.customerName = '메쎄이상';
    return {
-     text: '📦 LED 렌탈 서비스를 선택하셨습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀',
+     text: '📦 LED 렌탈 서비스를 선택하셨습니다.\n\n━━━━━━\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀',
      quickReplies: []
    };
  } else if (message.includes('멤버쉽')) {
    session.serviceType = '멤버쉽';
    session.step = 'membership_code';
    return {
-     text: '👥 멤버쉽 서비스를 선택하셨습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n멤버 코드를 입력해주세요.',
+     text: '👥 멤버쉽 서비스를 선택하셨습니다.\n\n━━━━━━\n\n멤버 코드를 입력해주세요.',
      quickReplies: []
    };
  } else {
@@ -529,7 +540,7 @@ function handleInstallEnvironment(message: string, session: UserSession) {
  
  session.step = 'install_region';
  return {
-   text: `✅ ${session.data.installEnvironment} 설치로 선택하셨습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n설치하실 지역을 입력해주세요.\n예: 서울, 경기, 부산 등`,
+   text: `✅ ${session.data.installEnvironment} 설치로 선택하셨습니다.\n\n━━━━━━\n\n설치하실 지역을 입력해주세요.\n예: 서울, 경기, 부산 등`,
    quickReplies: []
  };
 }
@@ -547,7 +558,7 @@ function handleInstallRegion(message: string, session: UserSession) {
  session.step = 'install_timing';
  
  return {
-   text: `✅ 설치 지역: ${session.data.installRegion}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n언제 필요하신가요?\n예: 2025년 8월, 3개월 후, 내년 상반기 등`,
+   text: `✅ 설치 지역: ${session.data.installRegion}\n\n━━━━━━\n\n언제 필요하신가요?\n예: 2025년 8월, 3개월 후, 내년 상반기 등`,
    quickReplies: []
  };
 }
@@ -561,11 +572,11 @@ function handleInstallTiming(message: string, session: UserSession) {
  }
  
  session.data.requiredTiming = message.trim();
- session.data.eventName = `LED 설치 프로젝트`; // 기본 행사명
+ session.data.eventName = 'LED 설치 프로젝트'; // 기본 행사명
  session.step = 'get_additional_requests';
  
  return {
-   text: `✅ 필요 시기: ${session.data.requiredTiming}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
+   text: `✅ 필요 시기: ${session.data.requiredTiming}\n\n━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
    quickReplies: [
      { label: '없음', action: 'message', messageText: '없음' }
    ]
@@ -583,7 +594,7 @@ function handleRentalIndoorOutdoor(message: string, session: UserSession) {
     // session.data.customerName = '메쎄이상'; // 이 줄 삭제!
     
     return {
-      text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n실내 행사인가요, 실외 행사인가요?`,
+      text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━\n\n실내 행사인가요, 실외 행사인가요?`,
       quickReplies: [
         { label: '🏢 실내', action: 'message', messageText: '실내' },
         { label: '🌳 실외', action: 'message', messageText: '실외' }
@@ -598,27 +609,18 @@ function handleRentalIndoorOutdoor(message: string, session: UserSession) {
 }
 
 function handleRentalStructureType(message: string, session: UserSession) {
- if (message.includes('실외')) {
-   // 실외 선택 시 최수삼 팀장 안내
-   session.step = 'start';
-   session.data = { ledSpecs: [] };
-   
-   return {
-     text: `🌳 실외 행사는 별도 상담이 필요합니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당: 최수삼 팀장\n📞 연락처: 010-2797-2504\n\n위 담당자에게 직접 연락 부탁드립니다.\n감사합니다! 😊`,
-     quickReplies: [
-       { label: '처음으로', action: 'message', messageText: '처음부터' }
-     ]
-   };
- }
- 
- session.step = 'rental_led_count';
- return {
-   text: `✅ 실내 행사로 확인되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n지지구조물 타입을 선택해주세요.`,
-   quickReplies: [
-     { label: '🔨 목공 설치', action: 'message', messageText: '목공 설치' },
-     { label: '🏗️ 단독 설치', action: 'message', messageText: '단독 설치' }
-   ]
- };
+  if (message.includes('실외')) {
+    session.data.installEnvironment = '실외';
+  }
+  
+  session.step = 'rental_led_count';
+  return {
+    text: `✅ ${message.includes('실외') ? '실외' : '실내'} 행사로 확인되었습니다.\n\n━━━━━━\n\n지지구조물 타입을 선택해주세요.`,
+    quickReplies: [
+      { label: '🔨 목공 설치', action: 'message', messageText: '목공 설치' },
+      { label: '🏗️ 단독 설치', action: 'message', messageText: '단독 설치' }
+    ]
+  };
 }
 
 function handleRentalLEDCount(message: string, session: UserSession) {
@@ -638,7 +640,7 @@ function handleRentalLEDCount(message: string, session: UserSession) {
  
  session.step = 'rental_led_specs';
  return {
-   text: `✅ 지지구조물: ${session.data.supportStructureType}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n몇 개의 LED가 필요하신가요? (1-5개)`,
+   text: `✅ 지지구조물: ${session.data.supportStructureType}\n\n━━━━━━\n\n몇 개소의 LED디스플레이가 필요하신가요? (1-5개)`,
    quickReplies: [
      { label: '1개', action: 'message', messageText: '1' },
      { label: '2개', action: 'message', messageText: '2' },
@@ -671,7 +673,7 @@ function handleRentalLEDSpecs(message: string, session: UserSession) {
    session.data.ledSpecs = [];
    
    return {
-     text: `✅ 총 ${session.ledCount}개의 LED 설정을 진행하겠습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번의 크기를 알려주세요.\n\n예시: 4000x2500, 6000x3000`,
+     text: `✅ 총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다.\n\n━━━━━━\n\n🖥️ LED ${session.currentLED}번의 크기를 알려주세요.\n\n예시: 4000x2500, 6000x3000`,
      quickReplies: [
        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
@@ -704,8 +706,9 @@ function handleRentalLEDSpecs(message: string, session: UserSession) {
  session.step = 'rental_stage_height';
  
  return {
-   text: `✅ LED ${session.currentLED}번: ${validation.size}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📐 무대 높이를 알려주세요. (mm 단위)`,
+   text: `✅ LED ${session.currentLED}번: ${validation.size}\n\n━━━━━━\n\n📐 무대 높이를 알려주세요. (mm 단위)`,
    quickReplies: [
+     { label: '0mm', action: 'message', messageText: '0mm' },
      { label: '600mm', action: 'message', messageText: '600mm' },
      { label: '800mm', action: 'message', messageText: '800mm' },
      { label: '1000mm', action: 'message', messageText: '1000mm' }
@@ -734,7 +737,7 @@ function handleRentalStageHeight(message: string, session: UserSession) {
  session.step = 'rental_operator_needs';
  
  return {
-   text: `✅ 무대 높이: ${validation.height}mm\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👨‍💼 오퍼레이터가 필요하신가요?`,
+   text: `✅ 무대 높이: ${validation.height}mm\n\n━━━━━━\n\n👨‍💼 오퍼레이터가 필요하신가요?`,
    quickReplies: [
      { label: '네, 필요합니다', action: 'message', messageText: '네' },
      { label: '아니요', action: 'message', messageText: '아니요' }
@@ -751,7 +754,7 @@ function handleRentalOperatorNeeds(message: string, session: UserSession) {
  if (needsOperator) {
    session.step = 'rental_operator_days';
    return {
-     text: `✅ 오퍼레이터 필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?`,
+     text: `✅ 오퍼레이터 필요\n\n━━━━━━\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?`,
      quickReplies: [
        { label: '1일', action: 'message', messageText: '1' },
        { label: '2일', action: 'message', messageText: '2' },
@@ -763,7 +766,7 @@ function handleRentalOperatorNeeds(message: string, session: UserSession) {
  } else {
    session.step = 'rental_prompter';
    return {
-     text: `✅ 오퍼레이터 불필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
+     text: `✅ 오퍼레이터 불필요\n\n━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
      quickReplies: [
        { label: '네, 필요합니다', action: 'message', messageText: '네' },
        { label: '아니요', action: 'message', messageText: '아니요' }
@@ -794,7 +797,7 @@ function handleRentalOperatorDays(message: string, session: UserSession) {
  session.step = 'rental_prompter';
  
  return {
-   text: `✅ 오퍼레이터 ${validation.value}일\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
+   text: `✅ 오퍼레이터 ${validation.value}일\n\n━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
    quickReplies: [
      { label: '네, 필요합니다', action: 'message', messageText: '네' },
      { label: '아니요', action: 'message', messageText: '아니요' }
@@ -811,7 +814,7 @@ function handleRentalPrompter(message: string, session: UserSession) {
  session.step = 'rental_relay';
  
  return {
-   text: `✅ 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📹 중계카메라 연결이 필요하신가요?`,
+   text: `✅ 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n━━━━━━\n\n📹 중계카메라 연결이 필요하신가요?`,
    quickReplies: [
      { label: '네, 필요합니다', action: 'message', messageText: '네' },
      { label: '아니요', action: 'message', messageText: '아니요' }
@@ -831,7 +834,7 @@ function handleRentalRelay(message: string, session: UserSession) {
    session.step = 'rental_led_specs';
    
    return {
-     text: `✅ LED ${session.currentLED - 1}번 설정 완료\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번의 크기를 알려주세요.`,
+     text: `✅ LED ${session.currentLED - 1}번 설정 완료\n\n━━━━━━\n\n🖥️ LED ${session.currentLED}번의 크기를 알려주세요.`,
      quickReplies: [
        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
@@ -842,7 +845,7 @@ function handleRentalRelay(message: string, session: UserSession) {
    session.step = 'rental_period';
    
    return {
-     text: `✅ 모든 LED 설정이 완료되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 행사 기간을 알려주세요.\n예: 2025-07-09 ~ 2025-07-11`,
+     text: `✅ 모든 LED 설정이 완료되었습니다!\n\n━━━━━━\n\n📅 행사 기간을 알려주세요.\n예: 2025-07-09 ~ 2025-07-11`,
      quickReplies: []
    };
  }
@@ -865,7 +868,7 @@ function handleRentalPeriod(message: string, session: UserSession) {
  session.step = 'get_additional_requests';
  
  return {
-   text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate} (${validation.days}일)\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
+   text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate} (${validation.days}일)\n\n━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
    quickReplies: [
      { label: '없음', action: 'message', messageText: '없음' }
    ]
@@ -882,7 +885,7 @@ function handleMembershipCode(message: string, session: UserSession) {
    session.step = 'membership_event_info';
    
    return {
-     text: `✅ 멤버 코드 확인: ${code} (메쎄이상)\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀`,
+     text: `✅ 멤버 코드 확인: ${code} (메쎄이상)\n\n━━━━━━\n\n행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀`,
      quickReplies: []
    };
  } else {
@@ -905,7 +908,7 @@ function handleMembershipEventInfo(message: string, session: UserSession) {
    session.step = 'membership_led_count';
    
    return {
-     text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n몇 개소의 LED가 필요하신가요? (1-5개소)`,
+     text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━\n\n몇 개소의 LED가 필요하신가요? (1-5개소)`,
      quickReplies: [
        { label: '1개소', action: 'message', messageText: '1' },
        { label: '2개소', action: 'message', messageText: '2' },
@@ -945,7 +948,7 @@ function handleMembershipLEDCount(message: string, session: UserSession) {
  session.step = 'membership_led_specs';
  
  return {
-   text: `✅ 총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번째 개소의 크기를 알려주세요.`,
+   text: `✅ 총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다.\n\n━━━━━━\n\n🖥️ LED ${session.currentLED}번째 개소의 크기를 알려주세요.`,
    quickReplies: [
      { label: '6000x3000', action: 'message', messageText: '6000x3000' },
      { label: '4000x3000', action: 'message', messageText: '4000x3000' },
@@ -979,7 +982,7 @@ function handleMembershipLEDSpecs(message: string, session: UserSession) {
  session.step = 'membership_stage_height';
  
  return {
-   text: `✅ LED ${session.currentLED}번째 개소: ${validation.size}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📐 이 LED의 무대 높이를 알려주세요.`,
+   text: `✅ LED ${session.currentLED}번째 개소: ${validation.size}\n\n━━━━━━\n\n📐 이 LED의 무대 높이를 알려주세요.`,
    quickReplies: [
      { label: '600mm', action: 'message', messageText: '600mm' },
      { label: '800mm', action: 'message', messageText: '800mm' },
@@ -1009,7 +1012,7 @@ function handleMembershipStageHeight(message: string, session: UserSession) {
  session.step = 'membership_operator_needs';
  
  return {
-   text: `✅ LED ${session.currentLED}번째 개소 무대 높이: ${validation.height}mm\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👨‍💼 이 LED에 오퍼레이터가 필요하신가요?`,
+   text: `✅ LED ${session.currentLED}번째 개소 무대 높이: ${validation.height}mm\n\n━━━━━━\n\n👨‍💼 이 LED에 오퍼레이터가 필요하신가요?`,
    quickReplies: [
      { label: '네, 필요합니다', action: 'message', messageText: '네' },
      { label: '아니요', action: 'message', messageText: '아니요' }
@@ -1026,7 +1029,7 @@ function handleMembershipOperatorNeeds(message: string, session: UserSession) {
  if (needsOperator) {
    session.step = 'membership_operator_days';
    return {
-     text: `✅ 오퍼레이터 필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?`,
+     text: `✅ 오퍼레이터 필요\n\n━━━━━━\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?`,
      quickReplies: [
        { label: '1일', action: 'message', messageText: '1' },
        { label: '2일', action: 'message', messageText: '2' },
@@ -1038,7 +1041,7 @@ function handleMembershipOperatorNeeds(message: string, session: UserSession) {
  } else {
    session.step = 'membership_prompter';
    return {
-     text: `✅ 오퍼레이터 불필요\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
+     text: `✅ 오퍼레이터 불필요\n\n━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
      quickReplies: [
        { label: '네, 필요합니다', action: 'message', messageText: '네' },
        { label: '아니요', action: 'message', messageText: '아니요' }
@@ -1069,7 +1072,7 @@ function handleMembershipOperatorDays(message: string, session: UserSession) {
  session.step = 'membership_prompter';
  
  return {
-   text: `✅ 오퍼레이터 ${validation.value}일\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
+   text: `✅ 오퍼레이터 ${validation.value}일\n\n━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
    quickReplies: [
      { label: '네, 필요합니다', action: 'message', messageText: '네' },
      { label: '아니요', action: 'message', messageText: '아니요' }
@@ -1086,7 +1089,7 @@ function handleMembershipPrompter(message: string, session: UserSession) {
  session.step = 'membership_relay';
  
  return {
-   text: `✅ 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📹 중계카메라 연결이 필요하신가요?`,
+   text: `✅ 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n━━━━━━\n\n📹 중계카메라 연결이 필요하신가요?`,
    quickReplies: [
      { label: '네, 필요합니다', action: 'message', messageText: '네' },
      { label: '아니요', action: 'message', messageText: '아니요' }
@@ -1106,7 +1109,7 @@ function handleMembershipRelay(message: string, session: UserSession) {
    session.step = 'membership_led_specs';
    
    return {
-     text: `✅ LED ${session.currentLED - 1}번째 개소 설정 완료\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🖥️ LED ${session.currentLED}번째 개소의 크기를 알려주세요.`,
+     text: `✅ LED ${session.currentLED - 1}번째 개소 설정 완료\n\n━━━━━━\n\n🖥️ LED ${session.currentLED}번째 개소의 크기를 알려주세요.`,
      quickReplies: [
        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
@@ -1123,7 +1126,7 @@ function handleMembershipRelay(message: string, session: UserSession) {
    }).join('\n');
    
    return {
-     text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${ledSummary}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📅 행사 기간을 알려주세요.\n예: 2025-07-09 ~ 2025-07-11`,
+     text: `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${ledSummary}\n\n━━━━━━\n\n📅 행사 기간을 알려주세요.\n예: 2025-07-09 ~ 2025-07-11`,
      quickReplies: []
    };
  }
@@ -1145,7 +1148,7 @@ function handleMembershipPeriod(message: string, session: UserSession) {
  session.step = 'get_additional_requests';
  
  return {
-   text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
+   text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate}\n\n━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
    quickReplies: [
      { label: '없음', action: 'message', messageText: '없음' }
    ]
@@ -1165,7 +1168,7 @@ function handleAdditionalRequests(message: string, session: UserSession) {
     session.step = 'get_customer_company';
     
     return {
-      text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사명을 알려주세요.`,
+      text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━\n\n🏢 고객사명을 알려주세요.`,
       quickReplies: []
     };
   }
@@ -1175,7 +1178,7 @@ function handleAdditionalRequests(message: string, session: UserSession) {
     session.step = 'get_contact_name';
     
     return {
-      text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사명을 알려주세요.`,
+      text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━\n\n🏢 고객사명을 알려주세요.`,
       quickReplies: []
     };
   }
@@ -1184,7 +1187,7 @@ function handleAdditionalRequests(message: string, session: UserSession) {
   session.step = 'get_contact_name';
   
   return {
-    text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
+    text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
     quickReplies: []
   };
 }
@@ -1201,7 +1204,7 @@ function handleCustomerCompany(message: string, session: UserSession) {
   session.step = 'get_contact_name';
   
   return {
-    text: `✅ 고객사: ${session.data.customerName}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
+    text: `✅ 고객사: ${session.data.customerName}\n\n━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
     quickReplies: []
   };
 }
@@ -1220,7 +1223,7 @@ function handleContactName(message: string, session: UserSession) {
    session.data.customerName = message.trim();
    
    return {
-     text: `✅ 고객사: ${session.data.customerName}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
+     text: `✅ 고객사: ${session.data.customerName}\n\n━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
      quickReplies: []
    };
  }
@@ -1236,7 +1239,7 @@ function handleContactName(message: string, session: UserSession) {
  session.step = 'get_contact_title';
  
  return {
-   text: `✅ 담당자: ${session.data.contactName}님\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n💼 직급을 알려주세요.`,
+   text: `✅ 담당자: ${session.data.contactName}님\n\n━━━━━━\n\n💼 직급을 알려주세요.`,
    quickReplies: [
      { label: '매니저', action: 'message', messageText: '매니저' },
      { label: '책임', action: 'message', messageText: '책임' },
@@ -1264,7 +1267,7 @@ function handleContactTitle(message: string, session: UserSession) {
  session.step = 'get_contact_phone';
  
  return {
-   text: `✅ 직급: ${session.data.contactTitle}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📞 연락처를 알려주세요.\n예: 010-1234-5678`,
+   text: `✅ 직급: ${session.data.contactTitle}\n\n━━━━━━\n\n📞 연락처를 알려주세요.\n예: 010-1234-5678`,
    quickReplies: []
  };
 }
@@ -1287,7 +1290,7 @@ function handleContactPhone(message: string, session: UserSession) {
  let confirmationMessage = '';
  
  if (session.serviceType === '설치') {
-   confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: LED 설치\n🏗️ 설치 환경: ${session.data.installEnvironment}\n📍 설치 지역: ${session.data.installRegion}\n📅 필요 시기: ${session.data.requiredTiming}\n💬 요청사항: ${session.data.additionalRequests}\n\n🏢 고객사: ${session.data.customerName}\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n\n상담 요청을 진행하시겠습니까?`;
+   confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━\n\n🔖 서비스: LED 설치\n🏗️ 설치 환경: ${session.data.installEnvironment}\n📍 설치 지역: ${session.data.installRegion}\n📅 필요 시기: ${session.data.requiredTiming}\n💬 요청사항: ${session.data.additionalRequests}\n\n🏢 고객사: ${session.data.customerName}\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n\n상담 요청을 진행하시겠습니까?`;
   } else if (session.serviceType === '렌탈') {
     const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
       const [w, h] = led.size.split('x').map(Number);
@@ -1295,7 +1298,7 @@ function handleContactPhone(message: string, session: UserSession) {
       return `LED${index + 1}: ${led.size} (${moduleCount}개)`;
     }).join('\n');
     
-    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: LED 렌탈\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)\n🔧 지지구조물: ${session.data.supportStructureType}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n견적을 요청하시겠습니까?`;
+    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━\n\n🔖 서비스: LED 렌탈\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)\n🔧 지지구조물: ${session.data.supportStructureType}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n견적을 요청하시겠습니까?`;
   } else {
    const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
      const [w, h] = led.size.split('x').map(Number);
@@ -1303,7 +1306,7 @@ function handleContactPhone(message: string, session: UserSession) {
      return `LED${index + 1}: ${led.size} (${moduleCount}개)`;
    }).join('\n');
    
-   confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: 멤버쉽 (${session.data.memberCode})\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n견적을 요청하시겠습니까?`;
+    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━\n\n🔖 서비스: 멤버쉽 (${session.data.memberCode})\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n예상 견적을 요청하시겠습니까?`;
  }
  
  return {
@@ -1348,11 +1351,11 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
      // 설치 서비스는 견적 계산하지 않음
 
      // 빠른 응답 반환 
-    const responseText = sessionCopy.serviceType === '설치' 
-      ? `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사: ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n🏗️ 설치 환경: ${sessionCopy.data.installEnvironment}\n📍 설치 지역: ${sessionCopy.data.installRegion}\n📅 필요 시기: ${sessionCopy.data.requiredTiming}\n\n👤 담당자: 유준수 구축팀장\n📞 담당자 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n감사합니다! 😊`
+     const responseText = sessionCopy.serviceType === '설치' 
+      ? `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━\n\n🏢 고객사: ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n🏗️ 설치 환경: ${sessionCopy.data.installEnvironment}\n📍 설치 지역: ${sessionCopy.data.installRegion}\n📅 필요 시기: ${sessionCopy.data.requiredTiming}\n\n👤 담당자: 유준수 구축팀장\n📞 담당자 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n\n💡 설치 사례 보러가기:\nhttps://blog.naver.com/PostList.naver?blogId=oriondisplay_&from=postList&categoryNo=8\n\n감사합니다! 😊`
       : sessionCopy.serviceType === '렌탈'
       ? `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n🏢 ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 예상 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 담당자에게 전달 중입니다...\n\n⚠️ 상기 금액은 예상 견적이며, 담당자와 협의 후 조정될 수 있습니다.`
-      : `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 담당자에게 전달 중입니다...`;
+      : `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 예상 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 상세 견적은 담당자가 연락드릴 예정입니다...`;
  
      // 세션 초기화
      session.step = 'start';
@@ -1442,6 +1445,7 @@ function prepareNotionData(session: UserSession, quote: any, schedules: any): an
   } else if (session.serviceType === '렌탈') {
     notionData = {
       ...notionData,
+      installEnvironment: session.data.installEnvironment || '실내', // 추가!
       supportStructureType: session.data.supportStructureType || '',
       eventSchedule: session.data.rentalPeriod ? `${session.data.rentalPeriod}일` : '',
       periodSurchargeAmount: quote?.periodSurcharge?.surchargeAmount || 0,
