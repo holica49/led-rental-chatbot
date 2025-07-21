@@ -1480,6 +1480,9 @@ function prepareNotionData(session: UserSession, quote: any, schedules: any): an
       ...notionData,
       memberCode: session.data.memberCode || '',
       eventSchedule: schedules?.eventSchedule || '',
+      installSchedule: schedules?.installSchedule || '', // 추가!
+      rehearsalSchedule: schedules?.rehearsalSchedule || '', // 추가!  
+      dismantleSchedule: schedules?.dismantleSchedule || '', // 추가!
       ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
         acc[`led${index + 1}`] = led;
         return acc;

@@ -18,7 +18,8 @@
     "test": "tsx src/test.ts",
     "prepare": "npm run build",
     "railway-start": "tsx src/index.ts",
-    "railway-build": "npm run build"
+    "railway-build": "npm run build",
+    "find-users": "node src/tools/notionUserFinder.js"
   },
   "keywords": [
     "mcp",
@@ -28,8 +29,8 @@
     "led-rental",
     "automation"
   ],
-  "author": "오승수",
-  "license": "MIT",
+  "author": "허지성",
+  "license": "오리온디스플레이",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.6.0",
     "@notionhq/client": "^2.2.14",
