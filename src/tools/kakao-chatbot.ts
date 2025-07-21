@@ -101,57 +101,59 @@ function validateAndNormalizeLEDSize(input: string): { valid: boolean; size?: st
 
 // 무대 높이 검증 함수
 function validateStageHeight(input: string): { valid: boolean; height?: number; error?: string } {
- if (!input || typeof input !== 'string') {
-   return { valid: false, error: '무대 높이를 입력해주세요.' };
- }
- 
- const cleanInput = input.replace(/\s/g, '').toLowerCase();
- 
- // 버튼 클릭 텍스트 직접 처리
- const buttonValues: { [key: string]: number } = {
-   '600mm': 600,
-   '800mm': 800,
-   '1000mm': 1000
- };
- 
- if (buttonValues[cleanInput]) {
-   return { valid: true, height: buttonValues[cleanInput] };
- }
- 
- const patterns = [
-   /^(\d+)$/,
-   /^(\d+)mm$/,
-   /^(\d+)cm$/,
-   /^(\d+)m$/,
-   /^(\d+\.\d+)m$/
- ];
- 
- for (const pattern of patterns) {
-   const match = cleanInput.match(pattern);
-   if (match) {
-     let height = parseFloat(match[1]);
-     
-     if (cleanInput.includes('cm')) {
-       height = height * 10;
-     } else if (cleanInput.includes('m')) {
-       height = height * 1000;
-     }
-     
-     if (height < 100 || height > 10000) {
-       return { 
-         valid: false, 
-         error: '무대 높이는 100mm(10cm) ~ 10000mm(10m) 사이로 입력해주세요.' 
-       };
-     }
-     
-     return { valid: true, height: Math.round(height) };
-   }
- }
- 
- return { 
-   valid: false, 
-   error: '무대 높이 형식이 올바르지 않습니다.\n예시: 600, 600mm, 60cm, 0.6m' 
- };
+  if (!input || typeof input !== 'string') {
+    return { valid: false, error: '무대 높이를 입력해주세요.' };
+  }
+  
+  const cleanInput = input.replace(/\s/g, '').toLowerCase();
+  
+  // 버튼 클릭 텍스트 직접 처리
+  const buttonValues: { [key: string]: number } = {
+    '0mm': 0,  // 추가
+    '600mm': 600,
+    '800mm': 800,
+    '1000mm': 1000
+  };
+  
+  if (buttonValues[cleanInput]) {
+    return { valid: true, height: buttonValues[cleanInput] };
+  }
+  
+  const patterns = [
+    /^(\d+)$/,
+    /^(\d+)mm$/,
+    /^(\d+)cm$/,
+    /^(\d+)m$/,
+    /^(\d+\.\d+)m$/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = cleanInput.match(pattern);
+    if (match) {
+      let height = parseFloat(match[1]);
+      
+      if (cleanInput.includes('cm')) {
+        height = height * 10;
+      } else if (cleanInput.includes('m') && !cleanInput.includes('mm')) {
+        height = height * 1000;
+      }
+      
+      // 수정: 최소값을 0으로 변경
+      if (height < 0 || height > 10000) {
+        return { 
+          valid: false, 
+          error: '무대 높이는 0mm ~ 10000mm(10m) 사이로 입력해주세요.' 
+        };
+      }
+      
+      return { valid: true, height: Math.round(height) };
+    }
+  }
+  
+  return { 
+    valid: false, 
+    error: '무대 높이 형식이 올바르지 않습니다.\n예시: 0, 600, 600mm, 60cm, 0.6m' 
+  };
 }
 
 // 행사 기간 검증 함수
@@ -717,6 +719,7 @@ function handleRentalStageHeight(message: string, session: UserSession) {
    return {
      text: `❌ ${validation.error}\n\n다시 입력해주세요.`,
      quickReplies: [
+       { label: '0mm', action: 'message', messageText: '0mm' },
        { label: '600mm', action: 'message', messageText: '600mm' },
        { label: '800mm', action: 'message', messageText: '800mm' },
        { label: '1000mm', action: 'message', messageText: '1000mm' }
@@ -991,6 +994,7 @@ function handleMembershipStageHeight(message: string, session: UserSession) {
    return {
      text: `❌ ${validation.error}`,
      quickReplies: [
+       { label: '0mm', action: 'message', messageText: '0mm' },
        { label: '600mm', action: 'message', messageText: '600mm' },
        { label: '800mm', action: 'message', messageText: '800mm' },
        { label: '1000mm', action: 'message', messageText: '1000mm' }
@@ -1378,79 +1382,88 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
 }
 
 // Notion 데이터 준비 함수 (분리)
+// prepareNotionData 함수 찾아서 아래 코드로 교체
+
+// Notion 데이터 준비 함수 (분리)
 function prepareNotionData(session: UserSession, quote: any, schedules: any): any {
- let notionData: any = {
-   serviceType: session.serviceType || '', // 빈 문자열 대신 기본값
-   eventName: session.data.eventName || 'LED 프로젝트',
-   customerName: session.data.customerName || '고객사',
-   venue: session.data.venue || '',
-   contactName: session.data.contactName || '',
-   contactTitle: session.data.contactTitle || '',
-   contactPhone: session.data.contactPhone || '',
-   additionalRequests: session.data.additionalRequests || ''
- };
- 
- if (session.serviceType === '설치') {
-   notionData = {
-     ...notionData,
-     installEnvironment: session.data.installEnvironment || '',
-     installRegion: session.data.installRegion || '',
-     requiredTiming: session.data.requiredTiming || '',
-     eventSchedule: session.data.requiredTiming || '',
-     totalQuoteAmount: 0
-   };
- } else if (session.serviceType === '렌탈') {
-   notionData = {
-     ...notionData,
-     supportStructureType: session.data.supportStructureType || '',
-     rentalPeriod: session.data.rentalPeriod || 0,
-     periodSurchargeAmount: quote?.periodSurcharge?.surchargeAmount || 0,
-     eventSchedule: schedules?.eventSchedule || '',
-     installSchedule: schedules?.installSchedule || '',
-     rehearsalSchedule: schedules?.rehearsalSchedule || '',
-     dismantleSchedule: schedules?.dismantleSchedule || '',
-     ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
-       acc[`led${index + 1}`] = led;
-       return acc;
-     }, {}),
-     totalQuoteAmount: quote?.total || 0,
-     totalModuleCount: quote?.totalModuleCount || 0,
-     ledModuleCost: quote?.ledModules?.price || 0,
-     transportCost: quote?.transport?.price || 0
-   };
- } else if (session.serviceType === '멤버쉽') {
-   notionData = {
-     ...notionData,
-     memberCode: session.data.memberCode || '',
-     eventSchedule: schedules?.eventSchedule || '',
-     installSchedule: schedules?.installSchedule || '',
-     rehearsalSchedule: schedules?.rehearsalSchedule || '',
-     dismantleSchedule: schedules?.dismantleSchedule || '',
-     ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
-       acc[`led${index + 1}`] = led;
-       return acc;
-     }, {}),
-     totalQuoteAmount: quote?.total || 0,
-     totalModuleCount: quote?.totalModuleCount || 0,
-     ledModuleCost: quote?.ledModules?.price || 0,
-     structureCost: quote?.structure?.totalPrice || 0,
-     controllerCost: quote?.controller?.totalPrice || 0,
-     powerCost: quote?.power?.totalPrice || 0,
-     installationCost: quote?.installation?.totalPrice || 0,
-     operatorCost: quote?.operation?.totalPrice || 0,
-     transportCost: quote?.transport?.price || 0,
-     maxStageHeight: quote?.maxStageHeight || 0,
-     installationWorkers: quote?.installationWorkers || 0,
-     installationWorkerRange: quote?.installationWorkerRange || '',
-     controllerCount: quote?.controllerCount || 0,
-     powerRequiredCount: quote?.powerRequiredCount || 0,
-     transportRange: quote?.transportRange || '',
-     structureUnitPrice: quote?.structureUnitPrice || 0,
-     structureUnitPriceDescription: quote?.structureUnitPriceDescription || ''
-   };
- }
- 
- return notionData;
+  let notionData: any = {
+    serviceType: session.serviceType || '', // 빈 문자열 대신 기본값
+    eventName: session.data.eventName || 'LED 프로젝트',
+    customerName: session.data.customerName || '고객사',
+    venue: session.data.venue || '',
+    contactName: session.data.contactName || '',
+    contactTitle: session.data.contactTitle || '',
+    contactPhone: session.data.contactPhone || '',
+    additionalRequests: session.data.additionalRequests || ''
+  };
+  
+  if (session.serviceType === '설치') {
+    notionData = {
+      ...notionData,
+      installEnvironment: session.data.installEnvironment || '',
+      // 수정: 설치 지역 → 행사장
+      venue: session.data.installRegion || '', // 행사장으로 매핑
+      // 수정: 필요 시기 → 행사 일정
+      eventSchedule: session.data.requiredTiming || '', // 행사 일정으로 매핑
+      totalQuoteAmount: 0,
+      // 수정: 담당자 정보는 고객담당자로 매핑 (people 타입이 아닌 텍스트)
+      contactName: `${session.data.contactName || ''} ${session.data.contactTitle || ''}`.trim()
+    };
+  } else if (session.serviceType === '렌탈') {
+    notionData = {
+      ...notionData,
+      // 수정: 지지구조물 타입 → 지지구조물 방식
+      supportStructureType: session.data.supportStructureType || '',
+      // 수정: 렌탈 기간 → 행사 일정 (텍스트)
+      eventSchedule: session.data.rentalPeriod ? `${session.data.rentalPeriod}일` : '',
+      periodSurchargeAmount: quote?.periodSurcharge?.surchargeAmount || 0,
+      // 날짜 계산 로직 제거 - 아래 항목들 삭제
+      // installSchedule: schedules?.installSchedule || '',
+      // rehearsalSchedule: schedules?.rehearsalSchedule || '',
+      // dismantleSchedule: schedules?.dismantleSchedule || '',
+      ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
+        acc[`led${index + 1}`] = led;
+        return acc;
+      }, {}),
+      totalQuoteAmount: quote?.total || 0,
+      totalModuleCount: quote?.totalModuleCount || 0,
+      ledModuleCost: quote?.ledModules?.price || 0,
+      transportCost: quote?.transport?.price || 0
+    };
+  } else if (session.serviceType === '멤버쉽') {
+    notionData = {
+      ...notionData,
+      memberCode: session.data.memberCode || '',
+      eventSchedule: schedules?.eventSchedule || '',
+      // 날짜 계산 로직 제거 - 아래 항목들 삭제
+      // installSchedule: schedules?.installSchedule || '',
+      // rehearsalSchedule: schedules?.rehearsalSchedule || '',
+      // dismantleSchedule: schedules?.dismantleSchedule || '',
+      ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
+        acc[`led${index + 1}`] = led;
+        return acc;
+      }, {}),
+      totalQuoteAmount: quote?.total || 0,
+      totalModuleCount: quote?.totalModuleCount || 0,
+      ledModuleCost: quote?.ledModules?.price || 0,
+      structureCost: quote?.structure?.totalPrice || 0,
+      controllerCost: quote?.controller?.totalPrice || 0,
+      powerCost: quote?.power?.totalPrice || 0,
+      installationCost: quote?.installation?.totalPrice || 0,
+      operatorCost: quote?.operation?.totalPrice || 0,
+      transportCost: quote?.transport?.price || 0,
+      maxStageHeight: quote?.maxStageHeight || 0,
+      installationWorkers: quote?.installationWorkers || 0,
+      installationWorkerRange: quote?.installationWorkerRange || '',
+      controllerCount: quote?.controllerCount || 0,
+      powerRequiredCount: quote?.powerRequiredCount || 0,
+      transportRange: quote?.transportRange || '',
+      structureUnitPrice: quote?.structureUnitPrice || 0,
+      structureUnitPriceDescription: quote?.structureUnitPriceDescription || ''
+    };
+  }
+  
+  return notionData;
 }
 
 // 기본 처리
