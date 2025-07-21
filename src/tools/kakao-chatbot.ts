@@ -1357,7 +1357,7 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
 
      if (sessionCopy.serviceType === '렌탈' && sessionCopy.data.rentalPeriod) {
        quote = calculateRentalLEDQuote(sessionCopy.data.ledSpecs, sessionCopy.data.rentalPeriod);
-       schedules = calculateScheduleDates(sessionCopy.data.eventStartDate!, sessionCopy.data.eventEndDate!);
+       schedules = calculateScheduleDates(sessionCopy.data.eventStartDate!, sessionCopy.data.eventEndDate!); // 이 줄이 있는지 확인!  
      } else if (sessionCopy.serviceType === '멤버쉽') {
        quote = calculateMultiLEDQuote(sessionCopy.data.ledSpecs);
        schedules = calculateScheduleDates(sessionCopy.data.eventStartDate!, sessionCopy.data.eventEndDate!);
@@ -1457,12 +1457,15 @@ function prepareNotionData(session: UserSession, quote: any, schedules: any): an
       // Notion에서는 "고객명"으로 저장됨
     };
   } else if (session.serviceType === '렌탈') {
-    notionData = {
-      ...notionData,
-      installEnvironment: session.data.installEnvironment || '', // 이 줄 추가!
-      supportStructureType: session.data.supportStructureType || '',
-      eventSchedule: session.data.rentalPeriod ? `${session.data.rentalPeriod}일` : '',
-      periodSurchargeAmount: quote?.periodSurcharge?.surchargeAmount || 0,
+      notionData = {
+        ...notionData,
+        installEnvironment: session.data.installEnvironment || '실내', // 추가!
+        supportStructureType: session.data.supportStructureType || '',
+        eventSchedule: session.data.rentalPeriod ? `${session.data.rentalPeriod}일` : '',
+        periodSurchargeAmount: quote?.periodSurcharge?.surchargeAmount || 0,
+        installSchedule: schedules?.installSchedule || '', // 추가!
+        rehearsalSchedule: schedules?.rehearsalSchedule || '', // 추가!
+        dismantleSchedule: schedules?.dismantleSchedule || '', // 추가!
       ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
         acc[`led${index + 1}`] = led;
         return acc;
