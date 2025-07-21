@@ -572,7 +572,7 @@ function handleInstallTiming(message: string, session: UserSession) {
  }
  
  session.data.requiredTiming = message.trim();
- session.data.eventName = 'LED 설치 프로젝트'; // 기본 행사명
+ session.data.eventName = `${session.data.installRegion} 프로젝트`; // 기본 행사명
  session.step = 'get_additional_requests';
  
  return {
@@ -610,12 +610,25 @@ function handleRentalIndoorOutdoor(message: string, session: UserSession) {
 
 function handleRentalStructureType(message: string, session: UserSession) {
   if (message.includes('실외')) {
+    // 실외 선택 시 - 세션 데이터는 유지하고 설치 환경만 저장
     session.data.installEnvironment = '실외';
+    session.step = 'rental_led_count';
+    
+    return {
+      text: `🌳 실외 행사로 확인되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n실외 행사는 최수삼 팀장이 별도로 상담을 도와드립니다.\n\n👤 담당: 최수삼 팀장\n📞 연락처: 010-2797-2504\n\n견적 요청은 계속 진행하시겠습니까?`,
+      quickReplies: [
+        { label: '네, 진행합니다', action: 'message', messageText: '목공 설치' },
+        { label: '처음으로', action: 'message', messageText: '처음부터' }
+      ]
+    };
+  } else {
+    // 실내 선택 시
+    session.data.installEnvironment = '실내';
   }
   
   session.step = 'rental_led_count';
   return {
-    text: `✅ ${message.includes('실외') ? '실외' : '실내'} 행사로 확인되었습니다.\n\n━━━━━━\n\n지지구조물 타입을 선택해주세요.`,
+    text: `✅ 실내 행사로 확인되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n지지구조물 타입을 선택해주세요.`,
     quickReplies: [
       { label: '🔨 목공 설치', action: 'message', messageText: '목공 설치' },
       { label: '🏗️ 단독 설치', action: 'message', messageText: '단독 설치' }
@@ -1300,11 +1313,12 @@ function handleContactPhone(message: string, session: UserSession) {
     
     confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━\n\n🔖 서비스: LED 렌탈\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)\n🔧 지지구조물: ${session.data.supportStructureType}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n견적을 요청하시겠습니까?`;
   } else {
-   const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
-     const [w, h] = led.size.split('x').map(Number);
-     const moduleCount = (w / 500) * (h / 500);
-     return `LED${index + 1}: ${led.size} (${moduleCount}개)`;
-   }).join('\n');
+    const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
+      const [w, h] = led.size.split('x').map(Number);
+      const moduleCount = (w / 500) * (h / 500);
+      const power = calculateLEDPower(led.size); // 추가!
+      return `LED${index + 1}: ${led.size} (${moduleCount}개, ${power})`;
+    }).join('\n');
    
     confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━\n\n🔖 서비스: 멤버쉽 (${session.data.memberCode})\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n예상 견적을 요청하시겠습니까?`;
  }
@@ -1445,7 +1459,7 @@ function prepareNotionData(session: UserSession, quote: any, schedules: any): an
   } else if (session.serviceType === '렌탈') {
     notionData = {
       ...notionData,
-      installEnvironment: session.data.installEnvironment || '실내', // 추가!
+      installEnvironment: session.data.installEnvironment || '', // 이 줄 추가!
       supportStructureType: session.data.supportStructureType || '',
       eventSchedule: session.data.rentalPeriod ? `${session.data.rentalPeriod}일` : '',
       periodSurchargeAmount: quote?.periodSurcharge?.surchargeAmount || 0,
