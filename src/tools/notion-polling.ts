@@ -588,14 +588,18 @@ export class NotionPollingService {
       const properties = (page as any).properties;
       const eventName = properties['행사명']?.title?.[0]?.text?.content || 'Unknown';
       const currentStatus = properties['행사 상태']?.status?.name;
+      // 수정: "고객담당자" → "고객명"
+      const customerName = properties['고객명']?.rich_text?.[0]?.text?.content || 'Unknown';
       
       console.log(`📄 파일 상태 확인 - ${eventName} (${currentStatus}):`);
+      console.log(`   - 고객: ${customerName}`);
       console.log(`   - 견적서: ${properties['견적서']?.files?.length > 0 ? '✅' : '❌'}`);
       console.log(`   - 요청서: ${properties['요청서']?.files?.length > 0 ? '✅' : '❌'}`);
       
       return {
         eventName,
         status: currentStatus,
+        customerName,
         hasQuoteFile: properties['견적서']?.files?.length > 0,
         hasRequestFile: properties['요청서']?.files?.length > 0,
         quoteFiles: properties['견적서']?.files || [],

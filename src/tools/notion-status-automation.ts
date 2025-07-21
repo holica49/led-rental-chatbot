@@ -284,7 +284,8 @@ export class NotionStatusAutomation {
     return {
       eventName: properties['행사명']?.title?.[0]?.text?.content || '',
       customerName: properties['고객사']?.select?.name || '',
-      contactName: properties['고객담당자']?.rich_text?.[0]?.text?.content || '',
+      // 수정: "고객담당자" → "고객명"
+      contactName: properties['고객명']?.rich_text?.[0]?.text?.content || '',
       contactPhone: properties['고객 연락처']?.phone_number || '',
       venue: properties['행사장']?.rich_text?.[0]?.text?.content || '',
       eventSchedule: properties['행사 일정']?.rich_text?.[0]?.text?.content || '',
@@ -337,10 +338,12 @@ export class NotionStatusAutomation {
 ✅ 견적 정보:
 - 행사명: ${eventData.eventName}
 - 고객사: ${eventData.customerName}
+- 고객: ${eventData.contactName}  // 수정: "고객담당자" → "고객"
 - 행사장: ${eventData.venue}
 - 총 LED 모듈: ${quote.ledModules?.count || 0}개
 - 견적 금액: ${quote.total?.toLocaleString() || 0}원 (VAT 포함)
 - 설치 인력: ${quote.installation?.workers || 0}명
+
 
 🖥️ LED 사양:
 ${ledSummary}
@@ -400,7 +403,7 @@ ${dispatch.description}
 📋 행사 정보:
 - 행사명: ${eventData.eventName}
 - 고객사: ${eventData.customerName}
-- 담당자: ${eventData.contactName}
+- 고객: ${eventData.contactName}  // 수정: "담당자" → "고객"
 - 연락처: ${eventData.contactPhone}
 - 철거일: ${eventData.dismantleSchedule || '미정'}
 
@@ -452,7 +455,7 @@ ${dispatch.description}
 □ 전원 공급 및 전기 설치 조건 확인
 
 📞 연락처 정보:
-- 고객 담당자: ${eventData.contactName}
+- 고객: ${eventData.contactName}  // 수정: "고객 담당자" → "고객"
 - 연락처: ${eventData.contactPhone}
 - 행사장: ${eventData.venue}
 
@@ -557,7 +560,7 @@ ${dispatch.description}
 📋 행사 정보:
 - 행사명: ${eventData.eventName}
 - 고객사: ${eventData.customerName}
-- 담당자: ${eventData.contactName}
+- 고객: ${eventData.contactName}  // 수정: "담당자" → "고객"
 - 연락처: ${eventData.contactPhone}
 
 ⚠️ 주의사항:

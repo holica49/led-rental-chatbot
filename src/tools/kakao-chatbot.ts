@@ -109,7 +109,7 @@ function validateStageHeight(input: string): { valid: boolean; height?: number; 
   
   // 버튼 클릭 텍스트 직접 처리
   const buttonValues: { [key: string]: number } = {
-    '0mm': 0,  // 추가
+    '0mm': 0,
     '600mm': 600,
     '800mm': 800,
     '1000mm': 1000
@@ -138,7 +138,7 @@ function validateStageHeight(input: string): { valid: boolean; height?: number; 
         height = height * 1000;
       }
       
-      // 수정: 최소값을 0으로 변경
+      // 최소값 0으로 변경
       if (height < 0 || height > 10000) {
         return { 
           valid: false, 
@@ -1305,10 +1305,10 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
      // 세션 데이터를 복사 (세션 초기화 전에)
      const sessionCopy: UserSession = JSON.parse(JSON.stringify(session));
      
-     // 견적 계산 (빠른 처리)
+     // 견적 계산 (빠른 처리) - 설치 서비스는 제외
      let quote: any = null;
      let schedules: any = null;
-     
+
      if (sessionCopy.serviceType === '렌탈' && sessionCopy.data.rentalPeriod) {
        quote = calculateRentalLEDQuote(sessionCopy.data.ledSpecs, sessionCopy.data.rentalPeriod);
        schedules = calculateScheduleDates(sessionCopy.data.eventStartDate!, sessionCopy.data.eventEndDate!);
@@ -1316,12 +1316,13 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
        quote = calculateMultiLEDQuote(sessionCopy.data.ledSpecs);
        schedules = calculateScheduleDates(sessionCopy.data.eventStartDate!, sessionCopy.data.eventEndDate!);
      }
-     
-     // 빠른 응답 반환
+     // 설치 서비스는 견적 계산하지 않음
+
+     // 빠른 응답 반환 
      const responseText = sessionCopy.serviceType === '설치' 
-       ? `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👤 담당자: 유준수 구축팀장\n📞 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n감사합니다! 😊`
-       : `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n👤 담당자: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 담당자에게 전달 중입니다...`;
-     
+       ? `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🏢 고객사: ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n🏗️ 설치 환경: ${sessionCopy.data.installEnvironment}\n📍 설치 지역: ${sessionCopy.data.installRegion}\n📅 필요 시기: ${sessionCopy.data.requiredTiming}\n\n👤 담당자: 유준수 구축팀장\n📞 담당자 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n감사합니다! 😊`
+       : `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 담당자에게 전달 중입니다...`;
+ 
      // 세션 초기화
      session.step = 'start';
      session.data = { ledSpecs: [] };
@@ -1387,7 +1388,7 @@ async function handleFinalConfirmation(message: string, session: UserSession) {
 // Notion 데이터 준비 함수 (분리)
 function prepareNotionData(session: UserSession, quote: any, schedules: any): any {
   let notionData: any = {
-    serviceType: session.serviceType || '', // 빈 문자열 대신 기본값
+    serviceType: session.serviceType || '',
     eventName: session.data.eventName || 'LED 프로젝트',
     customerName: session.data.customerName || '고객사',
     venue: session.data.venue || '',
@@ -1401,26 +1402,18 @@ function prepareNotionData(session: UserSession, quote: any, schedules: any): an
     notionData = {
       ...notionData,
       installEnvironment: session.data.installEnvironment || '',
-      // 수정: 설치 지역 → 행사장
-      venue: session.data.installRegion || '', // 행사장으로 매핑
-      // 수정: 필요 시기 → 행사 일정
-      eventSchedule: session.data.requiredTiming || '', // 행사 일정으로 매핑
+      venue: session.data.installRegion || '', // 설치 지역을 행사장으로
+      eventSchedule: session.data.requiredTiming || '', // 필요 시기를 행사 일정으로
       totalQuoteAmount: 0,
-      // 수정: 담당자 정보는 고객담당자로 매핑 (people 타입이 아닌 텍스트)
-      contactName: `${session.data.contactName || ''} ${session.data.contactTitle || ''}`.trim()
+      // 고객 정보는 contactName, contactTitle 필드에 그대로 유지
+      // Notion에서는 "고객명"으로 저장됨
     };
   } else if (session.serviceType === '렌탈') {
     notionData = {
       ...notionData,
-      // 수정: 지지구조물 타입 → 지지구조물 방식
       supportStructureType: session.data.supportStructureType || '',
-      // 수정: 렌탈 기간 → 행사 일정 (텍스트)
       eventSchedule: session.data.rentalPeriod ? `${session.data.rentalPeriod}일` : '',
       periodSurchargeAmount: quote?.periodSurcharge?.surchargeAmount || 0,
-      // 날짜 계산 로직 제거 - 아래 항목들 삭제
-      // installSchedule: schedules?.installSchedule || '',
-      // rehearsalSchedule: schedules?.rehearsalSchedule || '',
-      // dismantleSchedule: schedules?.dismantleSchedule || '',
       ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
         acc[`led${index + 1}`] = led;
         return acc;
@@ -1435,10 +1428,6 @@ function prepareNotionData(session: UserSession, quote: any, schedules: any): an
       ...notionData,
       memberCode: session.data.memberCode || '',
       eventSchedule: schedules?.eventSchedule || '',
-      // 날짜 계산 로직 제거 - 아래 항목들 삭제
-      // installSchedule: schedules?.installSchedule || '',
-      // rehearsalSchedule: schedules?.rehearsalSchedule || '',
-      // dismantleSchedule: schedules?.dismantleSchedule || '',
       ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
         acc[`led${index + 1}`] = led;
         return acc;

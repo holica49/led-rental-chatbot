@@ -35,7 +35,7 @@ interface NotionData {
   // 기본 정보
   eventName: string;
   customerName: string;
-  contactName: string;
+  contactName: string;  // 고객명으로 사용될 필드
   contactTitle: string;
   contactPhone: string;
   venue: string;
@@ -217,7 +217,8 @@ export const notionMCPTool = {
         "고객사": {
           select: { name: data.customerName || "고객사" }
         },
-        "고객담당자": {
+        // 수정: "고객담당자" → "고객명"
+        "고객명": {
           rich_text: [{ text: { content: data.contactName && data.contactTitle ? `${data.contactName} ${data.contactTitle}` : (data.contactName || "") } }]
         },
         "고객 연락처": {
@@ -353,13 +354,13 @@ export const notionMCPTool = {
       }
       
       // 담당자 정보 (자동 설정된 경우)
-      if (managerInfo.name) {
-        properties["담당자"] = {
-          rich_text: [{ text: { content: managerInfo.name } }]
-        };
-        properties["담당자 연락처"] = {
-          phone_number: managerInfo.phone
-        };
+      if (managerInfo.name && data.serviceType === '설치') {
+        // 담당자 연락처는 존재하지 않는 속성이므로 제거
+        // properties["담당자"] = { ... } 부분 제거
+        // properties["담당자 연락처"] = { ... } 부분 제거
+        
+        // 대신 댓글로 담당자 정보 안내
+        console.log(`설치 담당자: ${managerInfo.name} (${managerInfo.phone})`);
       }
       
       // LED 개소별 속성 추가 (설치 서비스가 아닌 경우)
