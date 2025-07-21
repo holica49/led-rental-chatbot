@@ -114,7 +114,8 @@ function calculateLEDPowerConsumption(ledSize: string): string {
   const moduleCount = (width / 500) * (height / 500);
   const totalPower = moduleCount * 0.2;
   
-  return `380V ${totalPower}kW`;
+  // 소수점 첫째자리까지만 표시
+  return `380V ${totalPower.toFixed(1)}kW`;
 }
 
 function calculateElectricalInstallation(ledSize: string): string {
