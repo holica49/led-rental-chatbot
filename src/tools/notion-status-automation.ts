@@ -18,10 +18,11 @@ export class NotionStatusAutomation {
    */
   private async createRichTextWithMention(pageId: string, content: string): Promise<any[]> {
     try {
-      // 페이지에서 담당자 정보 가져오기
+      // 페이지에서 정보 가져오기
       const page = await notion.pages.retrieve({ page_id: pageId });
       const properties = (page as any).properties;
       const assignedPeople = properties['담당자']?.people || [];
+      const serviceType = properties['서비스 유형']?.select?.name || '';
       
       const richText: any[] = [
         {
@@ -56,17 +57,32 @@ export class NotionStatusAutomation {
           }
         });
       } else {
-        // 담당자가 지정되지 않은 경우 - 모든 활성 담당자 언급
-        const activeManagers = this.managersConfig.managers.filter((m: any) => m.isActive);
+        // 담당자가 지정되지 않은 경우 - 서비스별 기본 담당자 언급
+        let targetManagers = [];
         
-        if (activeManagers.length > 0) {
+        if (serviceType === '설치') {
+          // 설치는 준수 유 구축팀장
+          targetManagers = this.managersConfig.managers.filter((m: any) => 
+            m.notionId === '225d872b-594c-8157-b968-0002e2380097'
+          );
+        } else if (serviceType === '렌탈' || serviceType === '멤버쉽') {
+          // 렌탈과 멤버쉽은 수삼 최 렌탈팀장
+          targetManagers = this.managersConfig.managers.filter((m: any) => 
+            m.notionId === '237d872b-594c-8174-9ab2-00024813e3a9'
+          );
+        } else {
+          // 기본값: 모든 활성 담당자
+          targetManagers = this.managersConfig.managers.filter((m: any) => m.isActive);
+        }
+        
+        if (targetManagers.length > 0) {
           richText.push({
             type: 'text',
             text: { content: '\n\n📢 담당자 확인 요청: ' },
             annotations: { bold: true }
           });
 
-          activeManagers.forEach((manager: any, index: number) => {
+          targetManagers.forEach((manager: any, index: number) => {
             richText.push({
               type: 'mention',
               mention: {
@@ -82,7 +98,7 @@ export class NotionStatusAutomation {
               });
             }
 
-            if (index < activeManagers.length - 1) {
+            if (index < targetManagers.length - 1) {
               richText.push({
                 type: 'text',
                 text: { content: ', ' }

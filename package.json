@@ -14,12 +14,13 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
+    "dev": "nodemon --exec tsx src/index.ts --watch src", 
+    "typecheck": "tsc --noEmit", 
     "test": "tsx src/test.ts",
     "prepare": "npm run build",
     "railway-start": "tsx src/index.ts",
     "railway-build": "npm run build",
-    "find-users": "node src/tools/notionUserFinder.js"
+    "find-users": "tsx src/tools/notionUserFinder.js" 
   },
   "keywords": [
     "mcp",
@@ -49,10 +50,11 @@
     "@types/express": "^5.0.0",
     "@types/node": "^20.16.11",
     "@types/node-cron": "^3.0.11",
+    "nodemon": "^3.0.1",
     "tsx": "^4.7.0",
     "typescript": "^5.6.3"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   }
 }

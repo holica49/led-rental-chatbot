@@ -295,16 +295,32 @@ function calculateScheduleDates(startDate: string, endDate: string) {
 // 담당자 언급 알림 함수
 async function addMentionToPage(pageId: string, eventData: any) {
  try {
-   // 환경변수에서 담당자 정보 가져오기
    const managersConfig = JSON.parse(process.env.MANAGERS_CONFIG || '{"managers":[]}');
-   const activeManagers = managersConfig.managers.filter((m: any) => m.isActive);
    
-   if (activeManagers.length === 0) {
-     console.warn('활성화된 담당자가 없습니다.');
+   // 서비스별 담당자 결정
+   let targetManagers = [];
+   
+   if (eventData.serviceType === '설치') {
+     // 설치는 준수 유 구축팀장
+     targetManagers = managersConfig.managers.filter((m: any) => 
+       m.notionId === '225d872b-594c-8157-b968-0002e2380097'
+     );
+   } else if (eventData.serviceType === '렌탈' || eventData.serviceType === '멤버쉽') {
+     // 렌탈과 멤버쉽은 수삼 최 렌탈팀장
+     targetManagers = managersConfig.managers.filter((m: any) => 
+       m.notionId === '237d872b-594c-8174-9ab2-00024813e3a9'
+     );
+   } else {
+     // 기본값: 모든 활성 담당자
+     targetManagers = managersConfig.managers.filter((m: any) => m.isActive);
+   }
+   
+   if (targetManagers.length === 0) {
+     console.warn('지정된 담당자가 없습니다.');
      return;
    }
    
-   // 댓글 내용 구성 (올바른 Notion API 타입)
+   // 댓글 내용 구성
    const richTextContent: any[] = [
      {
        type: 'text',
@@ -368,7 +384,7 @@ async function addMentionToPage(pageId: string, eventData: any) {
    // 구분선
    richTextContent.push({
      type: 'text',
-     text: { content: '\n' + '─'.repeat(30) + '\n' }
+     text: { content: '\n' + '─'.repeat(15) + '\n' }
    });
    
    // 담당자 언급
@@ -379,7 +395,7 @@ async function addMentionToPage(pageId: string, eventData: any) {
    });
    
    // 각 담당자를 언급
-   activeManagers.forEach((manager: any, index: number) => {
+   targetManagers.forEach((manager: any, index: number) => {
      richTextContent.push({
        type: 'mention',
        mention: {
@@ -395,7 +411,7 @@ async function addMentionToPage(pageId: string, eventData: any) {
        });
      }
      
-     if (index < activeManagers.length - 1) {
+     if (index < targetManagers.length - 1) {
        richTextContent.push({
          type: 'text',
          text: { content: ', ' }

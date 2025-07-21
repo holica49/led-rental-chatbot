@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import bodyParser from 'body-parser';
+import { startPollingService } from './tools/notion-polling.js';
 
 // 환경변수 로드
 dotenv.config();
@@ -52,4 +53,11 @@ app.listen(PORT, () => {
   console.log(`🔗 포트: ${PORT}`);
   console.log(`🚀 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
   console.log(`📡 스킬 엔드포인트: http://localhost:${PORT}/skill`);
+  
+  // Notion 폴링 서비스 시작
+  startPollingService().then(() => {
+    console.log('🔄 Notion 폴링 서비스가 시작되었습니다.');
+  }).catch(error => {
+    console.error('❌ Notion 폴링 서비스 시작 실패:', error);
+  });
 });
