@@ -8,52 +8,46 @@ import { Client } from '@notionhq/client';
 export const skillRouter = express.Router();
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-// 사용자 세션 인터페이스
-interface UserSession {
- step: string;
- serviceType?: '설치' | '렌탈' | '멤버쉽';
- data: {
-   // 공통 정보
-   eventName?: string;
-   venue?: string;
-   customerName?: string;
-   eventStartDate?: string;
-   eventEndDate?: string;
-   contactName?: string;
-   contactTitle?: string;
-   contactPhone?: string;
-   additionalRequests?: string;
-   
-   // 설치 서비스 관련
-   installEnvironment?: '실내' | '실외';
-   installRegion?: string;
-   requiredTiming?: string;
-   
-   // 렌탈 서비스 관련
-   supportStructureType?: '목공 설치' | '단독 설치';
-   rentalPeriod?: number;
-   
-   // 멤버쉽 관련
-   memberCode?: string;
-   
-   // LED 정보
-   ledSpecs: Array<{
-     size: string;
-     stageHeight?: number;
-     needOperator: boolean;
-     operatorDays: number;
-     prompterConnection?: boolean;
-     relayConnection?: boolean;
-   }>;
- };
- ledCount: number;
- currentLED: number;
- lastMessage?: string;
-}
+// 사용자 세션 타입 정의 (로컬)
+type UserSession = {
+  step: string;
+  serviceType?: '설치' | '렌탈' | '멤버쉽';
+  data: {
+    eventName?: string;
+    venue?: string;
+    customerName?: string;
+    eventStartDate?: string;
+    eventEndDate?: string;
+    contactName?: string;
+    contactTitle?: string;
+    contactPhone?: string;
+    additionalRequests?: string;
+    installEnvironment?: '실내' | '실외';
+    installRegion?: string;
+    requiredTiming?: string;
+    installSpace?: string;
+    inquiryPurpose?: string;
+    installBudget?: string;
+    installSchedule?: string;
+    supportStructureType?: '목공 설치' | '단독 설치';
+    rentalPeriod?: number;
+    memberCode?: string;
+    ledSpecs: Array<{
+      size: string;
+      stageHeight?: number;
+      needOperator: boolean;
+      operatorDays: number;
+      prompterConnection?: boolean;
+      relayConnection?: boolean;
+    }>;
+  };
+  ledCount: number;
+  currentLED: number;
+  lastMessage?: string;
+};
 
 // 사용자 세션 관리
 const userSessions: { [key: string]: UserSession } = {};
-
 // ===== 유틸리티 함수들 =====
 
 // LED 크기 검증 함수
@@ -571,32 +565,135 @@ function handleInstallRegion(message: string, session: UserSession) {
  
  session.data.installRegion = message.trim();
  session.data.venue = message.trim(); // 행사장으로도 사용
- session.step = 'install_timing';
- 
- return {
-   text: `✅ 설치 지역: ${session.data.installRegion}\n\n━━━━━━\n\n언제 필요하신가요?\n예: 2025년 8월, 3개월 후, 내년 상반기 등`,
-   quickReplies: []
- };
+ session.step = 'install_space';
+
+  return {
+    text: `✅ 설치 지역: ${session.data.installRegion}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n어떤 공간에 설치하실 예정인가요?`,
+    quickReplies: [
+      { label: '🏢 기업', action: 'message', messageText: '기업' },
+      { label: '🏪 상가', action: 'message', messageText: '상가' },
+      { label: '🏥 병원', action: 'message', messageText: '병원' },
+      { label: '🏛️ 공공', action: 'message', messageText: '공공' },
+      { label: '🏨 숙박', action: 'message', messageText: '숙박' },
+      { label: '🎪 전시홀', action: 'message', messageText: '전시홀' },
+      { label: '🔸 기타', action: 'message', messageText: '기타' }
+    ]
+  };
 }
 
-function handleInstallTiming(message: string, session: UserSession) {
- if (!message || message.trim().length === 0) {
-   return {
-     text: '필요 시기를 입력해주세요.\n예: 2025년 8월, 3개월 후, 내년 상반기 등',
-     quickReplies: []
-   };
- }
- 
- session.data.requiredTiming = message.trim();
- session.data.eventName = `${session.data.installRegion} 프로젝트`; // 기본 행사명
- session.step = 'get_additional_requests';
- 
- return {
-   text: `✅ 필요 시기: ${session.data.requiredTiming}\n\n━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
-   quickReplies: [
-     { label: '없음', action: 'message', messageText: '없음' }
-   ]
- };
+// 설치 공간 처리
+function handleInstallSpace(message: string, session: UserSession) {
+  const validSpaces = ['기업', '상가', '병원', '공공', '숙박', '전시홀', '기타'];
+  
+  if (!validSpaces.includes(message.trim())) {
+    return {
+      text: '설치 공간을 선택해주세요.',
+      quickReplies: [
+        { label: '🏢 기업', action: 'message', messageText: '기업' },
+        { label: '🏪 상가', action: 'message', messageText: '상가' },
+        { label: '🏥 병원', action: 'message', messageText: '병원' },
+        { label: '🏛️ 공공', action: 'message', messageText: '공공' },
+        { label: '🏨 숙박', action: 'message', messageText: '숙박' },
+        { label: '🎪 전시홀', action: 'message', messageText: '전시홀' },
+        { label: '🔸 기타', action: 'message', messageText: '기타' }
+      ]
+    };
+  }
+  
+  session.data.installSpace = message.trim();
+  session.step = 'inquiry_purpose';
+  
+  return {
+    text: `✅ 설치 공간: ${session.data.installSpace}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n문의 목적을 알려주세요.`,
+    quickReplies: [
+      { label: '🔍 정보 조사', action: 'message', messageText: '정보 조사' },
+      { label: '💡 아이디어 기획', action: 'message', messageText: '아이디어 기획' },
+      { label: '💰 견적', action: 'message', messageText: '견적' },
+      { label: '🛒 구매', action: 'message', messageText: '구매' },
+      { label: '🔸 기타', action: 'message', messageText: '기타' }
+    ]
+  };
+}
+
+// 문의 목적 처리
+function handleInquiryPurpose(message: string, session: UserSession) {
+  const validPurposes = ['정보 조사', '아이디어 기획', '견적', '구매', '기타'];
+  
+  if (!validPurposes.includes(message.trim())) {
+    return {
+      text: '문의 목적을 선택해주세요.',
+      quickReplies: [
+        { label: '🔍 정보 조사', action: 'message', messageText: '정보 조사' },
+        { label: '💡 아이디어 기획', action: 'message', messageText: '아이디어 기획' },
+        { label: '💰 견적', action: 'message', messageText: '견적' },
+        { label: '🛒 구매', action: 'message', messageText: '구매' },
+        { label: '🔸 기타', action: 'message', messageText: '기타' }
+      ]
+    };
+  }
+  
+  session.data.inquiryPurpose = message.trim();
+  session.step = 'install_budget';
+  
+  return {
+    text: `✅ 문의 목적: ${session.data.inquiryPurpose}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n예상 설치 예산을 알려주세요.`,
+    quickReplies: [
+      { label: '1000만원 이하', action: 'message', messageText: '1000만원 이하' },
+      { label: '1000~3000만원', action: 'message', messageText: '1000~3000만원' },
+      { label: '3000~5000만원', action: 'message', messageText: '3000~5000만원' },
+      { label: '5000만원~1억', action: 'message', messageText: '5000만원~1억' },
+      { label: '1억 이상', action: 'message', messageText: '1억 이상' },
+      { label: '미정', action: 'message', messageText: '미정' }
+    ]
+  };
+}
+
+// 설치 예산 처리
+function handleInstallBudget(message: string, session: UserSession) {
+  const validBudgets = ['1000만원 이하', '1000~3000만원', '3000~5000만원', '5000만원~1억', '1억 이상', '미정'];
+  
+  if (!validBudgets.includes(message.trim())) {
+    return {
+      text: '설치 예산을 선택해주세요.',
+      quickReplies: [
+        { label: '1000만원 이하', action: 'message', messageText: '1000만원 이하' },
+        { label: '1000~3000만원', action: 'message', messageText: '1000~3000만원' },
+        { label: '3000~5000만원', action: 'message', messageText: '3000~5000만원' },
+        { label: '5000만원~1억', action: 'message', messageText: '5000만원~1억' },
+        { label: '1억 이상', action: 'message', messageText: '1억 이상' },
+        { label: '미정', action: 'message', messageText: '미정' }
+      ]
+    };
+  }
+  
+  session.data.installBudget = message.trim();
+  session.step = 'install_schedule';
+  
+  return {
+    text: `✅ 설치 예산: ${session.data.installBudget}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n언제 설치가 필요하신가요?\n예: 2025년 8월, 3개월 후, 내년 상반기 등`,
+    quickReplies: []
+  };
+}
+
+// 설치 일정 처리
+function handleInstallSchedule(message: string, session: UserSession) {
+  if (!message || message.trim().length === 0) {
+    return {
+      text: '설치 일정을 입력해주세요.\n예: 2025년 8월, 3개월 후, 내년 상반기 등',
+      quickReplies: []
+    };
+  }
+  
+  session.data.installSchedule = message.trim();
+  session.data.eventName = `${session.data.installRegion} 프로젝트`;
+  session.step = 'get_additional_requests';
+  
+  return {
+    text: `✅ 설치 일정: ${session.data.installSchedule}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
+    quickReplies: [
+      { label: '없음', action: 'message', messageText: '없음' }
+    ]
+  };
 }
 
 // ===== 렌탈 서비스 핸들러 =====
@@ -1319,7 +1416,7 @@ function handleContactPhone(message: string, session: UserSession) {
  let confirmationMessage = '';
  
  if (session.serviceType === '설치') {
-   confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━\n\n🔖 서비스: LED 설치\n🏗️ 설치 환경: ${session.data.installEnvironment}\n📍 설치 지역: ${session.data.installRegion}\n📅 필요 시기: ${session.data.requiredTiming}\n💬 요청사항: ${session.data.additionalRequests}\n\n🏢 고객사: ${session.data.customerName}\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n\n상담 요청을 진행하시겠습니까?`;
+   confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: LED 설치\n🏗️ 설치 환경: ${session.data.installEnvironment}\n📍 설치 지역: ${session.data.installRegion}\n🏢 설치 공간: ${session.data.installSpace}\n🎯 문의 목적: ${session.data.inquiryPurpose}\n💰 설치 예산: ${session.data.installBudget}\n📅 설치 일정: ${session.data.installSchedule}\n💬 요청사항: ${session.data.additionalRequests}\n\n🏢 고객사: ${session.data.customerName}\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n\n상담 요청을 진행하시겠습니까?`;
   } else if (session.serviceType === '렌탈') {
     const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
       const [w, h] = led.size.split('x').map(Number);
@@ -1468,11 +1565,12 @@ function prepareNotionData(session: UserSession, quote: any, schedules: any): an
     notionData = {
       ...notionData,
       installEnvironment: session.data.installEnvironment || '',
-      venue: session.data.installRegion || '', // 설치 지역을 행사장으로
-      eventSchedule: session.data.requiredTiming || '', // 필요 시기를 행사 일정으로
+      venue: session.data.installRegion || '', 
+      eventSchedule: session.data.installSchedule || '', // 설치 일정을 행사 일정으로
+      installSpace: session.data.installSpace || '',
+      inquiryPurpose: session.data.inquiryPurpose || '',
+      installBudget: session.data.installBudget || '',
       totalQuoteAmount: 0,
-      // 고객 정보는 contactName, contactTitle 필드에 그대로 유지
-      // Notion에서는 "고객명"으로 저장됨
     };
   } else if (session.serviceType === '렌탈') {
       notionData = {
@@ -1565,8 +1663,14 @@ async function processUserMessage(message: string, session: UserSession) {
      return handleInstallEnvironment(message, session);
    case 'install_region':
      return handleInstallRegion(message, session);
-   case 'install_timing':
-     return handleInstallTiming(message, session);
+   case 'install_space':
+     return handleInstallSpace(message, session);
+   case 'inquiry_purpose':
+     return handleInquiryPurpose(message, session);
+   case 'install_budget':
+     return handleInstallBudget(message, session);
+   case 'install_schedule':
+     return handleInstallSchedule(message, session);
    
    // 렌탈 서비스 단계
    case 'rental_indoor_outdoor':
