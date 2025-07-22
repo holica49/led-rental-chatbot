@@ -17,12 +17,17 @@ export class NotionStatusAutomation {
    * 담당자 언급을 포함한 리치 텍스트 생성
    */
   private async createRichTextWithMention(pageId: string, content: string): Promise<any[]> {
-    try {
-      // 페이지에서 정보 가져오기
-      const page = await notion.pages.retrieve({ page_id: pageId });
-      const properties = (page as any).properties;
-      const assignedPeople = properties['담당자']?.people || [];
-      const serviceType = properties['서비스 유형']?.select?.name || '';
+      try {
+        // 페이지에서 정보 가져오기
+        const page = await notion.pages.retrieve({ page_id: pageId });
+        const properties = (page as any).properties;
+        const assignedPeople = properties['담당자']?.people || [];
+        const serviceType = properties['서비스 유형']?.select?.name || '';
+        
+        // 설치 서비스는 담당자 언급 없이 텍스트만 반환
+        if (serviceType === '설치') {
+          return [{ type: 'text', text: { content } }];
+        }
       
       const richText: any[] = [
         {

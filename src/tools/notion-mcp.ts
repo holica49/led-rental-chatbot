@@ -26,6 +26,9 @@ interface NotionData {
   installEnvironment?: '실내' | '실외';
   installRegion?: string;
   requiredTiming?: string;
+  installSpace?: string;      // 추가
+  inquiryPurpose?: string;    // 추가
+  installBudget?: string;     // 추가
   
   // 렌탈 서비스 관련
   supportStructureType?: '목공 설치' | '단독 설치';
@@ -318,7 +321,7 @@ export const notionMCPTool = {
         };
       }
 
-      if (data.serviceType === '설치') {
+if (data.serviceType === '설치') {
         if (data.installEnvironment) {
           properties["설치 환경"] = {
             select: { name: data.installEnvironment }
@@ -332,6 +335,22 @@ export const notionMCPTool = {
         if (data.requiredTiming) {
           properties["필요 시기"] = {
             rich_text: [{ text: { content: data.requiredTiming } }]
+          };
+        }
+        // 추가: 누락된 설치 서비스 속성들
+        if (data.inquiryPurpose) {
+          properties["문의 목적"] = {
+            select: { name: data.inquiryPurpose }
+          };
+        }
+        if (data.installSpace) {
+          properties["설치 공간"] = {
+            select: { name: data.installSpace }
+          };
+        }
+        if (data.installBudget) {
+          properties["설치 예산"] = {
+            select: { name: data.installBudget }
           };
         }
       }
