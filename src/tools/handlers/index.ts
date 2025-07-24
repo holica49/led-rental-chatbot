@@ -1,9 +1,9 @@
-import { HandlerMap } from './types';
-import { commonHandlers } from './common';
-import { installHandlers } from './install';
-import { rentalHandlers } from './rental';
-import { membershipHandlers } from './membership';
-import { UserSession, KakaoResponse } from '../../types';
+import { HandlerMap } from './types.js';  // .js 추가
+import { commonHandlers } from './common.js';  // .js 추가
+import { installHandlers } from './install.js';  // .js 추가
+import { rentalHandlers } from './rental.js';  // .js 추가
+import { membershipHandlers } from './membership.js';  // .js 추가
+import { UserSession, KakaoResponse } from '../../types/index.js';  // .js 추가
 
 export function handleStart(session: UserSession): KakaoResponse {
   session.step = 'select_service';

@@ -1,6 +1,6 @@
-import { UserSession, KakaoResponse } from '../types';
-import { isModificationRequest, isResetRequest } from './utils/request-utils';
-import { handlers, handleStart, handleSelectService, handleDefault } from './handlers';
+import { UserSession, KakaoResponse } from '../types/index.js';  // .js 추가
+import { isModificationRequest, isResetRequest } from './utils/request-utils.js';  // .js 추가
+import { handlers, handleStart, handleSelectService, handleDefault } from './handlers/index.js';  // .js 추가
 
 export function handleModificationRequest(_message: string, _session: UserSession): KakaoResponse {
   return {

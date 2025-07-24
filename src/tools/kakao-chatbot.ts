@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
-import { sessionManager } from './session/session-manager';
-import { processUserMessage } from './message-processor';
+import { sessionManager } from './session/session-manager.js';  // .js 추가
+import { processUserMessage } from './message-processor.js';  // .js 추가
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { QuickReply } from '../types';  // 기존 타입 import
+import { QuickReply } from '../types/index.js';  // .js 추가
 
 interface KakaoRequest {
   userRequest?: {

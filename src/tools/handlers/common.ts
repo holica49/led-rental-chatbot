@@ -5,7 +5,7 @@ import {
   handleContactTitle,
   handleContactPhone,
   handleFinalConfirmation
-} from './common-handlers';
+} from './common-handlers.js';  // .js 추가
 
 export const commonHandlers = {
   'get_additional_requests': handleAdditionalRequests,
