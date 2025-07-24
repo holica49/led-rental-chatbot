@@ -16,9 +16,10 @@
     "build": "tsc",
     "dev": "nodemon --exec tsx src/index.ts --watch src",
     "typecheck": "tsc --noEmit",
-    "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
-    "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
-    "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --no-coverage",
+    "test:ts": "tsx --test tests/unit/*.test.ts",
+    "test:watch": "set NODE_OPTIONS=--experimental-vm-modules && jest --watch",
+    "test:coverage": "set NODE_OPTIONS=--experimental-vm-modules && jest --coverage",
     "prepare": "npm run build",
     "railway-start": "tsx src/index.ts",
     "railway-build": "npm run build",
@@ -60,6 +61,7 @@
     "@types/node": "^20.16.11",
     "@types/node-cron": "^3.0.11",
     "@types/supertest": "^6.0.3",
+    "cross-env": "^7.0.3",
     "jest": "^30.0.5",
     "nodemon": "^3.0.1",
     "supertest": "^7.1.4",
@@ -71,21 +73,12 @@
     "node": ">=18.0.0"
   },
   "jest": {
-    "preset": "ts-jest",
     "testEnvironment": "node",
-    "roots": [
-      "<rootDir>/src",
-      "<rootDir>/tests"
-    ],
-    "testMatch": [
-      "**/__tests__/**/*.ts",
-      "**/?(*.)+(spec|test).ts"
-    ],
     "transform": {
       "^.+\\.ts$": "ts-jest"
     },
-    "moduleNameMapper": {
-      "^(\\.{1,2}/.*)\\.js$": "$1"
-    }
+    "testMatch": [
+      "**/tests/**/*.test.ts"
+    ]
   }
 }
