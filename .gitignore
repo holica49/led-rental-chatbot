@@ -39,3 +39,11 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# .gitignore에 추가
+.env.local
+.env.test
+*.log
+.DS_Store
+coverage/
+.nyc_output/
