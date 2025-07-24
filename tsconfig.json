@@ -1,13 +1,11 @@
 {
   "compilerOptions": {
-    // 출력 설정
     "outDir": "./dist",
     "rootDir": "./src",
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
     
-    // 모듈 설정
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "node",
@@ -15,22 +13,19 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     
-    // 타입 체크 설정 (완화)
-    "strict": false,  // false로 변경
-    "strictNullChecks": false,  // false로 변경
-    "noImplicitAny": false,  // false로 변경
-    "noUnusedLocals": false,  // false로 변경
-    "noUnusedParameters": false,  // false로 변경
-    "noUncheckedIndexedAccess": false,  // false로 변경
+    "strict": false,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noUncheckedIndexedAccess": false,
     
-    // 기타 설정
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "allowJs": false,
     "pretty": true,
     "removeComments": false,
     
-    // 경로 매핑
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
