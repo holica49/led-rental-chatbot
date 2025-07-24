@@ -1,3 +1,11 @@
-git add nixpacks.toml
-git commit -m "Add nixpacks.toml for Railway build configuration"
-git push origin main
+[phases.setup]
+nixPkgs = ["nodejs-18_x", "npm-9_x"]
+
+[phases.install]
+cmd = "npm install"
+
+[phases.build] 
+cmd = "npm run build"
+
+[start]
+cmd = "npm start"
