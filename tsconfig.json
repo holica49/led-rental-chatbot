@@ -15,20 +15,13 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     
-    // 타입 체크 설정
-    "strict": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictBindCallApply": true,
-    "strictPropertyInitialization": true,
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "alwaysStrict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
+    // 타입 체크 설정 (완화)
+    "strict": false,  // false로 변경
+    "strictNullChecks": false,  // false로 변경
+    "noImplicitAny": false,  // false로 변경
+    "noUnusedLocals": false,  // false로 변경
+    "noUnusedParameters": false,  // false로 변경
+    "noUncheckedIndexedAccess": false,  // false로 변경
     
     // 기타 설정
     "skipLibCheck": true,

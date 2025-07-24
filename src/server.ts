@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import { handleKakaoWebhook } from './tools/kakao-chatbot.js';
 
@@ -13,7 +13,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // 헬스 체크 엔드포인트
-app.get('/', (_req, res) => {
+app.get('/', (_req: Request, res: Response) => {
   res.json({ 
     status: 'OK',
     service: 'LED Rental Kakao Chatbot',
@@ -25,7 +25,7 @@ app.get('/', (_req, res) => {
 app.post('/kakao/skill', handleKakaoWebhook);
 
 // 404 핸들러
-app.use((_req, res) => {
+app.use((_req: Request, res: Response) => {
   res.status(404).json({
     error: 'Not Found',
     message: 'The requested endpoint does not exist'
@@ -33,7 +33,7 @@ app.use((_req, res) => {
 });
 
 // 에러 핸들러
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error('Server error:', err);
   res.status(500).json({
     error: 'Internal Server Error',
