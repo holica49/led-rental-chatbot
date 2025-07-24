@@ -1,63 +1,171 @@
+#!/usr/bin/env node
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListToolsRequestSchema,
+  McpError,
+} from '@modelcontextprotocol/sdk/types.js';
 import dotenv from 'dotenv';
-import express from 'express';
-import bodyParser from 'body-parser';
-import { startPollingService } from './tools/notion-polling.js';
 
-// 환경변수 로드
+// 환경 변수 로드
 dotenv.config();
 
-// Express 앱 생성
-const app = express();
+// 도구 임포트
+import { kakaoChatbotTool } from './tools/kakao-chatbot.js';
+import { notionMCPTool } from './tools/notion-mcp.js';
+import { enhancedExcelTool } from './tools/enhanced-excel.js';
 
-// 미들웨어 설정
-app.use(bodyParser.json());
-app.use((req, res, next) => {
-  res.setHeader('ngrok-skip-browser-warning', 'true');
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+// 도구 타입 정의
+interface Tool {
+  name: string;
+  description: string;
+  inputSchema: any; // 각 도구마다 다른 스키마를 가지므로 any 사용
+  handler: (args: any) => Promise<any>;
+}
+
+// 환경 변수 검증
+function validateEnvironment(): void {
+  const requiredEnvVars = [
+    'NOTION_API_KEY',
+    'NOTION_DATABASE_ID'
+  ];
+
+  const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
   
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
+  if (missingVars.length > 0) {
+    console.error('Missing required environment variables:', missingVars.join(', '));
+    console.error('Please create a .env file with the required variables.');
+    process.exit(1);
   }
-});
+}
 
-// 헬스체크 엔드포인트
-app.get('/health', (_req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    service: 'LED 렌탈 MCP'
+// 서버 클래스
+class LEDRentalMCPServer {
+  private server: Server;
+  private tools: Map<string, Tool>;
+
+  constructor() {
+    this.server = new Server(
+      {
+        name: 'led-rental-mcp',
+        version: '1.0.0',
+      },
+      {
+        capabilities: {
+          tools: {},
+        },
+      }
+    );
+
+    // 도구 등록
+    this.tools = new Map<string, Tool>();
+    this.tools.set('kakao_chatbot', kakaoChatbotTool as Tool);
+    this.tools.set('create_notion_estimate', notionMCPTool as Tool);
+    this.tools.set('generate_excel', enhancedExcelTool as Tool);
+
+    this.setupHandlers();
+  }
+
+  private setupHandlers(): void {
+    // 도구 목록 핸들러
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: Array.from(this.tools.values()).map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema
+      }))
+    }));
+
+    // 도구 실행 핸들러
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const tool = this.tools.get(request.params.name);
+      
+      if (!tool) {
+        throw new McpError(
+          ErrorCode.MethodNotFound,
+          `Unknown tool: ${request.params.name}`
+        );
+      }
+
+      try {
+        console.error(`Executing tool: ${request.params.name}`);
+        const result = await tool.handler(request.params.arguments || {});
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        console.error(`Tool execution error: ${error}`);
+        
+        if (error instanceof McpError) {
+          throw error;
+        }
+        
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+      }
+    });
+
+    // 에러 핸들러
+    this.server.onerror = (error) => {
+      console.error('[MCP Error]', error);
+    };
+
+    // 프로세스 종료 핸들러
+    process.on('SIGINT', async () => {
+      console.error('Shutting down MCP server...');
+      await this.server.close();
+      process.exit(0);
+    });
+
+    process.on('SIGTERM', async () => {
+      console.error('Shutting down MCP server...');
+      await this.server.close();
+      process.exit(0);
+    });
+  }
+
+  async start(): Promise<void> {
+    const transport = new StdioServerTransport();
+    
+    console.error('Starting LED Rental MCP Server...');
+    console.error('Available tools:', Array.from(this.tools.keys()).join(', '));
+    
+    await this.server.connect(transport);
+    console.error('LED Rental MCP Server running on stdio');
+  }
+}
+
+// 메인 함수
+async function main(): Promise<void> {
+  try {
+    // 환경 변수 검증
+    validateEnvironment();
+    
+    // 서버 시작
+    const server = new LEDRentalMCPServer();
+    await server.start();
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// 서버 실행
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error('Fatal error:', error);
+    process.exit(1);
   });
-});
+}
 
-// 루트 엔드포인트
-app.get('/', (_req, res) => {
-  res.json({
-    message: 'LED 렌탈 MCP 서버가 실행 중입니다.',
-    endpoints: ['/health', '/skill', '/test']
-  });
-});
-
-// 카카오 챗봇 라우터 import
-import { skillRouter } from './tools/kakao-chatbot.js';
-app.use(skillRouter);
-
-// 서버 시작
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log('🚀 LED 렌탈 MCP 서버가 시작되었습니다.');
-  console.log(`📌 환경: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 포트: ${PORT}`);
-  console.log(`🚀 카카오 스킬 서버가 포트 ${PORT}에서 실행 중입니다.`);
-  console.log(`📡 스킬 엔드포인트: http://localhost:${PORT}/skill`);
-  
-  // Notion 폴링 서비스 시작
-  startPollingService().then(() => {
-    console.log('🔄 Notion 폴링 서비스가 시작되었습니다.');
-  }).catch(error => {
-    console.error('❌ Notion 폴링 서비스 시작 실패:', error);
-  });
-});
+export { LEDRentalMCPServer };

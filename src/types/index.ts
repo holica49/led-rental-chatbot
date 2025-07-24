@@ -202,3 +202,57 @@ export interface Tool {
  handler: ToolHandler;
 }
 
+export interface QuoteResult {
+  totalModuleCount: number;
+  ledModules: {
+    count: number;
+    price: number;
+  };
+  structure: {
+    unitPrice: number;
+    totalPrice: number;
+    description: string;
+  };
+  controller: {
+    count: number;
+    totalPrice: number;
+  };
+  power: {
+    requiredCount: number;
+    totalPrice: number;
+    totalPower: number;
+  };
+  installation: {
+    workers: number;
+    workerRange: string;
+    totalPrice: number;
+  };
+  operation: {
+    days: number;
+    totalPrice: number;
+  };
+  transport: {
+    price: number;
+    range: string;
+    trucks: number;
+  };
+  subtotal: number;
+  vat: number;
+  total: number;
+  maxStageHeight: number;
+  installationWorkers: number;
+  installationWorkerRange: string;
+  controllerCount: number;
+  powerRequiredCount: number;
+  transportRange: string;
+  structureUnitPrice: number;
+  structureUnitPriceDescription: string;
+}
+
+export interface RentalQuoteResult extends QuoteResult {
+  periodSurcharge: {
+    rate: number;
+    surchargeAmount: number;
+  };
+  rentalDays: number;
+}

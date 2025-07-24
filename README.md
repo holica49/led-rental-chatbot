@@ -74,6 +74,18 @@
   - 실내: 일반 프로세스
   - 실외: 최수삼 렌탈팀장 (010-2797-2504)
 
+## 🧪 테스트
+
+```bash
+# 테스트 실행
+npm test
+
+# 감시 모드로 테스트 실행
+npm run test:watch
+
+# 커버리지 포함 테스트
+npm run test:coverage
+
 ## 🚀 실행 방법
 
 ### 개발 환경
@@ -85,8 +97,6 @@ npm install
 npm run dev
 
 환경변수 설정
-NOTION_API_KEY=secret_xxxxxxxxxxxxx
-NOTION_DATABASE_ID=xxxxxxxxxxxxx
 PORT=3000
 NODE_ENV=production
 
@@ -117,3 +127,37 @@ Notion 데이터베이스 필드명은 절대 변경하지 마세요
 서버 재시작 시 세션 데이터 손실 (Redis 마이그레이션 필요)
 kakao-chatbot.ts 파일이 너무 큼 (2000줄 이상)
 테스트 코드 부재
+
+# LED Rental MCP Server
+
+카카오 챗봇, Notion, Excel 통합을 지원하는 LED 렌탈/설치 견적 시스템의 MCP(Model Context Protocol) 서버입니다.
+
+## 🚀 주요 기능
+
+- **카카오 챗봇**: LED 렌탈/설치 견적 상담 자동화
+- **Notion 연동**: 견적 정보 자동 저장 및 관리
+- **Excel 생성**: 견적서 및 보고서 자동 생성
+- **실시간 견적 계산**: LED 사양에 따른 자동 견적 산출
+
+## 📋 서비스 유형
+
+### 1. LED 렌탈
+- 단기 행사용 LED 디스플레이 렌탈
+- 기간별 할증 자동 계산
+- 설치/철거 일정 관리
+
+### 2. LED 설치
+- 상설 LED 디스플레이 설치
+- 실내/실외 환경별 맞춤 상담
+- 설치 공간 및 예산 분석
+
+### 3. 멤버쉽 서비스
+- 기업 회원 전용 할인 서비스
+- 멤버 코드 기반 인증
+- 맞춤형 견적 제공
+
+## 🛠️ 설치 방법
+
+### 필수 요구사항
+- Node.js 18.0.0 이상
+- npm 또는 yarn
