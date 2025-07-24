@@ -161,3 +161,4 @@ kakao-chatbot.ts 파일이 너무 큼 (2000줄 이상)
 ### 필수 요구사항
 - Node.js 18.0.0 이상
 - npm 또는 yarn
+- 
