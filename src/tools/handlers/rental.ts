@@ -5,28 +5,46 @@ import {
   validateNumber, 
   validateEventPeriod 
 } from '../validators/index.js';
+import { MESSAGES, BUTTONS, VALIDATION_ERRORS } from '../../constants/messages.js';
+import { 
+  confirmAndAsk,
+  errorMessage,
+  createQuickReplies,
+  parseEventInfo,
+  createLEDSizePrompt,
+  saveLEDSpec,
+  getCurrentLEDIndex,
+  shouldContinueToNextLED,
+  createLEDCompleteMessage,
+  outdoorEventNotice,
+  eventInfoConfirmed
+} from '../../utils/handler-utils.js';
 
 export function handleRentalIndoorOutdoor(message: string, session: UserSession): KakaoResponse {
-  const parts = message.split('/').map(part => part.trim());
+  const result = parseEventInfo(message);
   
-  if (parts.length >= 2) {
-    session.data.eventName = parts[0];
-    session.data.venue = parts[1];
-    session.step = 'rental_structure_type';
-    
+  if (result.error) {
     return {
-      text: `✅ 행사 정보 확인\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n\n━━━━━━\n\n실내 행사인가요, 실외 행사인가요?`,
-      quickReplies: [
-        { label: '🏢 실내', action: 'message', messageText: '실내' },
-        { label: '🌳 실외', action: 'message', messageText: '실외' }
-      ]
-    };
-  } else {
-    return {
-      text: '❌ 형식이 올바르지 않습니다.\n\n올바른 형식으로 다시 입력해주세요:\n📝 행사명 / 행사장\n\n예시:\n• 커피박람회 / 수원메쎄 2홀\n• 전시회 / 킨텍스 1홀',
+      text: errorMessage(result.error),
       quickReplies: []
     };
   }
+  
+  session.data.eventName = result.eventName!;
+  session.data.venue = result.venue!;
+  session.step = 'rental_structure_type';
+  
+  return {
+    text: eventInfoConfirmed(
+      session.data.eventName, 
+      session.data.venue, 
+      MESSAGES.SELECT_INDOOR_OUTDOOR
+    ),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.INDOOR, value: '실내' },
+      { label: BUTTONS.OUTDOOR, value: '실외' }
+    ])
+  };
 }
 
 export function handleRentalStructureType(message: string, session: UserSession): KakaoResponse {
@@ -35,11 +53,11 @@ export function handleRentalStructureType(message: string, session: UserSession)
     session.step = 'rental_led_count';
     
     return {
-      text: `🌳 실외 행사로 확인되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n실외 행사는 최수삼 팀장이 별도로 상담을 도와드립니다.\n\n👤 담당: 최수삼 팀장\n📞 연락처: 010-2797-2504\n\n견적 요청은 계속 진행하시겠습니까?`,
-      quickReplies: [
-        { label: '네, 진행합니다', action: 'message', messageText: '목공 설치' },
-        { label: '처음으로', action: 'message', messageText: '처음부터' }
-      ]
+      text: outdoorEventNotice(),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.CONTINUE, value: '목공 설치' },
+        { label: BUTTONS.START_OVER, value: '처음부터' }
+      ])
     };
   } else {
     session.data.installEnvironment = '실내';
@@ -47,11 +65,15 @@ export function handleRentalStructureType(message: string, session: UserSession)
   
   session.step = 'rental_led_count';
   return {
-    text: `✅ 실내 행사로 확인되었습니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n지지구조물 타입을 선택해주세요.`,
-    quickReplies: [
-      { label: '🔨 목공 설치', action: 'message', messageText: '목공 설치' },
-      { label: '🏗️ 단독 설치', action: 'message', messageText: '단독 설치' }
-    ]
+    text: confirmAndAsk(
+      '실내 행사로 확인되었습니다',
+      '',
+      MESSAGES.SELECT_STRUCTURE
+    ),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.STRUCTURE_WOOD, value: '목공 설치' },
+      { label: BUTTONS.STRUCTURE_STANDALONE, value: '단독 설치' }
+    ])
   };
 }
 
@@ -88,14 +110,14 @@ export function handleRentalLEDSpecs(message: string, session: UserSession): Kak
     const validation = validateNumber(message, 1, 5);
     if (!validation.valid || !validation.value) {
       return {
-        text: `❌ ${validation.error}\n\n1-5개 사이의 숫자를 선택해주세요.`,
-        quickReplies: [
-          { label: '1개', action: 'message', messageText: '1' },
-          { label: '2개', action: 'message', messageText: '2' },
-          { label: '3개', action: 'message', messageText: '3' },
-          { label: '4개', action: 'message', messageText: '4' },
-          { label: '5개', action: 'message', messageText: '5' }
-        ]
+        text: errorMessage(validation.error || VALIDATION_ERRORS.NUMBER_RANGE(1, 5)),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.LED_COUNT[0], value: '1' },
+          { label: BUTTONS.LED_COUNT[1], value: '2' },
+          { label: BUTTONS.LED_COUNT[2], value: '3' },
+          { label: BUTTONS.LED_COUNT[3], value: '4' },
+          { label: BUTTONS.LED_COUNT[4], value: '5' }
+        ])
       };
     }
     
@@ -104,46 +126,46 @@ export function handleRentalLEDSpecs(message: string, session: UserSession): Kak
     session.data.ledSpecs = [];
     
     return {
-      text: `✅ 총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다.\n\n━━━━━━\n\n🖥️ LED ${session.currentLED}번의 크기를 알려주세요.\n\n예시: 4000x2500, 6000x3000`,
-      quickReplies: [
-        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
-        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
-        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
-      ]
+      text: confirmAndAsk(
+        `총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다`,
+        '',
+        createLEDSizePrompt(session.currentLED)
+      ),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
+        { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
+        { label: BUTTONS.LED_SIZE_4000_2500, value: '4000x2500' }
+      ])
     };
   }
   
   const validation = validateAndNormalizeLEDSize(message);
   if (!validation.valid || !validation.size) {
     return {
-      text: `❌ ${validation.error}\n\n다시 입력해주세요.`,
-      quickReplies: [
-        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
-        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
-        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
-      ]
+      text: errorMessage(validation.error || VALIDATION_ERRORS.LED_SIZE),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
+        { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
+        { label: BUTTONS.LED_SIZE_4000_2500, value: '4000x2500' }
+      ])
     };
   }
   
-session.data.ledSpecs.push({
-  size: validation.size,
-  stageHeight: 0,  // 이 줄 추가
-  needOperator: false,
-  operatorDays: 0,
-  prompterConnection: false,
-  relayConnection: false
-});
-  
+  saveLEDSpec(session, validation.size);
   session.step = 'rental_stage_height';
   
   return {
-    text: `✅ LED ${session.currentLED}번: ${validation.size}\n\n━━━━━━\n\n📐 무대 높이를 알려주세요. (mm 단위)`,
-    quickReplies: [
-      { label: '0mm', action: 'message', messageText: '0mm' },
-      { label: '600mm', action: 'message', messageText: '600mm' },
-      { label: '800mm', action: 'message', messageText: '800mm' },
-      { label: '1000mm', action: 'message', messageText: '1000mm' }
-    ]
+    text: confirmAndAsk(
+      `LED ${session.currentLED}번`,
+      validation.size,
+      MESSAGES.INPUT_STAGE_HEIGHT
+    ),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.STAGE_HEIGHT_0, value: '0mm' },
+      { label: BUTTONS.STAGE_HEIGHT_600, value: '600mm' },
+      { label: BUTTONS.STAGE_HEIGHT_800, value: '800mm' },
+      { label: BUTTONS.STAGE_HEIGHT_1000, value: '1000mm' }
+    ])
   };
 }
 
@@ -254,28 +276,32 @@ export function handleRentalPrompter(message: string, session: UserSession): Kak
 }
 
 export function handleRentalRelay(message: string, session: UserSession): KakaoResponse {
-  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const currentLedIndex = getCurrentLEDIndex(session);
   const needsRelay = message.includes('네') || message.includes('필요');
   
   session.data.ledSpecs[currentLedIndex].relayConnection = needsRelay;
   
-  if (session.currentLED < session.ledCount) {
+  if (shouldContinueToNextLED(session)) {
     session.currentLED++;
     session.step = 'rental_led_specs';
     
     return {
-      text: `✅ LED ${session.currentLED - 1}번 설정 완료\n\n━━━━━━\n\n🖥️ LED ${session.currentLED}번의 크기를 알려주세요.`,
-      quickReplies: [
-        { label: '6000x3000', action: 'message', messageText: '6000x3000' },
-        { label: '4000x3000', action: 'message', messageText: '4000x3000' },
-        { label: '4000x2500', action: 'message', messageText: '4000x2500' }
-      ]
+      text: confirmAndAsk(
+        `LED ${session.currentLED - 1}번 설정 완료`,
+        '',
+        createLEDSizePrompt(session.currentLED)
+      ),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
+        { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
+        { label: BUTTONS.LED_SIZE_4000_2500, value: '4000x2500' }
+      ])
     };
   } else {
     session.step = 'rental_period';
     
     return {
-      text: `✅ 모든 LED 설정이 완료되었습니다!\n\n━━━━━━\n\n📅 행사 기간을 알려주세요.\n예: 2025-07-09 ~ 2025-07-11`,
+      text: createLEDCompleteMessage(session) + '\n\n' + MESSAGES.INPUT_PERIOD,
       quickReplies: []
     };
   }
@@ -286,7 +312,7 @@ export function handleRentalPeriod(message: string, session: UserSession): Kakao
   
   if (!validation.valid || !validation.startDate || !validation.endDate || !validation.days) {
     return {
-      text: `❌ ${validation.error}\n\n다시 입력해주세요.\n예: 2025-07-09 ~ 2025-07-11`,
+      text: errorMessage(validation.error || VALIDATION_ERRORS.PERIOD),
       quickReplies: []
     };
   }
@@ -298,10 +324,14 @@ export function handleRentalPeriod(message: string, session: UserSession): Kakao
   session.step = 'get_additional_requests';
   
   return {
-    text: `✅ 행사 기간: ${validation.startDate} ~ ${validation.endDate} (${validation.days}일)\n\n━━━━━━\n\n별도 요청사항이 있으신가요?\n\n없으시면 "없음"이라고 입력해주세요.`,
-    quickReplies: [
-      { label: '없음', action: 'message', messageText: '없음' }
-    ]
+    text: confirmAndAsk(
+      '행사 기간',
+      `${validation.startDate} ~ ${validation.endDate} (${validation.days}일)`,
+      MESSAGES.REQUEST_ADDITIONAL
+    ),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.NONE, value: '없음' }
+    ])
   };
 }
 

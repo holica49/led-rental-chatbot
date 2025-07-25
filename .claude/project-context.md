@@ -17,6 +17,35 @@
 - **Deployment**: Railway (자동 배포)
 - **Session**: In-memory (Redis 마이그레이션 예정)
 
+## 프로젝트 구조
+```
+led-rental-mcp/
+├── src/
+│   ├── server.ts              # Express 서버 (Railway)
+│   ├── index.ts               # MCP 서버 (Claude)
+│   ├── types/                 # TypeScript 타입 정의
+│   ├── constants/             # 상수 정의
+│   │   └── messages.ts        # 모든 메시지 중앙화
+│   ├── config/                # 설정 파일
+│   │   └── process-config.ts  # 프로세스 플로우 설정
+│   ├── utils/                 # 유틸리티 함수
+│   │   ├── message-utils.ts   # 메시지 포맷팅
+│   │   └── handler-utils.ts   # 핸들러 공통 함수
+│   └── tools/
+│       ├── handlers/          # 서비스별 핸들러
+│       │   ├── install.ts
+│       │   ├── rental.ts
+│       │   ├── membership.ts
+│       │   ├── common-handlers.ts
+│       │   └── index.ts
+│       ├── validators/        # 입력 검증
+│       ├── services/          # 외부 서비스 연동
+│       ├── session/           # 세션 관리
+│       ├── kakao-chatbot.ts   # 메인 챗봇 로직
+│       ├── notion-mcp.ts      # Notion 연동
+│       └── calculate-quote.ts # 견적 계산
+```
+
 ## Notion 데이터베이스 스키마
 ⚠️ **아래 필드명은 절대 변경 불가**
 
@@ -30,7 +59,7 @@
 - `행사 상태` (status)
 
 ### LED 정보 (1-5개소)
-- `LED{n} 크기` (rich_text) - 예: "5m x 3m"
+- `LED{n} 크기` (rich_text) - 예: "6000x3000"
 - `LED{n} 무대 높이` (number) ← **0mm 허용**
 - `LED{n} 오퍼레이터 필요` (checkbox)
 - `LED{n} 오퍼레이터 일수` (number)
@@ -40,96 +69,100 @@
 - `부가세 포함` (number)
 - `견적서` (files) ← 파일 업로드
 
-## 프로세스 플로우
+## 리팩토링 현황 (2025-07-25)
 
-### 🏗️ 설치 서비스
-1. 실내/실외 선택
-2. 설치 지역 입력
-3. 설치 공간 선택
-4. 문의 목적 선택
-5. 설치 예산 선택
-6. 설치 일정 입력
-7. 고객사명 입력
-8. 담당자 정보 입력
-9. Notion 저장 → 영업팀 전달
+### ✅ 완료된 작업
+1. **ES Module 전환 완료**
+   - 모든 import에 `.js` 확장자 추가
+   - Railway 배포 정상 작동
 
-### 📦 렌탈 서비스
-1. 행사명/행사장 입력
-2. 실내/실외 선택
-3. 지지구조물 선택
-4. LED 개수 선택 (1-5)
-5. 각 LED별 사양 입력
-   - 크기 (가로 x 세로)
-   - 무대 높이
-   - 오퍼레이터 필요 여부
-6. 행사 기간 입력
-7. 고객사명 입력
-8. 담당자 정보 입력
-9. 견적 자동 계산
-10. Notion 저장 + 견적서 업로드
+2. **TypeScript Strict Mode Phase 1 완료**
+   - `strictNullChecks` 활성화
+   - `noImplicitAny` 활성화
+   - 47개 타입 오류 해결
 
-### 👥 멤버쉽 서비스
-1. 멤버 코드 확인 (001)
-2. 행사명/행사장 입력
-3. LED 개수 선택
-4. 각 LED별 사양 입력
-5. 행사 기간 입력
-6. 담당자 정보 입력
-7. 할인된 견적 자동 계산
-8. Notion 저장 + 견적서 업로드
+3. **메시지 중앙화 완료**
+   - `constants/messages.ts` - 모든 메시지 통합
+   - `utils/message-utils.ts` - 메시지 포맷팅 유틸리티
+   - `utils/handler-utils.ts` - 핸들러 공통 유틸리티
+   - 구분선 통일 (━━━━)
 
-## 가격 정책 (2024년 기준)
+4. **프로세스 설정 분리**
+   - `config/process-config.ts` - 대화 플로우 설정
+   - Quick Reply 설정 중앙화
 
-### 멤버쉽 (메쎄이상 001)
-- LED 모듈: 34,000원/개 (500개 이상)
-- 구조물: 
-  - 4m 미만: 20,000원/㎡
-  - 4m 이상: 25,000원/㎡
-- 운반비: 
-  - 200개 이하: 20만원
-  - 201-400개: 40만원
-  - 400개 초과: 70만원
+5. **핸들러 리팩토링 (진행 중)**
+   - ✅ `handlers/install.ts` - 완료
+   - 🔄 `handlers/rental.ts` - 진행 중
+   - 🔄 `handlers/membership.ts` - 진행 중
+   - ⏳ `handlers/common-handlers.ts` - 대기
 
-### 일반 렌탈
-- LED 모듈: 50,000원/개
-- 구조물: 포함
-- 운반비:
-  - 60개 이하: 30만원
-  - 61-100개: 40만원
-  - 101개 이상: 50만원
-- 기간 할증:
-  - 5일 이하: 0%
-  - 5-15일: 20%
-  - 15-30일: 30%
+### 🎯 개선된 코드 구조
 
-## 현재 상태 및 이슈
+#### 메시지 처리 패턴
+```typescript
+// Before: 하드코딩된 메시지
+text: `✅ 설치 지역: ${region}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n어떤 공간에...`
 
-### ✅ 완료
-- ES Module 전환
-- Railway 배포
-- 기본 기능 정상 작동
-
-### ⚠️ 개선 필요
-1. **코드 구조**: kakao-chatbot.ts 2000줄+ → 추가 분리 필요
-2. **타입 안정성**: TypeScript strict mode 비활성화 (47개 오류)
-3. **테스트**: 테스트 코드 없음
-4. **세션**: 메모리 기반 → Redis 필요
-5. **로깅**: 체계적인 로깅 시스템 부재
-
-### 📁 주요 파일 위치
+// After: 유틸리티 함수 사용
+text: confirmAndAsk('설치 지역', region, MESSAGES.SELECT_SPACE)
 ```
-src/
-├── server.ts              # Express 서버 (Railway)
-├── index.ts               # MCP 서버 (Claude)
-├── tools/
-│   ├── kakao-chatbot.ts   # 메인 챗봇 로직
-│   ├── notion-mcp.ts      # Notion 연동
-│   ├── calculate-quote.ts # 견적 계산
-│   └── handlers/          # 서비스별 핸들러
-│       ├── rental.ts
-│       ├── install.ts
-│       └── membership.ts
+
+#### Quick Reply 패턴
+```typescript
+// Before: 수동 생성
+quickReplies: [
+  { label: '🏢 기업', action: 'message', messageText: '기업' },
+  // ...
+]
+
+// After: 헬퍼 함수 사용
+quickReplies: createQuickReplies([
+  { label: BUTTONS.SPACE_CORPORATE, value: '기업' },
+  // ...
+])
 ```
+
+## 문구/프로세스 변경 방법
+
+### 문구 변경
+1. `src/constants/messages.ts` 파일 수정
+2. 원하는 메시지 찾아서 변경
+3. 빌드 및 배포
+
+### 프로세스 변경
+1. `src/config/process-config.ts` 파일 수정
+2. 대화 플로우 단계 추가/제거/수정
+3. 빌드 및 배포
+
+### 버튼 변경
+1. `src/constants/messages.ts`의 `BUTTONS` 섹션 수정
+2. `src/config/process-config.ts`의 `QUICK_REPLIES_CONFIG` 수정
+
+## 주요 파일 역할
+
+### constants/messages.ts
+- 모든 사용자 대화 메시지
+- 버튼 라벨
+- 검증 에러 메시지
+- 성공 메시지 템플릿
+
+### utils/message-utils.ts
+- 메시지 포맷팅 함수
+- 구분선 관리
+- LED 정보 포맷팅
+- 이모지 상수
+
+### utils/handler-utils.ts
+- Quick Reply 생성
+- 공통 검증 로직
+- LED 관련 헬퍼 함수
+- 세션 데이터 처리
+
+### config/process-config.ts
+- 서비스별 대화 플로우 정의
+- 단계별 진행 설정
+- Quick Reply 구성
 
 ## 중요 주의사항
 
@@ -138,3 +171,15 @@ src/
 3. **설치 서비스는 담당자 언급 안함**
 4. **모든 import에 .js 확장자 필수**
 5. **Kakao 응답은 5초 이내**
+6. **구분선은 ━━━━ (4개)로 통일**
+
+## 현재 이슈 및 개선 필요사항
+
+### ⏳ 진행 중
+1. 핸들러 리팩토링 완료
+2. 테스트 코드 작성
+
+### 📅 계획
+1. Redis 세션 저장소 마이그레이션
+2. 에러 로깅 시스템 구축
+3. 성능 모니터링 도구 연동
