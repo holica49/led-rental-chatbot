@@ -138,7 +138,7 @@ app.get('/polling/status', (_req: Request, res: Response) => {
     status: 'OK',
     polling: status,
     timestamp: new Date().toISOString()
-  });
+  }); 
 });
 
 // 수동 트리거 엔드포인트 (테스트용)
