@@ -17,8 +17,16 @@ export class NotionPollingService {
   constructor() {
     this.notion = new Client({ auth: process.env.NOTION_API_KEY });
     this.automation = new NotionStatusAutomation();
-    // 담당자 설정 로드
-    this.managersConfig = JSON.parse(process.env.MANAGERS_CONFIG || '{"managers":[]}');
+    
+    // 담당자 설정 로드 - 안전하게 처리
+    try {
+      this.managersConfig = process.env.MANAGERS_CONFIG 
+        ? JSON.parse(process.env.MANAGERS_CONFIG)
+        : { managers: [] };
+    } catch (error) {
+      console.warn('NotionPollingService - MANAGERS_CONFIG 파싱 실패, 기본값 사용');
+      this.managersConfig = { managers: [] };
+    }
   }
 
   /**

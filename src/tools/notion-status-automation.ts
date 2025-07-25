@@ -7,10 +7,20 @@ const notion = new Client({ auth: process.env.NOTION_API_KEY });
 export class NotionStatusAutomation {
   private managersConfig: { managers: Array<{ notionId: string; department?: string; isActive?: boolean }> };
 
+// src/tools/notion-status-automation.ts 수정
   constructor() {
     console.log('NotionStatusAutomation 생성됨');
-    // 담당자 설정 로드
-    this.managersConfig = JSON.parse(process.env.MANAGERS_CONFIG || '{"managers":[]}');
+    console.log('MANAGERS_CONFIG 원본값:', process.env.MANAGERS_CONFIG); // 디버깅용
+    
+    // 담당자 설정 로드 - 안전하게 처리
+    try {
+      this.managersConfig = process.env.MANAGERS_CONFIG 
+        ? JSON.parse(process.env.MANAGERS_CONFIG)
+        : { managers: [] };
+    } catch (error) {
+      console.warn('MANAGERS_CONFIG 파싱 실패, 기본값 사용:', error);
+      this.managersConfig = { managers: [] };
+    }
   }
 
   /**
