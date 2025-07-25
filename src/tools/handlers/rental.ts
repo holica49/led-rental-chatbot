@@ -1,10 +1,10 @@
-import { UserSession, KakaoResponse } from '../../types';
+import { UserSession, KakaoResponse } from '../../types/index.js';
 import { 
   validateAndNormalizeLEDSize, 
   validateStageHeight, 
   validateNumber, 
   validateEventPeriod 
-} from '../validators';
+} from '../validators/index.js';
 
 export function handleRentalIndoorOutdoor(message: string, session: UserSession): KakaoResponse {
   const parts = message.split('/').map(part => part.trim());

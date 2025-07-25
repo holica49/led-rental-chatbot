@@ -1,4 +1,4 @@
-import { UserSession } from '../../types';
+import { UserSession } from '../../types/index.js';
 
 export function prepareNotionData(session: UserSession, quote: any, schedules: any): any {
   let notionData: any = {

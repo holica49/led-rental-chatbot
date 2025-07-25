@@ -1,1 +1,1 @@
-export { UserSession } from '../../types/index';
+export { UserSession } from '../../types/index.js';

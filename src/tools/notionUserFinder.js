@@ -1,8 +1,8 @@
 // tools/notionUserFinder.js
 // Notion 워크스페이스의 사용자 ID를 찾는 도구
 
-import { Client } from '@notionhq/client';
-import dotenv from 'dotenv';
+import { Client } from '@notionhq/client/index.js';
+import dotenv from 'dotenv/index.js';
 
 dotenv.config();
 

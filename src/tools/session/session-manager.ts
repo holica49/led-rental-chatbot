@@ -1,4 +1,4 @@
-import { UserSession } from '../../types';
+import { UserSession } from '../../types/index.js';
 
 class SessionManager {
   private sessions: Map<string, UserSession> = new Map();

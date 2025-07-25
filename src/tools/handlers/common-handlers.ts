@@ -1,5 +1,5 @@
-import { UserSession, KakaoResponse } from '../../types';
-import { validatePhoneNumber } from '../validators';
+import { UserSession, KakaoResponse } from '../../types/index.js';
+import { validatePhoneNumber } from '../validators/index.js';
 import { calculateRentalLEDQuote, calculateMultiLEDQuote } from '../calculate-quote';
 import { notionMCPTool } from '../notion-mcp';
 import { prepareNotionData } from '../services/notion-service';

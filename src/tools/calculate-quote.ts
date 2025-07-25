@@ -1,4 +1,4 @@
-import { LEDSpec, QuoteResult, RentalQuoteResult } from '../types';
+import { LEDSpec, QuoteResult, RentalQuoteResult } from '../types/index.js';
 
 // 기본 상수 정의
 const CONSTANTS = {

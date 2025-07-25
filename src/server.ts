@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction } from 'express/index.js';
 import dotenv from 'dotenv';
 import { handleKakaoWebhook } from './tools/kakao-chatbot.js';
 

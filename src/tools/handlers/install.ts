@@ -1,4 +1,4 @@
-import { UserSession, KakaoResponse } from '../../types';
+import { UserSession, KakaoResponse } from '../../types/index.js';
 
 export function handleInstallEnvironment(message: string, session: UserSession): KakaoResponse {
   if (message.includes('실내')) {

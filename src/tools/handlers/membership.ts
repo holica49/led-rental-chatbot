@@ -1,10 +1,10 @@
-import { UserSession, KakaoResponse } from '../../types';
+import { UserSession, KakaoResponse } from '../../types/index.js';
 import { 
   validateNumber, 
   validateAndNormalizeLEDSize, 
   validateStageHeight, 
   validateEventPeriod 
-} from '../validators';
+} from '../validators/index.js';
 
 export function handleMembershipCode(message: string, session: UserSession): KakaoResponse {
   const code = message.trim();
