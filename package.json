@@ -12,6 +12,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "start:mcp": "node dist/index.js",
+    "railway-start": "node dist/server.js",
     "postinstall": "echo 'Dependencies installed'",
     "start:prod": "npm run build && node dist/index.js",
     "clean": "rimraf dist",

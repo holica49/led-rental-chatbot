@@ -4,3 +4,4 @@ buildCommand = "npm install && npm run build"
 
 [deploy]
 startCommand = "npm start"
+numReplicas = 1

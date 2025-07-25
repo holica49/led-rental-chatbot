@@ -10,6 +10,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// PORT 디버깅
+console.log('Environment PORT:', process.env.PORT);
+console.log('Using PORT:', PORT);
+
+
 // 미들웨어
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
