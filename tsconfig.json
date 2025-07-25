@@ -13,12 +13,27 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     
-    "strict": false,
-    "strictNullChecks": false,
-    "noImplicitAny": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noUncheckedIndexedAccess": false,
+    // Phase 1: 기본 타입 체크 활성화
+    "strict": false, // 아직 전체 strict는 비활성화
+    "strictNullChecks": true, // null/undefined 체크 활성화
+    "noImplicitAny": true, // any 타입 금지
+    
+    // Phase 2: 사용하지 않는 변수 체크 (주석 처리 - 나중에 활성화)
+    // "noUnusedLocals": true,
+    // "noUnusedParameters": true,
+    
+    // Phase 3: 더 엄격한 체크 (주석 처리 - 나중에 활성화)
+    // "strictFunctionTypes": true,
+    // "strictBindCallApply": true,
+    // "strictPropertyInitialization": true,
+    // "noImplicitThis": true,
+    // "alwaysStrict": true,
+    
+    // Phase 4: 추가 안전성 체크 (주석 처리 - 나중에 활성화)
+    // "noUncheckedIndexedAccess": true,
+    // "noImplicitReturns": true,
+    // "noFallthroughCasesInSwitch": true,
+    // "noImplicitOverride": true,
     
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,

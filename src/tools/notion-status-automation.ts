@@ -5,7 +5,7 @@ const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
 // 행사 상태 관리 서비스
 export class NotionStatusAutomation {
-  private managersConfig: any;
+  private managersConfig: { managers: Array<{ notionId: string; department?: string; isActive?: boolean }> };
 
   constructor() {
     console.log('NotionStatusAutomation 생성됨');
@@ -189,7 +189,11 @@ export class NotionStatusAutomation {
       
       // 1. Notion에서 행사 정보 가져오기
       const eventData = await this.getEventDataFromNotion(pageId);
-      
+        if (!eventData.eventName) eventData.eventName = '';
+        if (!eventData.customerName) eventData.customerName = '';
+        if (!eventData.contactName) eventData.contactName = '';
+        if (!eventData.venue) eventData.venue = '';
+
       // 2. 견적 계산
       const quote = this.calculateQuoteFromEventData(eventData);
       

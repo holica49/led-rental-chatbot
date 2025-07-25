@@ -1,8 +1,22 @@
 import { Client } from '@notionhq/client';
+import { LEDSpec } from '../../types/index.js';  // 이 줄 추가
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-export async function addMentionToPage(pageId: string, eventData: any) {
+  interface MentionEventData {
+    serviceType?: string;
+    eventName?: string;
+    customerName?: string;
+    contactName?: string;
+    contactTitle?: string;
+    contactPhone?: string;
+    eventPeriod?: string;
+    venue?: string;
+    totalAmount?: number;
+    ledSpecs?: LEDSpec[];
+  }
+
+export async function addMentionToPage(pageId: string, eventData: MentionEventData) {
   try {
     const managersConfig = JSON.parse(process.env.MANAGERS_CONFIG || '{"managers":[]}');
     

@@ -1,4 +1,4 @@
-import { UserSession, KakaoResponse } from '../../types/index.js';
+import { UserSession, KakaoResponse, QuoteResult, RentalQuoteResult } from '../../types/index.js';
 import { validatePhoneNumber } from '../validators/index.js';
 import { calculateRentalLEDQuote, calculateMultiLEDQuote } from '../calculate-quote.js';
 import { notionMCPTool } from '../notion-mcp.js';
@@ -175,8 +175,8 @@ export async function handleFinalConfirmation(message: string, session: UserSess
     try {
       const sessionCopy: UserSession = JSON.parse(JSON.stringify(session));
       
-      let quote: any = null;
-      let schedules: any = null;
+        let quote: QuoteResult | RentalQuoteResult | null = null;
+        let schedules: { eventSchedule: string; installSchedule: string; rehearsalSchedule: string; dismantleSchedule: string } | null = null;
 
       if (sessionCopy.serviceType === '렌탈' && sessionCopy.data.rentalPeriod) {
         quote = calculateRentalLEDQuote(sessionCopy.data.ledSpecs, sessionCopy.data.rentalPeriod);
@@ -201,7 +201,7 @@ export async function handleFinalConfirmation(message: string, session: UserSess
       setImmediate(async () => {
         try {
           const notionData = prepareNotionData(sessionCopy, quote, schedules);
-          const notionResult = await notionMCPTool.handler(notionData);
+          const notionResult = await notionMCPTool.handler(notionData as any);
           
           await addMentionToPage(notionResult.id, {
             serviceType: sessionCopy.serviceType,

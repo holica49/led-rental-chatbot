@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Request, Response } from 'express/index.js';
 import { sessionManager } from './session/session-manager.js';  // .js 추가
 import { processUserMessage } from './message-processor.js';  // .js 추가
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';

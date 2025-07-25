@@ -1,6 +1,10 @@
-import { UserSession } from '../../types/index.js';
+import { UserSession, QuoteResult, RentalQuoteResult } from '../../types/index.js';
 
-export function prepareNotionData(session: UserSession, quote: any, schedules: any): any {
+export function prepareNotionData(
+  session: UserSession, 
+  quote: QuoteResult | RentalQuoteResult | null, 
+  schedules: { eventSchedule: string; installSchedule: string; rehearsalSchedule: string; dismantleSchedule: string } | null
+  ): Record<string, any> {
   let notionData: any = {
     serviceType: session.serviceType || '',
     eventName: session.data.eventName || 'LED 프로젝트',
@@ -29,7 +33,7 @@ export function prepareNotionData(session: UserSession, quote: any, schedules: a
       installEnvironment: session.data.installEnvironment || '실내',
       supportStructureType: session.data.supportStructureType || '',
       eventSchedule: session.data.rentalPeriod ? `${session.data.rentalPeriod}일` : '',
-      periodSurchargeAmount: quote?.periodSurcharge?.surchargeAmount || 0,
+      periodSurchargeAmount: (quote as RentalQuoteResult)?.periodSurcharge?.surchargeAmount || 0,
       installSchedule: schedules?.installSchedule || '',
       rehearsalSchedule: schedules?.rehearsalSchedule || '',
       dismantleSchedule: schedules?.dismantleSchedule || '',

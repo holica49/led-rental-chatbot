@@ -99,13 +99,14 @@ export function handleMembershipLEDSpecs(message: string, session: UserSession):
     };
   }
   
-  session.data.ledSpecs.push({
-    size: validation.size,
-    needOperator: false,
-    operatorDays: 0,
-    prompterConnection: false,
-    relayConnection: false
-  });
+session.data.ledSpecs.push({
+  size: validation.size,
+  stageHeight: 0,  // 이 줄 추가
+  needOperator: false,
+  operatorDays: 0,
+  prompterConnection: false,
+  relayConnection: false
+});
   
   session.step = 'membership_stage_height';
   

@@ -111,7 +111,7 @@ export const notionMCPTool = {
 };
 
 // Notion 속성 빌드 함수
-function buildNotionProperties(args: NotionToolInput): any {
+function buildNotionProperties(args: NotionToolInput): Record<string, any> {
   const properties: any = {
     '행사명': { title: [{ text: { content: args.eventName } }] },
     '서비스유형': { select: { name: args.serviceType } },

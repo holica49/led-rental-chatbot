@@ -56,7 +56,7 @@ export const enhancedExcelTool = {
     required: ['type', 'data']
   },
 
-  handler: async (args: { type: string; data: any; options?: ExcelGenerateOptions }) => {
+  handler: async (args: { type: string; data: EstimateExcelData | ExcelData | any; options?: ExcelGenerateOptions }) => {
     try {
       let workbook: XLSX.WorkBook;
       

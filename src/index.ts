@@ -15,13 +15,14 @@ dotenv.config();
 import { kakaoChatbotTool } from './tools/kakao-chatbot';
 import { notionMCPTool } from './tools/notion-mcp';
 import { enhancedExcelTool } from './tools/enhanced-excel';
+import { ToolDefinition } from './types/index.js';
 
 // 도구 타입 정의
 interface Tool {
   name: string;
   description: string;
-  inputSchema: any; // 각 도구마다 다른 스키마를 가지므로 any 사용
-  handler: (args: any) => Promise<any>;
+  inputSchema: ToolDefinition['inputSchema'];
+  handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
 // 환경 변수 검증
@@ -61,7 +62,7 @@ class LEDRentalMCPServer {
     // 도구 등록
     this.tools = new Map<string, Tool>();
     this.tools.set('kakao_chatbot', kakaoChatbotTool as Tool);
-    this.tools.set('create_notion_estimate', notionMCPTool as Tool);
+    this.tools.set('create_notion_estimate', notionMCPTool as unknown as Tool);
     this.tools.set('generate_excel', enhancedExcelTool as Tool);
 
     this.setupHandlers();
