@@ -1,13 +1,11 @@
-#!/usr/bin/env node
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Server } from '@modelcontextprotocol/sdk';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk';
 import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
   McpError,
-} from '@modelcontextprotocol/sdk/types.js';
-import dotenv from 'dotenv';
+} from '@modelcontextprotocol/sdk';
 
 // 환경 변수 로드
 dotenv.config();
