@@ -1,14 +1,18 @@
-import { UserSession, KakaoResponse } from '../types/index.js';  // .js 추가
-import { isModificationRequest, isResetRequest } from './utils/request-utils.js';  // .js 추가
-import { handlers, handleStart, handleSelectService, handleDefault } from './handlers/index.js';  // .js 추가
+// src/tools/message-processor.ts
+
+import { UserSession, KakaoResponse } from '../types/index.js';
+import { isModificationRequest, isResetRequest } from './utils/request-utils.js';
+import { handlers, handleStart, handleSelectService, handleDefault } from './handlers/index.js';
+import { MESSAGES, BUTTONS } from '../constants/messages.js';
+import { createQuickReplies } from '../utils/handler-utils.js';
 
 export function handleModificationRequest(_message: string, _session: UserSession): KakaoResponse {
   return {
     text: '처음부터 다시 시작하시겠습니까?',
-    quickReplies: [
-      { label: '예, 처음부터', action: 'message', messageText: '처음부터 시작' },
-      { label: '아니요, 계속', action: 'message', messageText: '계속' }
-    ]
+    quickReplies: createQuickReplies([
+      { label: '예, 처음부터', value: '처음부터 시작' },
+      { label: '아니요, 계속', value: '계속' }
+    ])
   };
 }
 
@@ -20,12 +24,12 @@ export function handleResetRequest(session: UserSession): KakaoResponse {
   session.currentLED = 1;
   
   return {
-    text: '처음부터 다시 시작합니다.\n\n안녕하세요! LED 전문 기업 오비스입니다. 😊\n\n어떤 서비스를 도와드릴까요?',
-    quickReplies: [
-      { label: '🏗️ LED 설치', action: 'message', messageText: '설치' },
-      { label: '📦 LED 렌탈', action: 'message', messageText: '렌탈' },
-      { label: '👥 멤버쉽 서비스', action: 'message', messageText: '멤버쉽' }
-    ]
+    text: `처음부터 다시 시작합니다.\n\n${MESSAGES.GREETING}`,
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.SERVICE_INSTALL, value: '설치' },
+      { label: BUTTONS.SERVICE_RENTAL, value: '렌탈' },
+      { label: BUTTONS.SERVICE_MEMBERSHIP, value: '멤버쉽' }
+    ])
   };
 }
 

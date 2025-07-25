@@ -1,3 +1,5 @@
+// src/tools/handlers/rental.ts
+
 import { UserSession, KakaoResponse } from '../../types/index.js';
 import { 
   validateAndNormalizeLEDSize, 
@@ -78,34 +80,40 @@ export function handleRentalStructureType(message: string, session: UserSession)
 }
 
 export function handleRentalLEDCount(message: string, session: UserSession): KakaoResponse {
+  // 지지구조물 선택 처리
   if (message.includes('목공')) {
     session.data.supportStructureType = '목공 설치';
   } else if (message.includes('단독')) {
     session.data.supportStructureType = '단독 설치';
-  } else {
+  } else if (!session.data.supportStructureType) {
     return {
-      text: '지지구조물 타입을 선택해주세요.',
-      quickReplies: [
-        { label: '🔨 목공 설치', action: 'message', messageText: '목공 설치' },
-        { label: '🏗️ 단독 설치', action: 'message', messageText: '단독 설치' }
-      ]
+      text: MESSAGES.SELECT_STRUCTURE,
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.STRUCTURE_WOOD, value: '목공 설치' },
+        { label: BUTTONS.STRUCTURE_STANDALONE, value: '단독 설치' }
+      ])
     };
   }
   
   session.step = 'rental_led_specs';
   return {
-    text: `✅ 지지구조물: ${session.data.supportStructureType}\n\n━━━━━━\n\n몇 개소의 LED디스플레이가 필요하신가요? (1-5개)`,
-    quickReplies: [
-      { label: '1개', action: 'message', messageText: '1' },
-      { label: '2개', action: 'message', messageText: '2' },
-      { label: '3개', action: 'message', messageText: '3' },
-      { label: '4개', action: 'message', messageText: '4' },
-      { label: '5개', action: 'message', messageText: '5' }
-    ]
+    text: confirmAndAsk(
+      '지지구조물',
+      session.data.supportStructureType,
+      MESSAGES.SELECT_LED_COUNT
+    ),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.LED_COUNT[0], value: '1' },
+      { label: BUTTONS.LED_COUNT[1], value: '2' },
+      { label: BUTTONS.LED_COUNT[2], value: '3' },
+      { label: BUTTONS.LED_COUNT[3], value: '4' },
+      { label: BUTTONS.LED_COUNT[4], value: '5' }
+    ])
   };
 }
 
 export function handleRentalLEDSpecs(message: string, session: UserSession): KakaoResponse {
+  // LED 개수 설정이 안되어 있으면 먼저 처리
   if (session.ledCount === 0) {
     const validation = validateNumber(message, 1, 5);
     if (!validation.valid || !validation.value) {
@@ -139,6 +147,7 @@ export function handleRentalLEDSpecs(message: string, session: UserSession): Kak
     };
   }
   
+  // LED 크기 검증
   const validation = validateAndNormalizeLEDSize(message);
   if (!validation.valid || !validation.size) {
     return {
@@ -156,7 +165,7 @@ export function handleRentalLEDSpecs(message: string, session: UserSession): Kak
   
   return {
     text: confirmAndAsk(
-      `LED ${session.currentLED}번`,
+      `LED ${session.currentLED}번째 개소`,
       validation.size,
       MESSAGES.INPUT_STAGE_HEIGHT
     ),
@@ -174,32 +183,36 @@ export function handleRentalStageHeight(message: string, session: UserSession): 
   
   if (!validation.valid || validation.height === undefined) {
     return {
-      text: `❌ ${validation.error}\n\n다시 입력해주세요.`,
-      quickReplies: [
-        { label: '0mm', action: 'message', messageText: '0mm' },
-        { label: '600mm', action: 'message', messageText: '600mm' },
-        { label: '800mm', action: 'message', messageText: '800mm' },
-        { label: '1000mm', action: 'message', messageText: '1000mm' }
-      ]
+      text: errorMessage(validation.error || VALIDATION_ERRORS.STAGE_HEIGHT),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.STAGE_HEIGHT_0, value: '0mm' },
+        { label: BUTTONS.STAGE_HEIGHT_600, value: '600mm' },
+        { label: BUTTONS.STAGE_HEIGHT_800, value: '800mm' },
+        { label: BUTTONS.STAGE_HEIGHT_1000, value: '1000mm' }
+      ])
     };
   }
   
-  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const currentLedIndex = getCurrentLEDIndex(session);
   session.data.ledSpecs[currentLedIndex].stageHeight = validation.height;
   
   session.step = 'rental_operator_needs';
   
   return {
-    text: `✅ 무대 높이: ${validation.height}mm\n\n━━━━━━\n\n👨‍💼 오퍼레이터가 필요하신가요?`,
-    quickReplies: [
-      { label: '네, 필요합니다', action: 'message', messageText: '네' },
-      { label: '아니요', action: 'message', messageText: '아니요' }
-    ]
+    text: confirmAndAsk(
+      `LED ${session.currentLED}번째 개소 무대 높이`,
+      `${validation.height}mm`,
+      MESSAGES.ASK_OPERATOR
+    ),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.YES, value: '네' },
+      { label: BUTTONS.NO, value: '아니요' }
+    ])
   };
 }
 
 export function handleRentalOperatorNeeds(message: string, session: UserSession): KakaoResponse {
-  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const currentLedIndex = getCurrentLEDIndex(session);
   const needsOperator = message.includes('네') || message.includes('필요');
   
   session.data.ledSpecs[currentLedIndex].needOperator = needsOperator;
@@ -207,23 +220,23 @@ export function handleRentalOperatorNeeds(message: string, session: UserSession)
   if (needsOperator) {
     session.step = 'rental_operator_days';
     return {
-      text: `✅ 오퍼레이터 필요\n\n━━━━━━\n\n📅 오퍼레이터가 몇 일 동안 필요하신가요?`,
-      quickReplies: [
-        { label: '1일', action: 'message', messageText: '1' },
-        { label: '2일', action: 'message', messageText: '2' },
-        { label: '3일', action: 'message', messageText: '3' },
-        { label: '4일', action: 'message', messageText: '4' },
-        { label: '5일', action: 'message', messageText: '5' }
-      ]
+      text: confirmAndAsk('오퍼레이터 필요', '', MESSAGES.ASK_OPERATOR_DAYS),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.DAYS[0], value: '1' },
+        { label: BUTTONS.DAYS[1], value: '2' },
+        { label: BUTTONS.DAYS[2], value: '3' },
+        { label: BUTTONS.DAYS[3], value: '4' },
+        { label: BUTTONS.DAYS[4], value: '5' }
+      ])
     };
   } else {
     session.step = 'rental_prompter';
     return {
-      text: `✅ 오퍼레이터 불필요\n\n━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
-      quickReplies: [
-        { label: '네, 필요합니다', action: 'message', messageText: '네' },
-        { label: '아니요', action: 'message', messageText: '아니요' }
-      ]
+      text: confirmAndAsk('오퍼레이터 불필요', '', MESSAGES.ASK_PROMPTER),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.YES, value: '네' },
+        { label: BUTTONS.NO, value: '아니요' }
+      ])
     };
   }
 }
@@ -233,33 +246,37 @@ export function handleRentalOperatorDays(message: string, session: UserSession):
   
   if (!validation.valid || !validation.value) {
     return {
-      text: `❌ ${validation.error}`,
-      quickReplies: [
-        { label: '1일', action: 'message', messageText: '1' },
-        { label: '2일', action: 'message', messageText: '2' },
-        { label: '3일', action: 'message', messageText: '3' },
-        { label: '4일', action: 'message', messageText: '4' },
-        { label: '5일', action: 'message', messageText: '5' }
-      ]
+      text: errorMessage(validation.error || VALIDATION_ERRORS.NUMBER_RANGE(1, 10)),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.DAYS[0], value: '1' },
+        { label: BUTTONS.DAYS[1], value: '2' },
+        { label: BUTTONS.DAYS[2], value: '3' },
+        { label: BUTTONS.DAYS[3], value: '4' },
+        { label: BUTTONS.DAYS[4], value: '5' }
+      ])
     };
   }
   
-  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const currentLedIndex = getCurrentLEDIndex(session);
   session.data.ledSpecs[currentLedIndex].operatorDays = validation.value;
   
   session.step = 'rental_prompter';
   
   return {
-    text: `✅ 오퍼레이터 ${validation.value}일\n\n━━━━━━\n\n📺 프롬프터 연결이 필요하신가요?`,
-    quickReplies: [
-      { label: '네, 필요합니다', action: 'message', messageText: '네' },
-      { label: '아니요', action: 'message', messageText: '아니요' }
-    ]
+    text: confirmAndAsk(
+      '오퍼레이터',
+      `${validation.value}일`,
+      MESSAGES.ASK_PROMPTER
+    ),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.YES, value: '네' },
+      { label: BUTTONS.NO, value: '아니요' }
+    ])
   };
 }
 
 export function handleRentalPrompter(message: string, session: UserSession): KakaoResponse {
-  const currentLedIndex = session.data.ledSpecs.length - 1;
+  const currentLedIndex = getCurrentLEDIndex(session);
   const needsPrompter = message.includes('네') || message.includes('필요');
   
   session.data.ledSpecs[currentLedIndex].prompterConnection = needsPrompter;
@@ -267,11 +284,15 @@ export function handleRentalPrompter(message: string, session: UserSession): Kak
   session.step = 'rental_relay';
   
   return {
-    text: `✅ 프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}\n\n━━━━━━\n\n📹 중계카메라 연결이 필요하신가요?`,
-    quickReplies: [
-      { label: '네, 필요합니다', action: 'message', messageText: '네' },
-      { label: '아니요', action: 'message', messageText: '아니요' }
-    ]
+    text: confirmAndAsk(
+      `프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}`,
+      '',
+      MESSAGES.ASK_RELAY
+    ),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.YES, value: '네' },
+      { label: BUTTONS.NO, value: '아니요' }
+    ])
   };
 }
 
@@ -287,7 +308,7 @@ export function handleRentalRelay(message: string, session: UserSession): KakaoR
     
     return {
       text: confirmAndAsk(
-        `LED ${session.currentLED - 1}번 설정 완료`,
+        `LED ${session.currentLED - 1}번째 개소 설정 완료`,
         '',
         createLEDSizePrompt(session.currentLED)
       ),

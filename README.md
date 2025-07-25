@@ -10,11 +10,11 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - **서비스 타입**: 설치, 렌탈, 멤버쉽 (정확히 이 명칭 사용)
 - **설치 서비스**: 담당자 언급 제외
 
-### 현재 상태
-- **ES Module** 전환 완료 (2025-07-25)
-- **모든 import에 .js 확장자** 추가 완료
-- **Railway 배포** 정상 작동 중
-- **TypeScript strict mode**: 비활성화 (개선 필요)
+### 현재 상태 (2025-07-25)
+- **ES Module** 전환 완료 ✅
+- **TypeScript Strict Mode Phase 1** 완료 ✅
+- **메시지 중앙화 리팩토링** 진행 중 🚧
+- **Railway 배포** 정상 작동 중 ✅
 
 ## 🚀 주요 기능
 
@@ -33,6 +33,72 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
   - `@modelcontextprotocol/sdk`: ^1.16.0
   - `@notionhq/client`: ^2.2.15
   - `xlsx`: ^0.18.5
+
+## 📂 프로젝트 구조
+
+```
+led-rental-mcp/
+├── src/
+│   ├── server.ts              # Express 웹훅 서버 (Railway용)
+│   ├── index.ts               # MCP 서버 (stdio)
+│   ├── constants/             # 상수 정의
+│   │   └── messages.ts        # 메시지 중앙화
+│   ├── config/                # 설정 파일
+│   │   └── process-config.ts  # 프로세스 플로우 설정
+│   ├── utils/                 # 유틸리티 함수
+│   │   ├── message-utils.ts   # 메시지 포맷팅
+│   │   └── handler-utils.ts   # 핸들러 공통 함수
+│   ├── types/                 # TypeScript 타입 정의
+│   └── tools/
+│       ├── handlers/          # 대화 흐름 핸들러
+│       │   ├── install.ts     # 설치 서비스
+│       │   ├── rental.ts      # 렌탈 서비스
+│       │   ├── membership.ts  # 멤버쉽 서비스
+│       │   └── common.ts      # 공통 핸들러
+│       ├── services/          # 외부 서비스 연동
+│       ├── session/           # 세션 관리
+│       ├── validators/        # 입력 검증
+│       ├── kakao-chatbot.ts   # 카카오 챗봇 메인
+│       ├── notion-mcp.ts      # Notion 연동
+│       └── calculate-quote.ts # 견적 계산
+├── .claude/                   # Claude Desktop 설정
+├── package.json
+└── tsconfig.json
+```
+
+## 💡 문구 및 프로세스 변경 방법
+
+### 문구 변경
+`src/constants/messages.ts` 파일에서 모든 사용자 대화 문구를 관리합니다.
+
+```typescript
+// 예시: 인사말 변경
+MESSAGES.GREETING = '안녕하세요! 오비스입니다.';
+
+// 예시: 버튼 라벨 변경
+BUTTONS.SERVICE_INSTALL = '🏢 설치 문의';
+```
+
+### 프로세스 변경
+`src/config/process-config.ts` 파일에서 대화 플로우를 수정합니다.
+
+```typescript
+// 예시: 새로운 단계 추가
+INSTALL: {
+  steps: {
+    // 기존 단계들...
+    new_step: {
+      id: 'new_step',
+      nextStep: 'next_step_id',
+      required: true,
+      validation: 'validateFunction'
+    }
+  }
+}
+```
+
+### Quick Reply 버튼 변경
+`process-config.ts`의 `QUICK_REPLIES_CONFIG`에서 버튼 옵션을 수정합니다.
 
 ## 📊 Notion 데이터베이스 필드명 (절대 변경 금지)
 
@@ -65,29 +131,6 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - LED 모듈: 50,000원/개
 - 운반비: 60개 이하 30만원, 61-100개 40만원, 101개 이상 50만원
 - 기간 할증: 5일 이하 0%, 5-15일 20%, 15-30일 30%
-
-## 🚦 프로젝트 구조
-
-```
-led-rental-mcp/
-├── src/
-│   ├── server.ts          # Express 웹훅 서버 (Railway용)
-│   ├── index.ts           # MCP 서버 (stdio)
-│   ├── types/             # TypeScript 타입 정의
-│   └── tools/
-│       ├── handlers/      # 대화 흐름 핸들러
-│       ├── services/      # 외부 서비스 연동
-│       ├── session/       # 세션 관리
-│       ├── utils/         # 유틸리티
-│       ├── validators/    # 입력 검증
-│       ├── kakao-chatbot.ts
-│       ├── notion-mcp.ts
-│       ├── calculate-quote.ts
-│       └── message-processor.ts
-├── .claude/              # Claude Desktop 설정
-├── package.json
-└── tsconfig.json
-```
 
 ## 🔧 설치 및 실행
 
@@ -153,104 +196,37 @@ npm start
 2. 메서드: POST
 3. Content-Type: application/json
 
-## 🔌 Claude Desktop 연동
-
-1. Claude Desktop 설정 파일 위치:
-   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-2. MCP 서버 추가:
-```json
-{
-  "mcpServers": {
-    "led-rental-mcp": {
-      "command": "node",
-      "args": ["dist/index.js"],
-      "cwd": "C:/path/to/led-rental-mcp",
-      "env": {
-        "NOTION_API_KEY": "your_api_key",
-        "NOTION_DATABASE_ID": "your_database_id"
-      }
-    }
-  }
-}
-```
-
-## 📊 API 엔드포인트
-
-### POST /kakao/skill
-
-Kakao 챗봇 웹훅 엔드포인트
-
-**요청 형식**:
-```json
-{
-  "userRequest": {
-    "user": {
-      "id": "user_id"
-    },
-    "utterance": "사용자 메시지"
-  }
-}
-```
-
-**응답 형식**:
-```json
-{
-  "version": "2.0",
-  "template": {
-    "outputs": [{
-      "simpleText": {
-        "text": "응답 메시지"
-      }
-    }],
-    "quickReplies": [...]
-  }
-}
-```
-
 ## 🧪 테스트
 
 ```bash
 # 타입 체크
 npm run typecheck
 
-# 린트
-npm run lint
+# 빌드 테스트
+npm run build
 
-# 포맷
-npm run format
+# 린트 (설정 시)
+npm run lint
 ```
 
-## 🐛 문제 해결
+## 🔄 최근 업데이트 (2025-07-25)
 
-### ES Module Import 오류
-- 모든 상대 경로 import에 `.js` 확장자 추가 필요
-- package.json: `"type": "module"`
-- tsconfig.json: `"module": "ES2022"`
+### 완료된 작업
+- ✅ ES Module 전환
+- ✅ TypeScript Strict Mode Phase 1 (`strictNullChecks`, `noImplicitAny`)
+- ✅ 메시지 중앙화 시스템 구축
+- ✅ 프로세스 설정 파일 분리
+- ✅ 핸들러 유틸리티 함수 추가
 
-### Railway 배포 실패
-- TypeScript를 dependencies에 포함 확인
-- 환경 변수 설정 확인
-- 빌드 로그 확인
+### 진행 중인 작업
+- 🚧 핸들러 파일 리팩토링 (install.ts 완료)
+- 🚧 테스트 코드 작성
 
-## 📝 현재 이슈 및 개선 필요사항
-
-1. **TypeScript Strict Mode 비활성화**
-   - 현재 47개의 타입 오류로 인해 비활성화
-   - 점진적 활성화 필요
-
-2. **세션 관리**
-   - 현재: 메모리 기반 (서버 재시작 시 손실)
-   - 목표: Redis 기반 영구 세션
-
-3. **코드 구조**
-   - kakao-chatbot.ts가 2000줄 이상
-   - 추가 분리 및 리팩토링 필요
-
-4. **테스트 코드**
-   - 현재 테스트 코드 부재
-   - 단위 테스트 및 통합 테스트 필요
+### 예정된 작업
+- 📋 TypeScript Strict Mode Phase 2
+- 📋 Redis 세션 저장소 마이그레이션
+- 📋 에러 로깅 시스템 구축
+- 📋 성능 최적화
 
 ## 📞 담당자 정보
 
@@ -266,21 +242,3 @@ npm run format
 
 ## 📄 라이선스
 오리온디스플레이
-
-
-## 📋 서비스 유형
-
-### 1. LED 렌탈
-- 단기 행사용 LED 디스플레이 렌탈
-- 기간별 할증 자동 계산
-- 설치/철거 일정 관리
-
-### 2. LED 설치
-- 상설 LED 디스플레이 설치
-- 실내/실외 환경별 맞춤 상담
-- 설치 공간 및 예산 분석
-
-### 3. 멤버쉽 서비스
-- 기업 회원 전용 할인 서비스
-- 멤버 코드 기반 인증
-- 맞춤형 견적 제공

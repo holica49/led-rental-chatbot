@@ -1,3 +1,5 @@
+// src/tools/handlers/common-handlers.ts
+
 import { UserSession, KakaoResponse, QuoteResult, RentalQuoteResult } from '../../types/index.js';
 import { validatePhoneNumber } from '../validators/index.js';
 import { calculateRentalLEDQuote, calculateMultiLEDQuote } from '../calculate-quote.js';
@@ -5,6 +7,15 @@ import { notionMCPTool } from '../notion-mcp.js';
 import { prepareNotionData } from '../services/notion-service.js';
 import { calculateScheduleDates } from '../utils/date-utils.js';
 import { addMentionToPage } from '../services/mention-service.js';
+import { MESSAGES, BUTTONS, VALIDATION_ERRORS } from '../../constants/messages.js';
+import { 
+  confirmAndAsk, 
+  errorMessage, 
+  createQuickReplies,
+  validateNotEmpty,
+  createLEDSummary
+} from '../../utils/handler-utils.js';
+import { EMOJI, DIVIDER } from '../../utils/message-utils.js';
 
 export function handleAdditionalRequests(message: string, session: UserSession): KakaoResponse {
   if (message.trim() === '없음' || message.trim() === '') {
@@ -13,33 +24,23 @@ export function handleAdditionalRequests(message: string, session: UserSession):
     session.data.additionalRequests = message.trim();
   }
   
-  if (session.serviceType === '렌탈') {
-    session.step = 'get_customer_company';
-    return {
-      text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━\n\n🏢 고객사명을 알려주세요.`,
-      quickReplies: []
-    };
-  }
+  session.step = session.serviceType === '멤버쉽' ? 'get_contact_name' : 'get_customer_company';
   
-  if (session.serviceType === '설치') {
-    session.step = 'get_contact_name';
-    return {
-      text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━\n\n🏢 고객사명을 알려주세요.`,
-      quickReplies: []
-    };
-  }
-  
-  session.step = 'get_contact_name';
   return {
-    text: `✅ 요청사항이 저장되었습니다.\n\n━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
+    text: confirmAndAsk(
+      '요청사항이 저장되었습니다',
+      '',
+      session.serviceType === '멤버쉽' ? MESSAGES.INPUT_NAME : MESSAGES.INPUT_COMPANY
+    ),
     quickReplies: []
   };
 }
 
 export function handleCustomerCompany(message: string, session: UserSession): KakaoResponse {
-  if (!message || message.trim().length === 0) {
+  const validation = validateNotEmpty(message, '고객사명');
+  if (!validation.valid) {
     return {
-      text: '고객사명을 입력해주세요.',
+      text: validation.error || MESSAGES.INPUT_COMPANY,
       quickReplies: []
     };
   }
@@ -48,16 +49,18 @@ export function handleCustomerCompany(message: string, session: UserSession): Ka
   session.step = 'get_contact_name';
   
   return {
-    text: `✅ 고객사: ${session.data.customerName}\n\n━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
+    text: confirmAndAsk('고객사', session.data.customerName, MESSAGES.INPUT_NAME),
     quickReplies: []
   };
 }
 
 export function handleContactName(message: string, session: UserSession): KakaoResponse {
+  // 설치 서비스에서 고객사명이 없는 경우 먼저 처리
   if (session.serviceType === '설치' && !session.data.customerName) {
-    if (!message || message.trim().length === 0) {
+    const validation = validateNotEmpty(message, '고객사명');
+    if (!validation.valid) {
       return {
-        text: '고객사명을 입력해주세요.',
+        text: validation.error || MESSAGES.INPUT_COMPANY,
         quickReplies: []
       };
     }
@@ -65,14 +68,15 @@ export function handleContactName(message: string, session: UserSession): KakaoR
     session.data.customerName = message.trim();
     
     return {
-      text: `✅ 고객사: ${session.data.customerName}\n\n━━━━━━\n\n👤 담당자님의 성함을 알려주세요.`,
+      text: confirmAndAsk('고객사', session.data.customerName, MESSAGES.INPUT_NAME),
       quickReplies: []
     };
   }
   
-  if (!message || message.trim().length === 0) {
+  const validation = validateNotEmpty(message, '담당자 성함');
+  if (!validation.valid) {
     return {
-      text: '담당자 성함을 입력해주세요.',
+      text: validation.error || MESSAGES.INPUT_NAME,
       quickReplies: []
     };
   }
@@ -81,26 +85,27 @@ export function handleContactName(message: string, session: UserSession): KakaoR
   session.step = 'get_contact_title';
   
   return {
-    text: `✅ 담당자: ${session.data.contactName}님\n\n━━━━━━\n\n💼 직급을 알려주세요.`,
-    quickReplies: [
-      { label: '매니저', action: 'message', messageText: '매니저' },
-      { label: '책임', action: 'message', messageText: '책임' },
-      { label: '팀장', action: 'message', messageText: '팀장' },
-      { label: '이사', action: 'message', messageText: '이사' }
-    ]
+    text: confirmAndAsk('담당자', `${session.data.contactName}님`, MESSAGES.INPUT_TITLE),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.TITLE_MANAGER, value: '매니저' },
+      { label: BUTTONS.TITLE_SENIOR, value: '책임' },
+      { label: BUTTONS.TITLE_TEAM_LEADER, value: '팀장' },
+      { label: BUTTONS.TITLE_DIRECTOR, value: '이사' }
+    ])
   };
 }
 
 export function handleContactTitle(message: string, session: UserSession): KakaoResponse {
-  if (!message || message.trim().length === 0) {
+  const validation = validateNotEmpty(message, '직급');
+  if (!validation.valid) {
     return {
-      text: '직급을 입력해주세요.',
-      quickReplies: [
-        { label: '매니저', action: 'message', messageText: '매니저' },
-        { label: '책임', action: 'message', messageText: '책임' },
-        { label: '팀장', action: 'message', messageText: '팀장' },
-        { label: '이사', action: 'message', messageText: '이사' }
-      ]
+      text: validation.error || MESSAGES.INPUT_TITLE,
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.TITLE_MANAGER, value: '매니저' },
+        { label: BUTTONS.TITLE_SENIOR, value: '책임' },
+        { label: BUTTONS.TITLE_TEAM_LEADER, value: '팀장' },
+        { label: BUTTONS.TITLE_DIRECTOR, value: '이사' }
+      ])
     };
   }
   
@@ -108,7 +113,7 @@ export function handleContactTitle(message: string, session: UserSession): Kakao
   session.step = 'get_contact_phone';
   
   return {
-    text: `✅ 직급: ${session.data.contactTitle}\n\n━━━━━━\n\n📞 연락처를 알려주세요.\n예: 010-1234-5678`,
+    text: confirmAndAsk('직급', session.data.contactTitle, MESSAGES.INPUT_PHONE),
     quickReplies: []
   };
 }
@@ -118,7 +123,7 @@ export function handleContactPhone(message: string, session: UserSession): Kakao
   
   if (!validation.valid || !validation.phone) {
     return {
-      text: `❌ ${validation.error}\n\n다시 입력해주세요.`,
+      text: errorMessage(validation.error || VALIDATION_ERRORS.PHONE),
       quickReplies: []
     };
   }
@@ -126,35 +131,12 @@ export function handleContactPhone(message: string, session: UserSession): Kakao
   session.data.contactPhone = validation.phone;
   session.step = 'final_confirmation';
   
-  let confirmationMessage = '';
-  
-  if (session.serviceType === '설치') {
-    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n🔖 서비스: LED 설치\n🏗️ 설치 환경: ${session.data.installEnvironment}\n📍 설치 지역: ${session.data.installRegion}\n🏢 설치 공간: ${session.data.installSpace}\n🎯 문의 목적: ${session.data.inquiryPurpose}\n💰 설치 예산: ${session.data.installBudget}\n📅 설치 일정: ${session.data.installSchedule}\n💬 요청사항: ${session.data.additionalRequests}\n\n🏢 고객사: ${session.data.customerName}\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n\n상담 요청을 진행하시겠습니까?`;
-  } else if (session.serviceType === '렌탈') {
-    const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
-      const [w, h] = led.size.split('x').map(Number);
-      const moduleCount = (w / 500) * (h / 500);
-      return `LED${index + 1}: ${led.size} (${moduleCount}개)`;
-    }).join('\n');
-    
-    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━\n\n🔖 서비스: LED 렌탈\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)\n🔧 지지구조물: ${session.data.supportStructureType}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n견적을 요청하시겠습니까?`;
-  } else {
-    const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
-      const [w, h] = led.size.split('x').map(Number);
-      const moduleCount = (w / 500) * (h / 500);
-      const power = calculateLEDPower(led.size);
-      return `LED${index + 1}: ${led.size} (${moduleCount}개, ${power})`;
-    }).join('\n');
-   
-    confirmationMessage = `✅ 모든 정보가 입력되었습니다!\n\n📋 최종 확인\n\n━━━━━━\n\n🔖 서비스: 멤버쉽 (${session.data.memberCode})\n🏢 고객사: ${session.data.customerName}\n📋 행사명: ${session.data.eventName}\n📍 행사장: ${session.data.venue}\n📅 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}\n\n🖥️ LED 사양:\n${ledSummary}\n\n👤 담당자: ${session.data.contactName}\n💼 직급: ${session.data.contactTitle}\n📞 연락처: ${session.data.contactPhone}\n💬 요청사항: ${session.data.additionalRequests}\n\n예상 견적을 요청하시겠습니까?`;
-  }
-  
   return {
-    text: confirmationMessage,
-    quickReplies: [
-      { label: '네, 요청합니다', action: 'message', messageText: '네' },
-      { label: '취소', action: 'message', messageText: '취소' }
-    ]
+    text: createFinalConfirmationMessage(session),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.CONFIRM, value: '네' },
+      { label: BUTTONS.CANCEL, value: '취소' }
+    ])
   };
 }
 
@@ -164,10 +146,10 @@ export async function handleFinalConfirmation(message: string, session: UserSess
     session.data = { ledSpecs: [] };
     
     return {
-      text: '요청이 취소되었습니다.\n\n처음부터 다시 시작하시려면 아무 메시지나 입력해주세요.',
-      quickReplies: [
-        { label: '처음으로', action: 'message', messageText: '처음부터' }
-      ]
+      text: MESSAGES.CANCEL,
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.START_OVER, value: '처음부터' }
+      ])
     };
   }
   
@@ -175,8 +157,8 @@ export async function handleFinalConfirmation(message: string, session: UserSess
     try {
       const sessionCopy: UserSession = JSON.parse(JSON.stringify(session));
       
-        let quote: QuoteResult | RentalQuoteResult | null = null;
-        let schedules: { eventSchedule: string; installSchedule: string; rehearsalSchedule: string; dismantleSchedule: string } | null = null;
+      let quote: QuoteResult | RentalQuoteResult | null = null;
+      let schedules: { eventSchedule: string; installSchedule: string; rehearsalSchedule: string; dismantleSchedule: string } | null = null;
 
       if (sessionCopy.serviceType === '렌탈' && sessionCopy.data.rentalPeriod) {
         quote = calculateRentalLEDQuote(sessionCopy.data.ledSpecs, sessionCopy.data.rentalPeriod);
@@ -186,18 +168,13 @@ export async function handleFinalConfirmation(message: string, session: UserSess
         schedules = calculateScheduleDates(sessionCopy.data.eventStartDate!, sessionCopy.data.eventEndDate!);
       }
 
-      const responseText = sessionCopy.serviceType === '설치' 
-        ? `✅ 상담 요청이 접수되었습니다!\n\n━━━━━━\n\n🏢 고객사: ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n🏗️ 설치 환경: ${sessionCopy.data.installEnvironment}\n📍 설치 지역: ${sessionCopy.data.installRegion}\n📅 필요 시기: ${sessionCopy.data.requiredTiming}\n\n👤 담당자: 유준수 구축팀장\n📞 담당자 연락처: 010-7333-3336\n\n곧 담당자가 연락드릴 예정입니다.\n\n💡 설치 사례 보러가기:\nhttps://blog.naver.com/PostList.naver?blogId=oriondisplay_&from=postList&categoryNo=8\n\n감사합니다! 😊`
-        : sessionCopy.serviceType === '렌탈'
-        ? sessionCopy.data.installEnvironment === '실외'
-          ? `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n🏢 ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n🌳 실외 행사\n\n📝 최수삼 렌탈팀장이 별도로 연락드릴 예정입니다.\n📞 담당자 직통: 010-2797-2504`
-          : `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n🏢 ${sessionCopy.data.customerName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 예상 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 담당자에게 전달 중입니다...\n\n⚠️ 상기 금액은 예상 견적이며, 담당자와 협의 후 조정될 수 있습니다.`
-        : `✅ 견적 요청이 접수되었습니다!\n\n📋 ${sessionCopy.data.eventName}\n👤 고객: ${sessionCopy.data.contactName} ${sessionCopy.data.contactTitle}\n📞 연락처: ${sessionCopy.data.contactPhone}\n💰 예상 견적 금액: ${quote?.total?.toLocaleString() || '계산중'}원 (VAT 포함)\n\n📝 상세 견적은 담당자가 연락드릴 예정입니다...`;
+      const responseText = getSuccessResponseText(sessionCopy, quote);
 
       session.step = 'start';
       session.data = { ledSpecs: [] };
       session.serviceType = undefined;
       
+      // 비동기 Notion 저장
       setImmediate(async () => {
         try {
           const notionData = prepareNotionData(sessionCopy, quote, schedules);
@@ -224,30 +201,148 @@ export async function handleFinalConfirmation(message: string, session: UserSess
       
       return {
         text: responseText,
-        quickReplies: [
-          { label: '새 견적 요청', action: 'message', messageText: '처음부터' }
-        ]
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.NEW_QUOTE, value: '처음부터' }
+        ])
       };
       
     } catch (error) {
       console.error('견적 처리 실패:', error);
       return {
-        text: `❌ 견적 처리 중 오류가 발생했습니다.\n\n다시 시도해주세요.`,
-        quickReplies: [
-          { label: '다시 시도', action: 'message', messageText: '네' },
-          { label: '처음부터', action: 'message', messageText: '처음부터' }
-        ]
+        text: errorMessage('견적 처리 중 오류가 발생했습니다.\n\n다시 시도해주세요.'),
+        quickReplies: createQuickReplies([
+          { label: '다시 시도', value: '네' },
+          { label: BUTTONS.START_OVER, value: '처음부터' }
+        ])
       };
     }
   }
   
   return {
     text: '요청을 진행하시겠습니까?',
-    quickReplies: [
-      { label: '네, 요청합니다', action: 'message', messageText: '네' },
-      { label: '취소', action: 'message', messageText: '취소' }
-    ]
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.CONFIRM, value: '네' },
+      { label: BUTTONS.CANCEL, value: '취소' }
+    ])
   };
+}
+
+// Helper Functions
+
+function createFinalConfirmationMessage(session: UserSession): string {
+  const header = `${EMOJI.CHECK} 모든 정보가 입력되었습니다!\n\n${EMOJI.INFO} 최종 확인\n\n${DIVIDER}`;
+  
+  let content = '';
+  
+  if (session.serviceType === '설치') {
+    content = createInstallConfirmation(session);
+  } else if (session.serviceType === '렌탈') {
+    content = createRentalConfirmation(session);
+  } else {
+    content = createMembershipConfirmation(session);
+  }
+  
+  const footer = '\n\n상담 요청을 진행하시겠습니까?';
+  if (session.serviceType !== '설치') {
+    return `${header}\n\n${content}\n\n견적을 요청하시겠습니까?`;
+  }
+  
+  return `${header}\n\n${content}${footer}`;
+}
+
+function createInstallConfirmation(session: UserSession): string {
+  return `🔖 서비스: LED 설치
+${EMOJI.TOOL} 설치 환경: ${session.data.installEnvironment}
+${EMOJI.INFO} 설치 지역: ${session.data.installRegion}
+${EMOJI.COMPANY} 설치 공간: ${session.data.installSpace}
+🎯 문의 목적: ${session.data.inquiryPurpose}
+${EMOJI.MONEY} 설치 예산: ${session.data.installBudget}
+${EMOJI.CALENDAR} 설치 일정: ${session.data.installSchedule}
+${EMOJI.INFO} 요청사항: ${session.data.additionalRequests}
+
+${EMOJI.COMPANY} 고객사: ${session.data.customerName}
+${EMOJI.PERSON} 담당자: ${session.data.contactName}
+💼 직급: ${session.data.contactTitle}
+${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
+}
+
+function createRentalConfirmation(session: UserSession): string {
+  const ledSummary = createLEDSummary(session.data.ledSpecs);
+  
+  return `🔖 서비스: LED 렌탈
+${EMOJI.COMPANY} 고객사: ${session.data.customerName}
+${EMOJI.INFO} 행사명: ${session.data.eventName}
+${EMOJI.INFO} 행사장: ${session.data.venue}
+${EMOJI.CALENDAR} 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)
+${EMOJI.TOOL} 지지구조물: ${session.data.supportStructureType}
+
+${EMOJI.MONITOR} LED 사양:
+${ledSummary}
+
+${EMOJI.PERSON} 담당자: ${session.data.contactName}
+💼 직급: ${session.data.contactTitle}
+${EMOJI.PHONE} 연락처: ${session.data.contactPhone}
+${EMOJI.INFO} 요청사항: ${session.data.additionalRequests}`;
+}
+
+function createMembershipConfirmation(session: UserSession): string {
+  const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
+    const [w, h] = led.size.split('x').map(Number);
+    const moduleCount = (w / 500) * (h / 500);
+    const power = calculateLEDPower(led.size);
+    return `LED${index + 1}: ${led.size} (${moduleCount}개, ${power})`;
+  }).join('\n');
+  
+  return `🔖 서비스: 멤버쉽 (${session.data.memberCode})
+${EMOJI.COMPANY} 고객사: ${session.data.customerName}
+${EMOJI.INFO} 행사명: ${session.data.eventName}
+${EMOJI.INFO} 행사장: ${session.data.venue}
+${EMOJI.CALENDAR} 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}
+
+${EMOJI.MONITOR} LED 사양:
+${ledSummary}
+
+${EMOJI.PERSON} 담당자: ${session.data.contactName}
+💼 직급: ${session.data.contactTitle}
+${EMOJI.PHONE} 연락처: ${session.data.contactPhone}
+${EMOJI.INFO} 요청사항: ${session.data.additionalRequests}`;
+}
+
+function getSuccessResponseText(session: UserSession, quote: QuoteResult | RentalQuoteResult | null): string {
+  if (session.serviceType === '설치') {
+    return MESSAGES.INSTALL_SUCCESS_TEMPLATE(
+      session.data.customerName || '',
+      session.data.contactName || '',
+      session.data.contactPhone || ''
+    );
+  } else if (session.serviceType === '렌탈') {
+    if (session.data.installEnvironment === '실외') {
+      return MESSAGES.RENTAL_OUTDOOR_SUCCESS_TEMPLATE(
+        session.data.eventName || '',
+        session.data.customerName || '',
+        session.data.contactName || '',
+        session.data.contactTitle || '',
+        session.data.contactPhone || ''
+      );
+    } else {
+      return MESSAGES.RENTAL_INDOOR_SUCCESS_TEMPLATE(
+        session.data.eventName || '',
+        session.data.customerName || '',
+        session.data.contactName || '',
+        session.data.contactTitle || '',
+        session.data.contactPhone || '',
+        quote?.total || 0
+      );
+    }
+  } else {
+    return MESSAGES.MEMBERSHIP_SUCCESS_TEMPLATE(
+      session.data.eventName || '',
+      session.data.contactName || '',
+      session.data.contactTitle || '',
+      session.data.contactPhone || '',
+      quote?.total || 0
+    );
+  }
 }
 
 function calculateLEDPower(size: string): string {
