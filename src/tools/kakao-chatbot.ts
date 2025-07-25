@@ -1,8 +1,8 @@
-import { Request, Response } from 'express/index.js';
-import { sessionManager } from './session/session-manager.js';  // .js 추가
-import { processUserMessage } from './message-processor.js';  // .js 추가
+import { Request, Response } from 'express';
+import { sessionManager } from './session/session-manager.js';
+import { processUserMessage } from './message-processor.js';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { QuickReply } from '../types/index.js';  // .js 추가
+import { QuickReply } from '../types/index.js';
 
 interface KakaoRequest {
   userRequest?: {
@@ -103,14 +103,80 @@ export const kakaoChatbotTool = {
   }
 };
 
-// Express 라우트 핸들러 (별도 사용 시)
+// Express 라우트 핸들러
 export async function handleKakaoWebhook(req: Request, res: Response) {
   try {
-    const result = await kakaoChatbotTool.handler({ request: req.body });
-    res.json(result);
+    console.log('=== Kakao Webhook Request ===');
+    console.log('Headers:', req.headers);
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+    
+    // 요청 검증
+    if (!req.body || !req.body.userRequest) {
+      console.error('Invalid request: missing userRequest');
+      return res.status(400).json({
+        version: '2.0',
+        template: {
+          outputs: [{
+            simpleText: {
+              text: '잘못된 요청입니다.'
+            }
+          }]
+        }
+      });
+    }
+    
+    // 사용자 ID 확인
+    const userId = req.body.userRequest?.user?.id;
+    if (!userId) {
+      console.error('Invalid request: missing user ID');
+      return res.status(400).json({
+        version: '2.0',
+        template: {
+          outputs: [{
+            simpleText: {
+              text: '사용자 정보를 찾을 수 없습니다.'
+            }
+          }]
+        }
+      });
+    }
+    
+    // 메시지 처리
+    const utterance = req.body.userRequest?.utterance || '';
+    console.log(`User ${userId}: "${utterance}"`);
+    
+    const session = sessionManager.getSession(userId);
+    const response = await processUserMessage(utterance, session);
+    
+    // 응답 생성
+    const kakaoResponse: KakaoSkillResponse = {
+      version: '2.0',
+      template: {
+        outputs: [{
+          simpleText: {
+            text: response.text
+          }
+        }]
+      }
+    };
+    
+    if (response.quickReplies && response.quickReplies.length > 0) {
+      kakaoResponse.template.quickReplies = response.quickReplies;
+    }
+    
+    console.log('=== Kakao Response ===');
+    console.log(JSON.stringify(kakaoResponse, null, 2));
+    
+    // Content-Type 명시적 설정
+    res.setHeader('Content-Type', 'application/json');
+    res.json(kakaoResponse);
+    
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).json({
+    console.error('=== Webhook Error ===');
+    console.error(error);
+    
+    // 에러 응답
+    res.status(200).json({
       version: '2.0',
       template: {
         outputs: [{
