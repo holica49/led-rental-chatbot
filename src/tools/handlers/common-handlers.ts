@@ -1,10 +1,10 @@
 import { UserSession, KakaoResponse } from '../../types/index.js';
 import { validatePhoneNumber } from '../validators/index.js';
-import { calculateRentalLEDQuote, calculateMultiLEDQuote } from '../calculate-quote';
-import { notionMCPTool } from '../notion-mcp';
-import { prepareNotionData } from '../services/notion-service';
-import { calculateScheduleDates } from '../utils/date-utils';
-import { addMentionToPage } from '../services/mention-service';
+import { calculateRentalLEDQuote, calculateMultiLEDQuote } from '../calculate-quote.js';
+import { notionMCPTool } from '../notion-mcp.js';
+import { prepareNotionData } from '../services/notion-service.js';
+import { calculateScheduleDates } from '../utils/date-utils.js';
+import { addMentionToPage } from '../services/mention-service.js';
 
 export function handleAdditionalRequests(message: string, session: UserSession): KakaoResponse {
   if (message.trim() === '없음' || message.trim() === '') {
