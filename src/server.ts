@@ -1,6 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express/index.js';
 import dotenv from 'dotenv';
 import { handleKakaoWebhook } from './tools/kakao-chatbot.js';
+import { startPollingService } from './tools/notion-polling.js';
+import { getPollingService } from './tools/notion-polling.js';
 
 // 환경 변수 로드
 dotenv.config();
@@ -101,3 +103,60 @@ process.on('SIGINT', () => {
 });
 
 export default app;
+
+// 서버 시작 후 폴링 서비스 시작
+app.listen(PORT, () => {
+  console.log(`🚀 LED Rental Kakao Chatbot Server`);
+  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(`📍 Webhook endpoint: http://localhost:${PORT}/kakao/skill`);
+  
+  // 환경 변수 체크
+  const requiredEnvVars = ['NOTION_API_KEY', 'NOTION_DATABASE_ID'];
+  const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+  
+  if (missingVars.length > 0) {
+    console.warn(`⚠️  Missing environment variables: ${missingVars.join(', ')}`);
+  } else {
+    console.log('✅ All required environment variables are set');
+    
+    // Notion 폴링 서비스 시작
+    console.log('🔄 Starting Notion polling service...');
+    startPollingService().then(() => {
+      console.log('✅ Notion polling service started');
+    }).catch(error => {
+      console.error('❌ Failed to start Notion polling service:', error);
+    });
+  }
+});
+
+// 폴링 상태 확인 엔드포인트
+app.get('/polling/status', (_req: Request, res: Response) => {
+  const pollingService = getPollingService();
+  const status = pollingService.getPollingStatus();
+  
+  res.json({
+    status: 'OK',
+    polling: status,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 수동 트리거 엔드포인트 (테스트용)
+app.post('/polling/trigger', async (req: Request, res: Response) => {
+  try {
+    const { pageId, status } = req.body;
+    const pollingService = getPollingService();
+    const result = await pollingService.manualTrigger(pageId, status);
+    
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
