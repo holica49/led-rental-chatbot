@@ -18,7 +18,6 @@
 - **Session**: In-memory (Redis 마이그레이션 예정)
 
 ## 프로젝트 구조
-```
 led-rental-mcp/
 ├── src/
 │   ├── server.ts              # Express 서버 (Railway)
@@ -44,7 +43,6 @@ led-rental-mcp/
 │       ├── kakao-chatbot.ts   # 메인 챗봇 로직
 │       ├── notion-mcp.ts      # Notion 연동
 │       └── calculate-quote.ts # 견적 계산
-```
 
 ## Notion 데이터베이스 스키마
 ⚠️ **아래 필드명은 절대 변경 불가**
@@ -85,17 +83,19 @@ led-rental-mcp/
    - `constants/messages.ts` - 모든 메시지 통합
    - `utils/message-utils.ts` - 메시지 포맷팅 유틸리티
    - `utils/handler-utils.ts` - 핸들러 공통 유틸리티
-   - 구분선 통일 (━━━━)
+   - 구분선 통일 (`━━━━`)
 
 4. **프로세스 설정 분리**
    - `config/process-config.ts` - 대화 플로우 설정
    - Quick Reply 설정 중앙화
 
-5. **핸들러 리팩토링 (진행 중)**
-   - ✅ `handlers/install.ts` - 완료
-   - 🔄 `handlers/rental.ts` - 진행 중
-   - 🔄 `handlers/membership.ts` - 진행 중
-   - ⏳ `handlers/common-handlers.ts` - 대기
+5. **핸들러 리팩토링 완료**
+   - ✅ `handlers/install.ts`
+   - ✅ `handlers/rental.ts`
+   - ✅ `handlers/membership.ts`
+   - ✅ `handlers/common-handlers.ts`
+   - ✅ `handlers/index.ts`
+   - ✅ `message-processor.ts`
 
 ### 🎯 개선된 코드 구조
 
@@ -106,10 +106,9 @@ text: `✅ 설치 지역: ${region}\n\n━━━━━━━━━━━━━�
 
 // After: 유틸리티 함수 사용
 text: confirmAndAsk('설치 지역', region, MESSAGES.SELECT_SPACE)
-```
 
-#### Quick Reply 패턴
-```typescript
+
+Quick Reply 패턴
 // Before: 수동 생성
 quickReplies: [
   { label: '🏢 기업', action: 'message', messageText: '기업' },
@@ -121,65 +120,88 @@ quickReplies: createQuickReplies([
   { label: BUTTONS.SPACE_CORPORATE, value: '기업' },
   // ...
 ])
-```
 
-## 문구/프로세스 변경 방법
+문구/프로세스 변경 방법
+문구 변경
 
-### 문구 변경
-1. `src/constants/messages.ts` 파일 수정
-2. 원하는 메시지 찾아서 변경
-3. 빌드 및 배포
+src/constants/messages.ts 파일 수정
+원하는 메시지 찾아서 변경
+빌드 및 배포
 
-### 프로세스 변경
-1. `src/config/process-config.ts` 파일 수정
-2. 대화 플로우 단계 추가/제거/수정
-3. 빌드 및 배포
+프로세스 변경
 
-### 버튼 변경
-1. `src/constants/messages.ts`의 `BUTTONS` 섹션 수정
-2. `src/config/process-config.ts`의 `QUICK_REPLIES_CONFIG` 수정
+src/config/process-config.ts 파일 수정
+대화 플로우 단계 추가/제거/수정
+빌드 및 배포
 
-## 주요 파일 역할
+버튼 변경
 
-### constants/messages.ts
-- 모든 사용자 대화 메시지
-- 버튼 라벨
-- 검증 에러 메시지
-- 성공 메시지 템플릿
+src/constants/messages.ts의 BUTTONS 섹션 수정
+src/config/process-config.ts의 QUICK_REPLIES_CONFIG 수정
 
-### utils/message-utils.ts
-- 메시지 포맷팅 함수
-- 구분선 관리
-- LED 정보 포맷팅
-- 이모지 상수
+주요 파일 역할
+constants/messages.ts
 
-### utils/handler-utils.ts
-- Quick Reply 생성
-- 공통 검증 로직
-- LED 관련 헬퍼 함수
-- 세션 데이터 처리
+모든 사용자 대화 메시지
+버튼 라벨
+검증 에러 메시지
+성공 메시지 템플릿
 
-### config/process-config.ts
-- 서비스별 대화 플로우 정의
-- 단계별 진행 설정
-- Quick Reply 구성
+utils/message-utils.ts
 
-## 중요 주의사항
+메시지 포맷팅 함수
+구분선 관리
+LED 정보 포맷팅
+이모지 상수
 
-1. **Notion 필드명 절대 변경 금지**
-2. **무대 높이 0mm 허용 필수**
-3. **설치 서비스는 담당자 언급 안함**
-4. **모든 import에 .js 확장자 필수**
-5. **Kakao 응답은 5초 이내**
-6. **구분선은 ━━━━ (4개)로 통일**
+utils/handler-utils.ts
 
-## 현재 이슈 및 개선 필요사항
+Quick Reply 생성
+공통 검증 로직
+LED 관련 헬퍼 함수
+세션 데이터 처리
 
-### ⏳ 진행 중
-1. 핸들러 리팩토링 완료
-2. 테스트 코드 작성
+config/process-config.ts
 
-### 📅 계획
-1. Redis 세션 저장소 마이그레이션
-2. 에러 로깅 시스템 구축
-3. 성능 모니터링 도구 연동
+서비스별 대화 플로우 정의
+단계별 진행 설정
+Quick Reply 구성
+
+중요 주의사항
+
+Notion 필드명 절대 변경 금지
+무대 높이 0mm 허용 필수
+설치 서비스는 담당자 언급 안함
+모든 import에 .js 확장자 필수
+Kakao 응답은 5초 이내
+구분선은 ━━━━ (4개)로 통일
+
+현재 이슈 및 개선 필요사항
+⏳ 진행 예정
+
+테스트 코드 작성
+Redis 세션 저장소 마이그레이션
+TypeScript Strict Mode Phase 2
+
+📅 장기 계획
+
+에러 로깅 시스템 구축
+성능 모니터링 도구 연동
+API 문서화
+다국어 지원
+
+코드 품질 지표
+현재 상태
+
+TypeScript Coverage: 100%
+Strict Mode: Phase 1 완료
+코드 중복: 최소화됨
+메시지 중앙화: 100%
+테스트 커버리지: 0% (개선 필요)
+
+목표
+
+테스트 커버리지: 80%
+Strict Mode: 전체 활성화
+성능: 모든 응답 < 1초
+가용성: 99.9%
