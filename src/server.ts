@@ -12,11 +12,42 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// 모든 요청 로깅 (디버깅용)
+app.use((req: Request, res: Response, next: NextFunction) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log('Headers:', req.headers);
+  if (req.body) {
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+  }
+  next();
+});
+
+// CORS 설정 (express.json() 다음에 추가)
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // 헬스 체크 엔드포인트
 app.get('/', (_req: Request, res: Response) => {
   res.json({ 
     status: 'OK',
     service: 'LED Rental Kakao Chatbot',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 테스트 엔드포인트
+app.post('/test', (req: Request, res: Response) => {
+  console.log('Test endpoint hit:', req.body);
+  res.json({
+    success: true,
+    received: req.body,
     timestamp: new Date().toISOString()
   });
 });
