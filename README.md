@@ -17,6 +17,7 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - **Railway 배포** 정상 작동 중
 - **TypeScript strict mode**: Phase 1 완료 (strictNullChecks, noImplicitAny)
 - **메시지 중앙화**: 완료 (2025-07-25)
+- **Notion 폴링**: 정상 작동 중 (2025-07-26)
 
 ## 🚀 주요 기능
 
@@ -26,6 +27,20 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - **실시간 가격 계산**: LED 사양별 자동 견적
 - **세션 관리**: 사용자별 대화 상태 유지
 - **메시지 중앙화**: 모든 메시지/버튼 텍스트 통합 관리
+- **자동화 시스템**: Notion 상태 변경 감지 및 자동 처리
+
+## 🤖 Notion 자동화 기능
+
+### 상태별 자동화
+1. **견적 검토**: 견적 정보 자동 생성 및 댓글 추가
+2. **견적 승인**: 배차 정보 자동 생성
+3. **구인 완료**: 최종 체크리스트 생성
+4. **파일 업로드 감지**: 견적서/요청서 모두 업로드 시 자동 승인
+
+### 폴링 시스템
+- 30초마다 상태 변경 감지
+- 담당자 자동 멘션
+- 파일 업로드 실시간 감지
 
 ## 🛠️ 기술 스택
 
@@ -55,6 +70,10 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - `LED{n} 무대 높이` (number) ← 0mm 허용
 - `LED{n} 오퍼레이터 필요` (checkbox)
 - `LED{n} 오퍼레이터 일수` (number)
+
+### 파일 정보
+- `견적서` (files)
+- `요청서` (files)
 
 ## 💰 가격 정책 (2024년 기준)
 
@@ -97,6 +116,8 @@ led-rental-mcp/
 │       ├── validators/        # 입력 검증
 │       ├── kakao-chatbot.ts
 │       ├── notion-mcp.ts
+│       ├── notion-polling.ts  # Notion 상태 감지
+│       ├── notion-status-automation.ts # 자동화 처리
 │       ├── calculate-quote.ts
 │       └── message-processor.ts
 ├── .claude/                   # Claude Desktop 설정
@@ -117,24 +138,31 @@ led-rental-mcp/
 git clone https://github.com/holica49/led-rental-mcp.git
 cd led-rental-mcp
 
-2. 환경 변수 설정
-cp .env.example .env
+환경 변수 설정:
 
+bashcp .env.example .env
 .env 파일 편집:
+env# Notion API 설정
 NOTION_API_KEY=your_notion_api_key
 NOTION_DATABASE_ID=your_database_id
+
+# 담당자 설정 (한 줄로 작성)
+MANAGERS_CONFIG={"managers":[{"name":"담당자1","notionId":"notion-user-id-1","department":"부서","isActive":true}]}
+
+# 기본 주소지
+STORAGE_ADDRESS=경기 고양시 덕양구 향동동 396, 현대테라타워DMC 337호
+
+# 포트 설정
 PORT=3000
 
-3. 의존성 설치:
-npm install
+의존성 설치:
 
+bashnpm install
 개발 모드 실행
-npm run dev
-
+bashnpm run dev
 프로덕션 빌드 및 실행
-npm run build
+bashnpm run build
 npm start
-
 🌐 배포 (Railway)
 이 프로젝트는 Railway에 최적화되어 있습니다:
 
@@ -144,17 +172,24 @@ GitHub 저장소를 Railway에 연결
 
 배포 URL: https://[your-app-name].railway.app
 📱 Kakao 개발자 콘솔 설정
-1. 스킬 서버 URL 등록:
+
+스킬 서버 URL 등록:
 https://[your-app-name].railway.app/kakao/skill
-2. 메서드:POST
-3. Content-Type: application/json
+
+메서드: POST
+Content-Type: application/json
 
 🔌 Claude Desktop 연동
-1. Claude Desktop 설정 파일 위치:
- - Windows: %APPDATA%\Claude\claude_desktop_config.json
- - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
-2. MCP 서버 추가:
-{
+
+Claude Desktop 설정 파일 위치:
+
+Windows: %APPDATA%\Claude\claude_desktop_config.json
+macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+
+
+MCP 서버 추가:
+
+json{
   "mcpServers": {
     "led-rental-mcp": {
       "command": "node",
@@ -167,35 +202,15 @@ https://[your-app-name].railway.app/kakao/skill
     }
   }
 }
-
 📊 API 엔드포인트
 POST /kakao/skill
 Kakao 챗봇 웹훅 엔드포인트
-요청 형식:
-{
-  "userRequest": {
-    "user": {
-      "id": "user_id"
-    },
-    "utterance": "사용자 메시지"
-  }
-}
-
-응답 형식:
-{
-  "version": "2.0",
-  "template": {
-    "outputs": [{
-      "simpleText": {
-        "text": "응답 메시지"
-      }
-    }],
-    "quickReplies": [...]
-  }
-}
-
+GET /polling/status
+Notion 폴링 상태 확인
+POST /polling/trigger
+수동으로 상태 변경 트리거 (테스트용)
 🧪 테스트
-# 타입 체크
+bash# 타입 체크
 npm run typecheck
 
 # 린트
@@ -203,7 +218,6 @@ npm run lint
 
 # 포맷
 npm run format
-
 🐛 문제 해결
 ES Module Import 오류
 
@@ -216,6 +230,12 @@ Railway 배포 실패
 TypeScript를 dependencies에 포함 확인
 환경 변수 설정 확인
 빌드 로그 확인
+
+Notion 폴링 오류
+
+MANAGERS_CONFIG는 한 줄 JSON으로 작성
+Notion API 키와 데이터베이스 ID 확인
+담당자 Notion ID가 올바른지 확인
 
 📝 문구/프로세스 변경 방법
 문구 변경
@@ -246,6 +266,13 @@ src/config/process-config.ts의 QUICK_REPLIES_CONFIG 수정
 
 
 🔄 최근 업데이트
+2025-07-26
+
+✅ Notion 폴링 시스템 추가
+✅ 상태별 자동화 구현
+✅ 파일 업로드 감지 기능
+✅ 담당자 자동 멘션
+
 2025-07-25
 
 ✅ ES Module 마이그레이션 완료

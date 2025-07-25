@@ -7,8 +7,9 @@
 1. **설치 서비스**: 상설 LED 설치 상담 및 견적
 2. **렌탈 서비스**: 단기 행사용 LED 렌탈 및 견적
 3. **멤버쉽 서비스**: 메쎄이상(001) 전용 특별 가격
+4. **자동화 시스템**: Notion 상태 기반 업무 자동화
 
-## 기술 스택 (2025-07-25 기준)
+## 기술 스택 (2025-07-26 기준)
 - **Runtime**: Node.js 18+ (ES Modules)
 - **Language**: TypeScript 5.7.2
 - **Module System**: ES Modules (`"type": "module"`)
@@ -16,6 +17,7 @@
 - **Database**: Notion API
 - **Deployment**: Railway (자동 배포)
 - **Session**: In-memory (Redis 마이그레이션 예정)
+- **Polling**: 30초 간격 상태 감지
 
 ## 프로젝트 구조
 led-rental-mcp/
@@ -42,139 +44,122 @@ led-rental-mcp/
 │       ├── session/           # 세션 관리
 │       ├── kakao-chatbot.ts   # 메인 챗봇 로직
 │       ├── notion-mcp.ts      # Notion 연동
+│       ├── notion-polling.ts  # 상태 감지
+│       ├── notion-status-automation.ts # 자동화
 │       └── calculate-quote.ts # 견적 계산
 
 ## Notion 데이터베이스 스키마
 ⚠️ **아래 필드명은 절대 변경 불가**
-
 ### 기본 정보
-- `행사명` (title)
-- `고객사` (select)
-- `고객명` (rich_text) ← ⚠️ '고객담당자' 아님!
-- `고객 연락처` (phone_number)
-- `행사장` (rich_text)
-- `서비스 유형` (select): 설치, 렌탈, 멤버쉽
-- `행사 상태` (status)
+- `행사명` (title) - 행사/프로젝트 이름
+- `고객사` (select) - 고객 회사명
+- `고객명` (rich_text) - 고객 담당자 이름
+- `고객 연락처` (phone_number) - 고객 연락처
+- `행사장` (rich_text) - 행사 장소
+
+### 서비스 정보
+- `서비스 유형` (select) - 설치, 렌탈, 멤버쉽
+- `행사 상태` (status) - 견적 요청, 견적 검토, 견적 승인 등
+- `멤버 코드` (rich_text) - 멤버쉽 서비스용 코드
+
+### 설치 서비스 전용
+- `설치 환경` (select) - 실내, 실외
+- `설치 공간` (select) - 기업, 상가, 병원 등
+- `문의 목적` (select) - 정보 조사, 견적 등
+- `설치 예산` (select) - 예산 범위
+
+### 렌탈/멤버쉽 서비스 전용
+- `지지구조물 방식` (select) - 목공 설치, 단독 설치
 
 ### LED 정보 (1-5개소)
+각 LED별 속성 (n = 1~5):
 - `LED{n} 크기` (rich_text) - 예: "6000x3000"
-- `LED{n} 무대 높이` (number) ← **0mm 허용**
+- `LED{n} 무대 높이` (number) - mm 단위
 - `LED{n} 오퍼레이터 필요` (checkbox)
 - `LED{n} 오퍼레이터 일수` (number)
+- `LED{n} 프롬프터 연결` (checkbox)
+- `LED{n} 중계카메라 연결` (checkbox)
+
+### LED 자동 계산 정보 (읽기 전용)
+각 LED별 자동 계산값:
+- `LED{n} 모듈 수량` (number)
+- `LED{n} 대각선 인치` (rich_text)
+- `LED{n} 해상도` (rich_text)
+- `LED{n} 소비전력` (rich_text)
+- `LED{n} 전기설치 방식` (rich_text)
 
 ### 견적 정보
-- `총 견적` (number)
-- `부가세 포함` (number)
-- `견적서` (files) ← 파일 업로드
+- `견적 금액` (number) - VAT 제외 금액
+- `총 LED 모듈 수량` (number) - 전체 모듈 수
+- `LED 모듈 비용` (number)
+- `지지구조물 비용` (number)
+- `컨트롤러 및 스위치 비용` (number)
+- `파워 비용` (number)
+- `설치철거인력 비용` (number)
+- `오퍼레이터 비용` (number)
+- `운반 비용` (number)
+- `기간 할증 비용` (number) - 렌탈용
 
-## 리팩토링 현황 (2025-07-25)
+### 파일 관리
+- `견적서` (files) - 견적서 파일
+- `요청서` (files) - 요청서 파일
 
-### ✅ 완료된 작업
-1. **ES Module 전환 완료**
-   - 모든 import에 `.js` 확장자 추가
-   - Railway 배포 정상 작동
+### 일정 정보
+- `행사 일정` (rich_text) - 행사 기간
+- `설치 일정` (date) - 설치일
+- `리허설 일정` (date) - 리허설일
+- `철거 일정` (date) - 철거일
 
-2. **TypeScript Strict Mode Phase 1 완료**
-   - `strictNullChecks` 활성화
-   - `noImplicitAny` 활성화
-   - 47개 타입 오류 해결
-
-3. **메시지 중앙화 완료**
-   - `constants/messages.ts` - 모든 메시지 통합
-   - `utils/message-utils.ts` - 메시지 포맷팅 유틸리티
-   - `utils/handler-utils.ts` - 핸들러 공통 유틸리티
-   - 구분선 통일 (`━━━━`)
-
-4. **프로세스 설정 분리**
-   - `config/process-config.ts` - 대화 플로우 설정
-   - Quick Reply 설정 중앙화
-
-5. **핸들러 리팩토링 완료**
-   - ✅ `handlers/install.ts`
-   - ✅ `handlers/rental.ts`
-   - ✅ `handlers/membership.ts`
-   - ✅ `handlers/common-handlers.ts`
-   - ✅ `handlers/index.ts`
-   - ✅ `message-processor.ts`
-
-### 🎯 개선된 코드 구조
-
-#### 메시지 처리 패턴
-```typescript
-// Before: 하드코딩된 메시지
-text: `✅ 설치 지역: ${region}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n어떤 공간에...`
-
-// After: 유틸리티 함수 사용
-text: confirmAndAsk('설치 지역', region, MESSAGES.SELECT_SPACE)
+### 기타
+- `담당자` (people) - Notion 담당자
+- `문의요청 사항` (rich_text) - 추가 요청사항
 
 
-Quick Reply 패턴
-// Before: 수동 생성
-quickReplies: [
-  { label: '🏢 기업', action: 'message', messageText: '기업' },
-  // ...
-]
+## 자동화 시스템
 
-// After: 헬퍼 함수 사용
-quickReplies: createQuickReplies([
-  { label: BUTTONS.SPACE_CORPORATE, value: '기업' },
-  // ...
-])
+### 상태 변경 감지 (30초 폴링)
+1. **견적 요청 → 견적 검토**
+   - 견적 정보 자동 계산
+   - 견적 내역 댓글 추가
+   - 담당자 멘션
 
-문구/프로세스 변경 방법
-문구 변경
+2. **견적 검토 → 견적 승인**
+   - 파일 업로드 감지
+   - 견적서/요청서 모두 있으면 자동 승인
+   - 상태 변경 알림
 
-src/constants/messages.ts 파일 수정
-원하는 메시지 찾아서 변경
-빌드 및 배포
+3. **견적 승인 → 구인 완료**
+   - 배차 정보 생성
+   - 설치 인력 정보
+   - 담당자 멘션
 
-프로세스 변경
+### 담당자 멘션 규칙
+- **설치**: 유준수 구축팀장
+- **렌탈/멤버쉽**: 최수삼 렌탈팀장
+- **기본**: 설정된 모든 활성 담당자
 
-src/config/process-config.ts 파일 수정
-대화 플로우 단계 추가/제거/수정
-빌드 및 배포
+## 환경 변수 설정
 
-버튼 변경
+### 필수 환경 변수
+# Notion API
+NOTION_API_KEY=your_notion_api_key
+NOTION_DATABASE_ID=your_database_id
 
-src/constants/messages.ts의 BUTTONS 섹션 수정
-src/config/process-config.ts의 QUICK_REPLIES_CONFIG 수정
+# 담당자 설정 (한 줄로)
+MANAGERS_CONFIG={"managers":[{"name":"담당자명","notionId":"notion-id","department":"부서","isActive":true}]}
 
-주요 파일 역할
-constants/messages.ts
+# 기타
+PORT=3000
+STORAGE_ADDRESS=경기 고양시 덕양구 향동동 396, 현대테라타워DMC 337호
 
-모든 사용자 대화 메시지
-버튼 라벨
-검증 에러 메시지
-성공 메시지 템플릿
-
-utils/message-utils.ts
-
-메시지 포맷팅 함수
-구분선 관리
-LED 정보 포맷팅
-이모지 상수
-
-utils/handler-utils.ts
-
-Quick Reply 생성
-공통 검증 로직
-LED 관련 헬퍼 함수
-세션 데이터 처리
-
-config/process-config.ts
-
-서비스별 대화 플로우 정의
-단계별 진행 설정
-Quick Reply 구성
-
-중요 주의사항
-
+# 중요 주의사항
 Notion 필드명 절대 변경 금지
 무대 높이 0mm 허용 필수
 설치 서비스는 담당자 언급 안함
 모든 import에 .js 확장자 필수
 Kakao 응답은 5초 이내
 구분선은 ━━━━ (4개)로 통일
+MANAGERS_CONFIG는 한 줄 JSON
 
 현재 이슈 및 개선 필요사항
 ⏳ 진행 예정
@@ -197,6 +182,7 @@ TypeScript Coverage: 100%
 Strict Mode: Phase 1 완료
 코드 중복: 최소화됨
 메시지 중앙화: 100%
+자동화: 정상 작동 중
 테스트 커버리지: 0% (개선 필요)
 
 목표
@@ -205,3 +191,22 @@ Strict Mode: Phase 1 완료
 Strict Mode: 전체 활성화
 성능: 모든 응답 < 1초
 가용성: 99.9%
+
+배포 및 운영
+Railway 배포
+
+GitHub main 브랜치 자동 배포
+환경 변수는 Railway 대시보드에서 관리
+로그는 Railway Logs에서 확인
+
+모니터링
+
+/polling/status - 폴링 상태 확인
+Railway 대시보드 - 서버 상태
+Notion 댓글 - 자동화 실행 이력
+
+트러블슈팅
+
+폴링 안됨: NOTION_API_KEY, DATABASE_ID 확인
+멘션 안됨: MANAGERS_CONFIG 형식 확인
+자동화 안됨: Notion 필드명 확인
