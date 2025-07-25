@@ -1,19 +1,20 @@
-import { Server } from '@modelcontextprotocol/sdk';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
   McpError,
-} from '@modelcontextprotocol/sdk';
+} from '@modelcontextprotocol/sdk/types.js';
+import dotenv from 'dotenv';
 
 // 환경 변수 로드
 dotenv.config();
 
 // 도구 임포트
-import { kakaoChatbotTool } from './tools/kakao-chatbot.js';
-import { notionMCPTool } from './tools/notion-mcp.js';
-import { enhancedExcelTool } from './tools/enhanced-excel.js';
+import { kakaoChatbotTool } from './tools/kakao-chatbot';
+import { notionMCPTool } from './tools/notion-mcp';
+import { enhancedExcelTool } from './tools/enhanced-excel';
 
 // 도구 타입 정의
 interface Tool {
@@ -159,11 +160,9 @@ async function main(): Promise<void> {
 }
 
 // 서버 실행
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module) {
   main().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);
   });
 }
-
-export { LEDRentalMCPServer };

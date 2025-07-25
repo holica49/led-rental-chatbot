@@ -7,7 +7,7 @@
     "declarationMap": true,
     
     "target": "ES2022",
-    "module": "ES2022",
+    "module": "commonjs",
     "moduleResolution": "node",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -24,18 +24,7 @@
     "forceConsistentCasingInFileNames": true,
     "allowJs": false,
     "pretty": true,
-    "removeComments": false,
-    
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"],
-      "@types/*": ["src/types/*"],
-      "@tools/*": ["src/tools/*"],
-      "@handlers/*": ["src/tools/handlers/*"],
-      "@services/*": ["src/tools/services/*"],
-      "@utils/*": ["src/tools/utils/*"],
-      "@validators/*": ["src/tools/validators/*"]
-    }
+    "removeComments": false
   },
   "include": [
     "src/**/*"
@@ -45,9 +34,5 @@
     "dist",
     "**/*.test.ts",
     "**/*.spec.ts"
-  ],
-  "ts-node": {
-    "esm": true,
-    "experimentalSpecifierResolution": "node"
-  }
+  ]
 }
