@@ -19,10 +19,17 @@ import {
   memberCodeConfirmed,
   eventInfoConfirmed
 } from '../../utils/handler-utils.js';
+import { handleResetRequest } from './common-handlers.js'; // 추가
 
 export function handleMembershipCode(message: string, session: UserSession): KakaoResponse {
   const code = message.trim();
   
+  // 처음으로 돌아가기 체크
+  if (message.includes('처음') || message.includes('취소')) {
+    return handleResetRequest(session);
+  }
+
+
   if (code === '001') {
     session.data.memberCode = code;
     session.data.customerName = '메쎄이상';

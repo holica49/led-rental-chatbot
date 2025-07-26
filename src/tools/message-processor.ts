@@ -16,6 +16,8 @@ export function handleModificationRequest(_message: string, _session: UserSessio
   };
 }
 
+
+
 export function handleResetRequest(session: UserSession): KakaoResponse {
   session.step = 'start';
   session.serviceType = undefined;
@@ -34,6 +36,13 @@ export function handleResetRequest(session: UserSession): KakaoResponse {
 }
 
 export async function processUserMessage(message: string, session: UserSession): Promise<KakaoResponse> {
+  // 전역 리셋 키워드 체크
+  const resetKeywords = ['처음', '처음부터', '처음으로', '초기화', '리셋'];
+  if (resetKeywords.some(keyword => message === keyword || message.includes(`${keyword} 시작`))) {
+    return handleResetRequest(session);
+  }
+  
+  // 수정 요청 체크
   if (isModificationRequest(message)) {
     return handleModificationRequest(message, session);
   }

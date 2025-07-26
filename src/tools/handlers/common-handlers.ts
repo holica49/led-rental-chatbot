@@ -17,6 +17,17 @@ import {
 } from '../../utils/handler-utils.js';
 import { EMOJI, DIVIDER } from '../../utils/message-utils.js';
 
+// 리셋 요청 체크 함수
+export function checkResetRequest(message: string, session: UserSession): KakaoResponse | null {
+  const resetKeywords = ['처음', '처음부터', '처음으로', '다시', '취소', '초기화'];
+  
+  if (resetKeywords.some(keyword => message.includes(keyword))) {
+    return handleResetRequest(session);
+  }
+  
+  return null;
+}
+
 export function handleAdditionalRequests(message: string, session: UserSession): KakaoResponse {
   if (message.trim() === '없음' || message.trim() === '') {
     session.data.additionalRequests = '없음';
@@ -351,4 +362,24 @@ function calculateLEDPower(size: string): string {
   const moduleCount = (width / 500) * (height / 500);
   const totalPower = moduleCount * 0.2;
   return `${totalPower.toFixed(1)}kW`;
+}
+
+// src/tools/handlers/common-handlers.ts
+
+// 공통 리셋 요청 처리 함수
+export function handleResetRequest(session: UserSession): KakaoResponse {
+  session.step = 'start';
+  session.serviceType = undefined;
+  session.data = { ledSpecs: [] };
+  session.ledCount = 0;
+  session.currentLED = 1;
+  
+  return {
+    text: `처음부터 다시 시작합니다.\n\n${MESSAGES.GREETING}`,
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.SERVICE_INSTALL, value: '설치' },
+      { label: BUTTONS.SERVICE_RENTAL, value: '렌탈' },
+      { label: BUTTONS.SERVICE_MEMBERSHIP, value: '멤버쉽' }
+    ])
+  };
 }

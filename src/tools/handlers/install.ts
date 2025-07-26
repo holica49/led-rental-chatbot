@@ -8,8 +8,13 @@ import {
   validateSelection,
   createInstallProjectName
 } from '../../utils/handler-utils.js';
+import { checkResetRequest } from './common-handlers.js'; // 추가
 
 export function handleInstallEnvironment(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+
   if (message.includes('실내')) {
     session.data.installEnvironment = '실내';
   } else if (message.includes('실외')) {

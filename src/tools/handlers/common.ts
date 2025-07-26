@@ -4,8 +4,10 @@ import {
   handleContactName,
   handleContactTitle,
   handleContactPhone,
-  handleFinalConfirmation
-} from './common-handlers.js';  // .js 추가
+  handleFinalConfirmation,
+  handleResetRequest,  // 추가
+  checkResetRequest    // 추가
+} from './common-handlers.js';
 
 export const commonHandlers = {
   'get_additional_requests': handleAdditionalRequests,
@@ -15,3 +17,6 @@ export const commonHandlers = {
   'get_contact_phone': handleContactPhone,
   'final_confirmation': handleFinalConfirmation
 };
+
+// 유틸리티 함수들도 export
+export { handleResetRequest, checkResetRequest };
