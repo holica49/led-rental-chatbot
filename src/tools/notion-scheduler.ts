@@ -177,29 +177,29 @@ export class NotionSchedulerService {
       
       const databaseId = this.formatDatabaseId(process.env.NOTION_DATABASE_ID!);
       
-      // 설치 중 상태이면서 오늘이 행사 시작일인 건 조회
+      // 설치 중 상태인 모든 행사 조회
       const response = await this.notion.databases.query({
         database_id: databaseId,
         filter: {
-          and: [
-            {
-              property: '행사 상태',
-              status: { equals: '설치 중' }
-            },
-            {
-              property: '행사 일정',
-              date: { on_or_after: todayDate }
-            }
-          ]
+          property: '행사 상태',
+          status: { equals: '설치 중' }
         }
       });
 
-      // 행사 시작일 확인
+      // 텍스트 필드에서 행사 시작일 확인
       const todayEvents = response.results.filter(page => {
         if (page.object !== 'page') return false;
         const properties = (page as any).properties;
-        const eventSchedule = properties['행사 일정']?.date;
-        return eventSchedule?.start === todayDate;
+        
+        // 행사 일정 텍스트에서 시작일 추출 (예: "2025-07-26 ~ 2025-07-28")
+        const eventScheduleText = properties['행사 일정']?.rich_text?.[0]?.text?.content || '';
+        
+        if (eventScheduleText.includes(' ~ ')) {
+          const [startDate] = eventScheduleText.split(' ~ ').map((s: string) => s.trim());
+          return startDate === todayDate;
+        }
+        
+        return false;
       });
 
       console.log(`   오늘 시작 행사: ${todayEvents.length}건`);
@@ -226,8 +226,7 @@ export class NotionSchedulerService {
           await this.addScheduledComment(pageId, serviceType, 'TO_OPERATING', {
             eventName,
             venue: properties['행사장']?.rich_text?.[0]?.text?.content || '',
-            eventPeriod: properties['행사 일정']?.date ? 
-              `${properties['행사 일정'].date.start} ~ ${properties['행사 일정'].date.end}` : ''
+            eventPeriod: properties['행사 일정']?.rich_text?.[0]?.text?.content || ''
           });
           
           console.log(`   ✅ ${eventName} 상태 변경 완료`);
@@ -248,7 +247,7 @@ export class NotionSchedulerService {
       
       const databaseId = this.formatDatabaseId(process.env.NOTION_DATABASE_ID!);
       
-      // 운영 중 상태인 행사 조회
+      // 운영 중 상태인 모든 행사 조회
       const response = await this.notion.databases.query({
         database_id: databaseId,
         filter: {
@@ -257,12 +256,21 @@ export class NotionSchedulerService {
         }
       });
 
-      // 행사 종료일 확인
+      // 텍스트 필드에서 행사 종료일 확인
       const todayEndEvents = response.results.filter(page => {
         if (page.object !== 'page') return false;
         const properties = (page as any).properties;
-        const eventSchedule = properties['행사 일정']?.date;
-        return eventSchedule?.end === todayDate;
+        
+        // 행사 일정 텍스트에서 종료일 추출 (예: "2025-07-26 ~ 2025-07-28")
+        const eventScheduleText = properties['행사 일정']?.rich_text?.[0]?.text?.content || '';
+        
+        if (eventScheduleText.includes(' ~ ')) {
+          const parts = eventScheduleText.split(' ~ ').map((s: string) => s.trim());
+          const endDate = parts[1];
+          return endDate === todayDate;
+        }
+        
+        return false;
       });
 
       console.log(`   오늘 종료 행사: ${todayEndEvents.length}건`);
@@ -370,16 +378,16 @@ export class NotionSchedulerService {
     variables: Record<string, any>
   ) {
     try {
-        const notionServiceType = getNotionServiceType(serviceType);
-        // 타입 단언 추가
-        const message = (STATUS_MESSAGES.AUTO_STATUS_CHANGES as any)[messageType];
-        
-        if (!message) {
+      const notionServiceType = getNotionServiceType(serviceType);
+      // 타입 단언 추가
+      const message = (STATUS_MESSAGES.AUTO_STATUS_CHANGES as any)[messageType];
+      
+      if (!message) {
         console.error(`메시지 타입을 찾을 수 없습니다: ${messageType}`);
         return;
-        }
-        
-        let content = message;
+      }
+      
+      let content = message;
       
       // 변수 치환
       Object.entries(variables).forEach(([key, value]) => {
@@ -405,35 +413,35 @@ export class NotionSchedulerService {
   /**
    * 철거 알림 댓글 추가
    */
-private async addDismantleReminderComment(
-  pageId: string,
-  serviceType: string,
-  variables: Record<string, any>
-) {
+  private async addDismantleReminderComment(
+    pageId: string,
+    serviceType: string,
+    variables: Record<string, any>
+  ) {
     try {
-        // 타입 단언으로 수정
-        let content = SPECIAL_NOTIFICATIONS.DISMANTLE_REMINDER as string;
-        
-        // 변수 치환
-        Object.entries(variables).forEach(([key, value]) => {
+      // 타입 단언으로 수정
+      let content = SPECIAL_NOTIFICATIONS.DISMANTLE_REMINDER as string;
+      
+      // 변수 치환
+      Object.entries(variables).forEach(([key, value]) => {
         content = content.replace(new RegExp(`{{${key}}}`, 'g'), value || '');
-        });
-        
-        // 타임스탬프 추가
-        content = content.replace('{{timestamp}}', `⏰ 알림 시간: ${new Date().toLocaleString()}`);
-        
-        // 담당자 멘션
-        const richText = await this.createRichTextWithMention(pageId, content);
-        
-        await this.notion.comments.create({
+      });
+      
+      // 타임스탬프 추가
+      content = content.replace('{{timestamp}}', `⏰ 알림 시간: ${new Date().toLocaleString()}`);
+      
+      // 담당자 멘션
+      const richText = await this.createRichTextWithMention(pageId, content);
+      
+      await this.notion.comments.create({
         parent: { page_id: pageId },
         rich_text: richText
-        });
-        
+      });
+      
     } catch (error) {
-        console.error('철거 알림 댓글 추가 실패:', error);
+      console.error('철거 알림 댓글 추가 실패:', error);
     }
-    }
+  }
 
   /**
    * 담당자 언급을 포함한 리치 텍스트 생성
@@ -549,6 +557,21 @@ private async addDismantleReminderComment(
     return {
       isRunning: this.isRunning,
       nextRun: this.isRunning ? '1시간 이내' : 'N/A'
+    };
+  }
+
+  /**
+   * 행사 일정 텍스트에서 시작일과 종료일 추출
+   */
+  private extractDatesFromScheduleText(scheduleText: string): { startDate: string | null, endDate: string | null } {
+    if (!scheduleText || !scheduleText.includes(' ~ ')) {
+      return { startDate: null, endDate: null };
+    }
+    
+    const parts = scheduleText.split(' ~ ').map((s: string) => s.trim());
+    return {
+      startDate: parts[0] || null,
+      endDate: parts[1] || null
     };
   }
 }
