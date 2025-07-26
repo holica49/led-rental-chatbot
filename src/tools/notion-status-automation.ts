@@ -1,16 +1,27 @@
 import { Client } from '@notionhq/client';
 import { calculateMultiLEDQuote } from './calculate-quote.js';
+import { 
+  getStatusChangeMessage,
+  getErrorMessage,
+  formatLEDSpecs,
+  formatQuoteDetails,
+  formatTruckInfo,
+  replaceMessageVariables
+} from '../utils/notion-message-utils.js';
+import { getNotionServiceType, getManagerId } from '../constants/notion-messages.js';
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
 // 행사 상태 관리 서비스
 export class NotionStatusAutomation {
+  private notion: Client;  // 이 줄 추가
   private managersConfig: { managers: Array<{ notionId: string; department?: string; isActive?: boolean }> };
 
-// src/tools/notion-status-automation.ts 수정
   constructor() {
+    this.notion = new Client({ auth: process.env.NOTION_API_KEY });  // 이 줄 추가
+    
     console.log('NotionStatusAutomation 생성됨');
-    console.log('MANAGERS_CONFIG 원본값:', process.env.MANAGERS_CONFIG); // 디버깅용
+    console.log('MANAGERS_CONFIG 원본값:', process.env.MANAGERS_CONFIG);
     
     // 담당자 설정 로드 - 안전하게 처리
     try {
@@ -227,18 +238,12 @@ export class NotionStatusAutomation {
     try {
       console.log('✅ 견적 승인됨 - 배차 정보 자동 생성');
       
-      // 1. 행사 정보 가져오기
       const eventData = await this.getEventDataFromNotion(pageId);
+      const dispatchInfo = await this.generateDispatchMessage(pageId, eventData); // await 추가
       
-      // 2. 배차 정보 생성
-      const dispatchInfo = this.generateDispatchMessage(eventData);
-      
-      // 3. 배차 댓글 추가
       await this.addDispatchComment(pageId, dispatchInfo);
       
-      console.log('✅ 배차 정보 생성 완료');
       return dispatchInfo;
-      
     } catch (error) {
       console.error('❌ 배차 정보 생성 실패:', error);
       await this.addErrorComment(pageId, '배차 정보 생성 실패', error);
@@ -359,106 +364,67 @@ export class NotionStatusAutomation {
    * 견적 검토 완료 댓글 추가
    */
   private async addQuoteReviewComment(pageId: string, eventData: any, quote: any) {
-    const ledSummary = eventData.ledSpecs?.map((led: any, index: number) => {
-      if (!led.size) return `LED${index + 1}: 정보 없음`;
-      
-      const [w, h] = led.size.split('x').map(Number);
-      const moduleCount = (w / 500) * (h / 500);
-      const operatorText = led.needOperator ? ` (오퍼레이터 ${led.operatorDays}일)` : '';
-      return `LED${index + 1}: ${led.size} (${moduleCount}개${operatorText})`;
-    }).join('\n') || '정보 없음';
-
-    const comment = `📊 견적 검토 자동화 완료
-
-✅ 견적 정보:
-- 행사명: ${eventData.eventName}
-- 고객사: ${eventData.customerName}
-- 고객: ${eventData.contactName}  // 수정: "고객담당자" → "고객"
-- 행사장: ${eventData.venue}
-- 총 LED 모듈: ${quote.ledModules?.count || 0}개
-- 견적 금액: ${quote.total?.toLocaleString() || 0}원 (VAT 포함)
-- 설치 인력: ${quote.installation?.workers || 0}명
-
-
-🖥️ LED 사양:
-${ledSummary}
-
-💰 견적 세부내역:
-- LED 모듈: ${quote.ledModules?.price?.toLocaleString() || 0}원
-- 구조물: ${quote.structure?.totalPrice?.toLocaleString() || 0}원
-- 컨트롤러: ${quote.controller?.totalPrice?.toLocaleString() || 0}원
-- 파워: ${quote.power?.totalPrice?.toLocaleString() || 0}원
-- 설치인력: ${quote.installation?.totalPrice?.toLocaleString() || 0}원
-- 오퍼레이터: ${quote.operation?.totalPrice?.toLocaleString() || 0}원
-- 운반비: ${quote.transport?.price?.toLocaleString() || 0}원
-
-📎 파일 업로드 가이드:
-1. 위 내용을 바탕으로 견적서를 작성하세요
-2. 요청서를 작성하세요
-3. 작성된 파일을 아래 위치에 업로드하세요:
-   • 견적서 → "견적서" 속성에 업로드
-   • 요청서 → "요청서" 속성에 업로드
-
-⚠️ 중요: 두 파일이 모두 업로드되면 자동으로 "견적 승인"으로 변경됩니다!
-
-✨ 자동화 프로세스:
-- 파일 업로드 감지 → 자동 승인 → 배차 정보 생성
-
-⏰ 자동화 실행 시간: ${new Date().toLocaleString()}`;
-
-    await this.addCommentToPageWithMention(pageId, comment);
+    // 서비스 타입 가져오기
+    const page = await this.notion.pages.retrieve({ page_id: pageId });
+    const serviceType = (page as any).properties['서비스 유형']?.select?.name || '렌탈';
+    
+    // 메시지 변수 준비
+    const variables = {
+      eventName: eventData.eventName,
+      customerName: eventData.customerName,
+      contactName: eventData.contactName,
+      contactPhone: eventData.contactPhone || '',
+      venue: eventData.venue,
+      eventPeriod: eventData.eventSchedule || '',
+      totalModules: quote.ledModules?.count || 0,
+      totalAmount: quote.total?.toLocaleString() || '0',
+      installWorkers: quote.installation?.workers || 0,
+      memberCode: eventData.memberCode || '',
+      ledSpecs: formatLEDSpecs(eventData.ledSpecs),
+      quoteDetails: formatQuoteDetails(quote)
+    };
+    
+    // 서비스별 메시지 가져오기
+    const message = getStatusChangeMessage(serviceType, '견적 요청', '견적 검토', variables);
+    
+    await this.addCommentToPageWithMention(pageId, message);
   }
 
   /**
    * 배차 정보 생성 - 양식에 맞춰 수정
    */
-  private generateDispatchMessage(eventData: any) {
+  private async generateDispatchMessage(pageId: string, eventData: any) {
     const totalModules = eventData.totalModuleCount || 0;
-    const installDate = eventData.installSchedule;
-    
-    // 배차 정보 계산
-    let dispatch = this.calculateTruckDispatch(totalModules);
-    
-    const plateBoxCount = Math.ceil(totalModules / 8);
+    const truckInfo = formatTruckInfo(totalModules);
     const storageAddress = process.env.STORAGE_ADDRESS || '경기 고양시 덕양구 향동동 396, 현대테라타워DMC 337호';
     
-    // 양식에 맞춘 메시지
-    const message = `배차 ${dispatch.totalTrucks}대 요청드립니다.
-
-상차시간 : ${installDate || '미정'}
-
-${dispatch.description}
-(리프트 1500이상 / 차고 3.2m 이하)
--상차 : ${storageAddress}
--하차 : ${eventData.venue}
-
-물품 : 플레이트 케이스 2단 ${plateBoxCount}개 + 시스템 비계
-(2단 1개당 950x580x1200mm)
-
-📋 행사 정보:
-- 행사명: ${eventData.eventName}
-- 고객사: ${eventData.customerName}
-- 고객: ${eventData.contactName}  // 수정: "담당자" → "고객"
-- 연락처: ${eventData.contactPhone}
-- 철거일: ${eventData.dismantleSchedule || '미정'}
-
-⚠️ 주의사항:
-- 설치 전날까지 현장 도착 필수
-- 하차 지점 및 주차 공간 사전 확인
-- 기사님께 연락처 공유 필요
-- 현장 접근성 및 엘리베이터 사용 가능 여부 확인
-
-🔄 다음 단계:
-1. 배차 기사님께 연락처 및 현장 정보 전달
-2. 고객사 현장 담당자와 사전 협의
-3. 상태를 "구인 완료"로 변경
-
-⏰ 자동 생성 시간: ${new Date().toLocaleString()}`;
-
+    // 서비스 타입 가져오기
+    const page = await this.notion.pages.retrieve({ page_id: pageId });
+    const serviceType = (page as any).properties['서비스 유형']?.select?.name || '렌탈';
+    
+    const variables = {
+      eventName: eventData.eventName,
+      customerName: eventData.customerName,
+      contactName: eventData.contactName,
+      contactPhone: eventData.contactPhone,
+      venue: eventData.venue,
+      totalAmount: eventData.totalQuoteAmount?.toLocaleString() || '0',
+      totalModules: totalModules,
+      truckCount: truckInfo.truckCount,
+      truckDescription: truckInfo.truckDescription,
+      truckInfo: `배차 ${truckInfo.truckCount}대 요청드립니다.\n\n상차시간 : ${eventData.installSchedule || '미정'}\n\n${truckInfo.truckDescription}\n(리프트 1500이상 / 차고 3.2m 이하)\n-상차 : ${storageAddress}\n-하차 : ${eventData.venue}\n\n물품 : 플레이트 케이스 2단 ${truckInfo.plateBoxCount}개 + 시스템 비계\n(2단 1개당 950x580x1200mm)`,
+      plateBoxCount: truckInfo.plateBoxCount,
+      installDate: eventData.installSchedule || '미정',
+      dismantleDate: eventData.dismantleSchedule || '미정',
+      storageAddress: storageAddress
+    };
+    
+    const message = getStatusChangeMessage(serviceType, '견적 검토', '견적 승인', variables);
+    
     return {
       message,
-      truckInfo: dispatch.description,
-      plateBoxCount,
+      truckInfo: truckInfo.truckDescription,
+      plateBoxCount: truckInfo.plateBoxCount,
       totalModules
     };
   }
@@ -672,13 +638,18 @@ ${dispatch.description}
    */
   private async addErrorComment(pageId: string, title: string, error: any) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const comment = `❌ ${title}
-
-오류 내용: ${errorMessage}
-발생 시간: ${new Date().toLocaleString()}
-
-담당자 확인이 필요합니다.`;
-
+    
+    // 현재 상태 가져오기
+    const page = await this.notion.pages.retrieve({ page_id: pageId });
+    const currentStatus = (page as any).properties['행사 상태']?.status?.name || '';
+    
+    const variables = {
+      oldStatus: currentStatus,
+      newStatus: '알 수 없음',
+      errorMessage: errorMessage
+    };
+    
+    const comment = getErrorMessage('AUTOMATION_ERROR', variables);
     await this.addCommentToPageWithMention(pageId, comment);
   }
 

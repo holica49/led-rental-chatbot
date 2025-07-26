@@ -1,6 +1,11 @@
-// src/tools/notion-polling.ts
 import { Client } from '@notionhq/client';
 import { NotionStatusAutomation } from './notion-status-automation.js';
+import { 
+  getFileUploadMessage,
+  getErrorMessage,
+  replaceMessageVariables 
+} from '../utils/notion-message-utils.js';
+import { getNotionServiceType } from '../constants/notion-messages.js';
 
 // 폴링 서비스 인스턴스 (싱글톤)
 let pollingServiceInstance: NotionPollingService | null = null;
@@ -148,16 +153,16 @@ export class NotionPollingService {
       return;
     }
 
-    console.log('🔄 Notion 상태 변경 폴링 시작');
+    console.log('🔄 Notion 상태 변경 폴링 시작 (10분 간격)');
     this.isPolling = true;
     
     // 초기 상태 로드
     await this.loadInitialStates();
     
-    // 30초마다 상태 확인
+    // 10분마다 상태 확인 (600초 = 600,000ms)
     this.pollingInterval = setInterval(async () => {
       await this.checkStatusChanges();
-    }, 30000);
+    }, 600000); // 600000으로 변경
   }
 
   /**
@@ -402,11 +407,19 @@ export class NotionPollingService {
    * 부분 업로드 알림 댓글 - 담당자 언급 포함
    */
   private async addPartialUploadComment(pageId: string, hasQuote: boolean, hasRequest: boolean) {
-    const missingFile = !hasQuote ? '견적서' : '요청서';
-    
-    const content = `📎 파일 업로드 확인\n\n✅ 업로드 완료: ${hasQuote ? '견적서' : '요청서'}\n❌ 업로드 대기: ${missingFile}\n\n${missingFile}를 업로드하면 자동으로 "견적 승인" 상태로 변경됩니다.\n\n⏰ 확인 시간: ${new Date().toLocaleString()}`;
-    
     try {
+      // 서비스 타입 가져오기
+      const page = await this.notion.pages.retrieve({ page_id: pageId });
+      const serviceType = (page as any).properties['서비스 유형']?.select?.name || '렌탈';
+      
+      const variables = {
+        uploadedFile: hasQuote ? '견적서' : '요청서',
+        missingFile: !hasQuote ? '견적서' : '요청서',
+        timestamp: new Date().toLocaleString()
+      };
+      
+      const content = getFileUploadMessage(serviceType, 'PARTIAL_UPLOAD', variables);
+      
       const richText = await this.createRichTextWithMention(pageId, content);
       
       await this.notion.comments.create({
@@ -440,8 +453,15 @@ export class NotionPollingService {
       console.log(`✅ 상태 변경 완료`);
 
       // 2. 댓글 추가 (담당자 언급 포함)
-      const content = `✅ 파일 업로드 완료 - 자동 승인\n\n견적서와 요청서가 모두 업로드되어 자동으로 "견적 승인" 상태로 변경되었습니다.\n\n📎 업로드 파일:\n• 견적서 ✅\n• 요청서 ✅\n\n🚚 다음 단계:\n1. 배차 정보가 자동 생성됩니다\n2. 설치 인력 배정을 진행해주세요\n\n⏰ 변경 시간: ${new Date().toLocaleString()}`;
-      
+      // 서비스 타입 가져오기
+      const page = await this.notion.pages.retrieve({ page_id: pageId });
+      const serviceType = (page as any).properties['서비스 유형']?.select?.name || '렌탈';
+
+      const variables = {
+        timestamp: new Date().toLocaleString()
+      };
+
+      const content = getFileUploadMessage(serviceType, 'AUTO_APPROVAL', variables);
       const richText = await this.createRichTextWithMention(pageId, content);
       
       await this.notion.comments.create({
@@ -462,8 +482,12 @@ export class NotionPollingService {
       
       // 오류 발생 시 댓글 추가 (담당자 언급 포함)
       try {
-        const errorContent = `❌ 자동 승인 실패\n\n오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n담당자가 수동으로 "견적 승인"으로 변경해주세요.\n\n⏰ 오류 발생 시간: ${new Date().toLocaleString()}`;
+        const variables = {
+          errorMessage: error instanceof Error ? error.message : '알 수 없는 오류',
+          timestamp: new Date().toLocaleString()
+        };
         
+        const errorContent = getErrorMessage('FILE_APPROVAL_ERROR', variables);
         const richText = await this.createRichTextWithMention(pageId, errorContent);
         
         await this.notion.comments.create({
@@ -511,8 +535,14 @@ export class NotionPollingService {
       
       // 오류 발생 시 Notion에 댓글 추가 (담당자 언급 포함)
       try {
-        const errorContent = `❌ 자동화 오류 발생\n\n상태: ${oldStatus} → ${newStatus}\n오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}\n\n담당자 확인이 필요합니다.\n\n⏰ 오류 발생 시간: ${new Date().toLocaleString()}`;
+        const variables = {
+          oldStatus: oldStatus,
+          newStatus: newStatus,
+          errorMessage: error instanceof Error ? error.message : '알 수 없는 오류',
+          timestamp: new Date().toLocaleString()
+        };
         
+        const errorContent = getErrorMessage('AUTOMATION_ERROR', variables);
         const richText = await this.createRichTextWithMention(pageId, errorContent);
         
         await this.notion.comments.create({

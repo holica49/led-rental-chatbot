@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express/index.js';
 import dotenv from 'dotenv';
 import { handleKakaoWebhook } from './tools/kakao-chatbot.js';
 import { startPollingService, getPollingService } from './tools/notion-polling.js';
+import { startSchedulerService, getSchedulerService } from './tools/notion-scheduler.js';
 
 // 환경 변수 로드
 dotenv.config();
@@ -55,6 +56,18 @@ app.get('/polling/status', (_req: Request, res: Response) => {
   res.json({
     status: 'OK',
     polling: status,
+    timestamp: new Date().toISOString()
+  }); 
+});
+
+// 스케줄러 상태 확인 엔드포인트
+app.get('/scheduler/status', (_req: Request, res: Response) => {
+  const schedulerService = getSchedulerService();
+  const status = schedulerService.getSchedulerStatus();
+  
+  res.json({
+    status: 'OK',
+    scheduler: status,
     timestamp: new Date().toISOString()
   }); 
 });
@@ -131,6 +144,13 @@ const server = app.listen(PORT, () => {
     }).catch(error => {
       console.error('❌ Failed to start Notion polling service:', error);
     });
+    // Notion 스케줄러 서비스 시작
+    console.log('📅 Starting Notion scheduler service...');
+    startSchedulerService().then(() => {
+      console.log('✅ Notion scheduler service started');
+    }).catch(error => {
+      console.error('❌ Failed to start Notion scheduler service:', error);
+    });
   }
 });
 
@@ -138,7 +158,9 @@ const server = app.listen(PORT, () => {
 process.on('SIGTERM', () => {
   console.log('SIGTERM received. Shutting down gracefully...');
   const pollingService = getPollingService();
+  const schedulerService = getSchedulerService();
   pollingService.stopPolling();
+  schedulerService.stopScheduler();  // 추가
   server.close(() => {
     process.exit(0);
   });
@@ -147,7 +169,9 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('SIGINT received. Shutting down gracefully...');
   const pollingService = getPollingService();
+  const schedulerService = getSchedulerService();
   pollingService.stopPolling();
+  schedulerService.stopScheduler();  // 추가
   server.close(() => {
     process.exit(0);
   });
