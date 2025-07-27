@@ -114,45 +114,132 @@ export const notionMCPTool = {
 function buildNotionProperties(args: NotionToolInput): Record<string, any> {
   const properties: any = {
     '행사명': { title: [{ text: { content: args.eventName } }] },
-    '서비스유형': { select: { name: args.serviceType } },
-    '고객사': { rich_text: [{ text: { content: args.customerName } }] },
+    '서비스 유형': { select: { name: args.serviceType } },  // 필드명 수정
+    '고객사': { select: { name: args.customerName } },  // select 타입 확인
     '행사장': { rich_text: [{ text: { content: args.venue || '' } }] },
-    '담당자': { rich_text: [{ text: { content: `${args.contactName} ${args.contactTitle || ''}` } }] },
-    '연락처': { phone_number: args.contactPhone },
-    '상태': { select: { name: '견적요청' } },
-    '작성일': { date: { start: new Date().toISOString().split('T')[0] } }
+    '고객명': { rich_text: [{ text: { content: `${args.contactName} ${args.contactTitle || ''}` } }] },  // 필드명 수정
+    '고객 연락처': { phone_number: args.contactPhone },
+    '행사 상태': { status: { name: '견적 요청' } },  // 필드명 수정
   };
 
   // 견적 금액
   if (args.totalQuoteAmount !== undefined) {
-    properties['견적금액'] = { number: args.totalQuoteAmount };
+    properties['견적 금액'] = { number: args.totalQuoteAmount };
   }
 
-  // 행사 일정
+  // 행사 일정 (텍스트 타입)
   if (args.eventSchedule) {
-    const dates = args.eventSchedule.split(' ~ ');
-    if (dates.length === 2) {
-      properties['행사일정'] = {
-        date: {
-          start: dates[0],
-          end: dates[1]
-        }
-      };
-    }
+    properties['행사 일정'] = { rich_text: [{ text: { content: args.eventSchedule } }] };
+  }
+
+  // 설치 일정 (date 타입)
+  if (args.installSchedule) {
+    properties['설치 일정'] = { date: { start: args.installSchedule } };
+  }
+
+  // 리허설 일정
+  if (args.rehearsalSchedule) {
+    properties['리허설 일정'] = { date: { start: args.rehearsalSchedule } };
+  }
+
+  // 철거 일정
+  if (args.dismantleSchedule) {
+    properties['철거 일정'] = { date: { start: args.dismantleSchedule } };
+  }
+
+  // 추가 요청사항
+  if (args.additionalRequests) {
+    properties['문의요청 사항'] = { rich_text: [{ text: { content: args.additionalRequests } }] };
   }
 
   // 서비스별 추가 속성
   if (args.serviceType === '설치') {
     if (args.installEnvironment) {
-      properties['설치환경'] = { select: { name: args.installEnvironment } };
+      properties['설치 환경'] = { select: { name: args.installEnvironment } };
+    }
+    if (args.installSpace) {
+      properties['설치 공간'] = { select: { name: args.installSpace } };
     }
     if (args.inquiryPurpose) {
-      properties['문의목적'] = { rich_text: [{ text: { content: args.inquiryPurpose } }] };
+      properties['문의 목적'] = { select: { name: args.inquiryPurpose } };
+    }
+    if (args.installBudget) {
+      properties['설치 예산'] = { select: { name: args.installBudget } };
+    }
+  }
+
+  if (args.serviceType === '렌탈') {
+    if (args.installEnvironment) {
+      properties['설치 환경'] = { select: { name: args.installEnvironment } };
+    }
+    if (args.supportStructureType) {
+      properties['지지구조물 방식'] = { select: { name: args.supportStructureType } };
+    }
+    // 렌탈 실외인 경우 추가 필드
+    if (args.installEnvironment === '실외') {
+      if (args.inquiryPurpose) {
+        properties['문의 목적'] = { select: { name: args.inquiryPurpose } };
+      }
+      if (args.installBudget) {
+        properties['설치 예산'] = { select: { name: args.installBudget } };
+      }
+    }
+    // 렌탈 비용 필드들
+    if (args.transportCost !== undefined) {
+      properties['운반 비용'] = { number: args.transportCost };
+    }
+    if (args.periodSurchargeAmount !== undefined) {
+      properties['기간 할증 비용'] = { number: args.periodSurchargeAmount };
     }
   }
 
   if (args.serviceType === '멤버쉽' && args.memberCode) {
-    properties['멤버코드'] = { rich_text: [{ text: { content: args.memberCode } }] };
+    properties['멤버 코드'] = { rich_text: [{ text: { content: args.memberCode } }] };
+  }
+
+  // LED 정보 추가
+  for (let i = 1; i <= 5; i++) {
+    const led = (args as any)[`led${i}`];
+    if (led) {
+      properties[`LED${i} 크기`] = { rich_text: [{ text: { content: led.size } }] };
+      properties[`LED${i} 무대 높이`] = { number: led.stageHeight };
+      properties[`LED${i} 오퍼레이터 필요`] = { checkbox: led.needOperator };
+      if (led.operatorDays) {
+        properties[`LED${i} 오퍼레이터 일수`] = { number: led.operatorDays };
+      }
+      properties[`LED${i} 프롬프터 연결`] = { checkbox: led.prompterConnection };
+      properties[`LED${i} 중계카메라 연결`] = { checkbox: led.relayConnection };
+      
+      // LED 모듈 수량 계산
+      const [width, height] = led.size.split('x').map(Number);
+      const moduleCount = (width / 500) * (height / 500);
+      properties[`LED${i} 모듈 수량`] = { number: moduleCount };
+    }
+  }
+
+  // 총 LED 모듈 수량
+  if (args.totalModuleCount !== undefined) {
+    properties['총 LED 모듈 수량'] = { number: args.totalModuleCount };
+  }
+
+  // 비용 정보 추가
+  if (args.ledModuleCost !== undefined) {
+    properties['LED 모듈 비용'] = { number: args.ledModuleCost };
+  }
+  if (args.structureCost !== undefined) {
+    properties['지지구조물 비용'] = { number: args.structureCost };
+  }
+  if (args.controllerCost !== undefined) {
+    properties['컨트롤러 및 스위치 비용'] = { number: args.controllerCost };
+  }
+  if (args.powerCost !== undefined) {
+    properties['파워 비용'] = { number: args.powerCost };
+  }
+  if (args.installationCost !== undefined) {
+    properties['설치철거인력 비용'] = { number: args.installationCost };
+  }
+  if (args.operatorCost !== undefined) {
+    properties['오퍼레이터 비용'] = { number: args.operatorCost };
   }
 
   return properties;

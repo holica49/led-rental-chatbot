@@ -4,7 +4,7 @@ export function prepareNotionData(
   session: UserSession, 
   quote: QuoteResult | RentalQuoteResult | null, 
   schedules: { eventSchedule: string; installSchedule: string; rehearsalSchedule: string; dismantleSchedule: string } | null
-  ): Record<string, any> {
+): Record<string, any> {
   let notionData: any = {
     serviceType: session.serviceType || '',
     eventName: session.data.eventName || 'LED 프로젝트',
@@ -46,6 +46,12 @@ export function prepareNotionData(
       ledModuleCost: quote?.ledModules?.price || 0,
       transportCost: quote?.transport?.price || 0
     };
+    
+    // 실외 렌탈인 경우 추가 필드
+    if (session.data.installEnvironment === '실외') {
+      notionData.inquiryPurpose = session.data.inquiryPurpose || '';
+      notionData.installBudget = session.data.installBudget || '';
+    }
   } else if (session.serviceType === '멤버쉽') {
     notionData = {
       ...notionData,

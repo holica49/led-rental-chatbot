@@ -158,42 +158,118 @@ export interface NotionFilesProperty {
 
 // Notion 페이지 속성
 export interface NotionProperties {
+  // 기본 정보
   '행사명': NotionTitle;
   '고객사': NotionSelectProperty;
   '고객명': NotionRichTextProperty;
   '고객 연락처': NotionPhoneProperty;
   '행사장': NotionRichTextProperty;
+  
+  // 서비스 정보
   '서비스 유형': NotionSelectProperty;
   '행사 상태': NotionStatusProperty;
+  '멤버 코드'?: NotionRichTextProperty;
+  
+  // 금액 정보
   '견적 금액'?: NotionNumberProperty;
-  '행사 일정'?: NotionDateProperty;
+  'LED 모듈 비용'?: NotionNumberProperty;
+  '지지구조물 비용'?: NotionNumberProperty;
+  '컨트롤러 및 스위치 비용'?: NotionNumberProperty;
+  '파워 비용'?: NotionNumberProperty;
+  '설치철거인력 비용'?: NotionNumberProperty;
+  '오퍼레이터 비용'?: NotionNumberProperty;
+  '운반 비용'?: NotionNumberProperty;
+  '기간 할증 비용'?: NotionNumberProperty;
+  
+  // 일정 정보
+  '행사 일정'?: NotionRichTextProperty;  // 텍스트 타입
   '설치 일정'?: NotionDateProperty;
   '리허설 일정'?: NotionDateProperty;
   '철거 일정'?: NotionDateProperty;
+  
+  // 설치/렌탈 정보
+  '설치 환경'?: NotionSelectProperty;
+  '설치 공간'?: NotionSelectProperty;
+  '설치 예산'?: NotionSelectProperty;
+  '문의 목적'?: NotionSelectProperty;
+  '지지구조물 방식'?: NotionSelectProperty;
+  
+  // 기타
+  '문의요청 사항'?: NotionRichTextProperty;
+  '담당자'?: NotionPeopleProperty;  // people 타입 추가
+  '총 LED 모듈 수량'?: NotionNumberProperty;
+  
+  // 파일
   '견적서'?: NotionFilesProperty;
   '요청서'?: NotionFilesProperty;
   
-// LED 정보 (1-5)
-'LED1 크기'?: NotionRichTextProperty;
-'LED2 크기'?: NotionRichTextProperty;
-'LED3 크기'?: NotionRichTextProperty;
-'LED4 크기'?: NotionRichTextProperty;
-'LED5 크기'?: NotionRichTextProperty;
-'LED1 무대 높이'?: NotionNumberProperty;
-'LED2 무대 높이'?: NotionNumberProperty;
-'LED3 무대 높이'?: NotionNumberProperty;
-'LED4 무대 높이'?: NotionNumberProperty;
-'LED5 무대 높이'?: NotionNumberProperty;
-'LED1 오퍼레이터 필요'?: NotionCheckboxProperty;
-'LED2 오퍼레이터 필요'?: NotionCheckboxProperty;
-'LED3 오퍼레이터 필요'?: NotionCheckboxProperty;
-'LED4 오퍼레이터 필요'?: NotionCheckboxProperty;
-'LED5 오퍼레이터 필요'?: NotionCheckboxProperty;
-'LED1 오퍼레이터 일수'?: NotionNumberProperty;
-'LED2 오퍼레이터 일수'?: NotionNumberProperty;
-'LED3 오퍼레이터 일수'?: NotionNumberProperty;
-'LED4 오퍼레이터 일수'?: NotionNumberProperty;
-'LED5 오퍼레이터 일수'?: NotionNumberProperty;
+  // LED 정보 (1-5)
+  'LED1 크기'?: NotionRichTextProperty;
+  'LED2 크기'?: NotionRichTextProperty;
+  'LED3 크기'?: NotionRichTextProperty;
+  'LED4 크기'?: NotionRichTextProperty;
+  'LED5 크기'?: NotionRichTextProperty;
+  
+  'LED1 무대 높이'?: NotionNumberProperty;
+  'LED2 무대 높이'?: NotionNumberProperty;
+  'LED3 무대 높이'?: NotionNumberProperty;
+  'LED4 무대 높이'?: NotionNumberProperty;
+  'LED5 무대 높이'?: NotionNumberProperty;
+  
+  'LED1 오퍼레이터 필요'?: NotionCheckboxProperty;
+  'LED2 오퍼레이터 필요'?: NotionCheckboxProperty;
+  'LED3 오퍼레이터 필요'?: NotionCheckboxProperty;
+  'LED4 오퍼레이터 필요'?: NotionCheckboxProperty;
+  'LED5 오퍼레이터 필요'?: NotionCheckboxProperty;
+  
+  'LED1 오퍼레이터 일수'?: NotionNumberProperty;
+  'LED2 오퍼레이터 일수'?: NotionNumberProperty;
+  'LED3 오퍼레이터 일수'?: NotionNumberProperty;
+  'LED4 오퍼레이터 일수'?: NotionNumberProperty;
+  'LED5 오퍼레이터 일수'?: NotionNumberProperty;
+  
+  'LED1 프롬프터 연결'?: NotionCheckboxProperty;
+  'LED2 프롬프터 연결'?: NotionCheckboxProperty;
+  'LED3 프롬프터 연결'?: NotionCheckboxProperty;
+  'LED4 프롬프터 연결'?: NotionCheckboxProperty;
+  'LED5 프롬프터 연결'?: NotionCheckboxProperty;
+  
+  'LED1 중계카메라 연결'?: NotionCheckboxProperty;
+  'LED2 중계카메라 연결'?: NotionCheckboxProperty;
+  'LED3 중계카메라 연결'?: NotionCheckboxProperty;
+  'LED4 중계카메라 연결'?: NotionCheckboxProperty;
+  'LED5 중계카메라 연결'?: NotionCheckboxProperty;
+  
+  'LED1 모듈 수량'?: NotionNumberProperty;
+  'LED2 모듈 수량'?: NotionNumberProperty;
+  'LED3 모듈 수량'?: NotionNumberProperty;
+  'LED4 모듈 수량'?: NotionNumberProperty;
+  'LED5 모듈 수량'?: NotionNumberProperty;
+  
+  // 추가 LED 정보 (실제 DB에 존재)
+  'LED1 대각선 인치'?: NotionRichTextProperty;
+  'LED2 대각선 인치'?: NotionRichTextProperty;
+  'LED3 대각선 인치'?: NotionRichTextProperty;
+  'LED4 대각선 인치'?: NotionRichTextProperty;
+  'LED5 대각선 인치'?: NotionRichTextProperty;
+  
+  'LED1 해상도'?: NotionRichTextProperty;
+  'LED2 해상도'?: NotionRichTextProperty;
+  'LED3 해상도'?: NotionRichTextProperty;
+  'LED4 해상도'?: NotionRichTextProperty;
+  'LED5 해상도'?: NotionRichTextProperty;
+  
+  'LED1 소비전력'?: NotionRichTextProperty;
+  'LED2 소비전력'?: NotionRichTextProperty;
+  'LED3 소비전력'?: NotionRichTextProperty;
+  'LED4 소비전력'?: NotionRichTextProperty;
+  'LED5 소비전력'?: NotionRichTextProperty;
+  
+  'LED1 전기설치 방식'?: NotionRichTextProperty;
+  'LED2 전기설치 방식'?: NotionRichTextProperty;
+  'LED3 전기설치 방식'?: NotionRichTextProperty;
+  'LED4 전기설치 방식'?: NotionRichTextProperty;
+  'LED5 전기설치 방식'?: NotionRichTextProperty;
   
   // 기타 필드들
   [key: string]: unknown; // 나머지 필드들
@@ -261,6 +337,20 @@ export interface UserSession {
   ledCount: number;
   currentLED: number;
   lastMessage?: string;
+}
+
+// NotionPeopleProperty 타입 추가
+export interface NotionPeopleProperty {
+  people: Array<{
+    id: string;
+    object: 'user';
+    name?: string;
+    avatar_url?: string | null;
+    type?: string;
+    person?: {
+      email?: string;
+    };
+  }>;
 }
 
 // ===== 환경 변수 타입 =====
