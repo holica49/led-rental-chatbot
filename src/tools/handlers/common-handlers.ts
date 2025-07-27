@@ -240,25 +240,31 @@ export async function handleFinalConfirmation(message: string, session: UserSess
 
 // Helper Functions
 
+// common-handlers.ts의 createFinalConfirmationMessage 함수 수정
+
 function createFinalConfirmationMessage(session: UserSession): string {
-  const header = `${EMOJI.CHECK} 모든 정보가 입력되었습니다!\n\n${EMOJI.INFO} 최종 확인\n\n${DIVIDER}`;
+  const header = `${EMOJI.CHECK} 모든 정보가 입력되었습니다!\n${EMOJI.INFO} 최종 확인\n${DIVIDER}`;
   
   let content = '';
+  let footer = '';
   
   if (session.serviceType === '설치') {
     content = createInstallConfirmation(session);
+    footer = '\n상담 요청을 진행하시겠습니까?';
   } else if (session.serviceType === '렌탈') {
-    content = createRentalConfirmation(session);
+    if (session.data.installEnvironment === '실외') {
+      content = createRentalOutdoorConfirmation(session);
+      footer = '\n상담을 요청하시겠습니까?';
+    } else {
+      content = createRentalIndoorConfirmation(session);
+      footer = '\n견적을 요청하시겠습니까?(견적을 요청하시면 예상 견적이 나옵니다.)';
+    }
   } else {
     content = createMembershipConfirmation(session);
+    footer = '\n견적을 요청하시겠습니까?(견적을 요청하시면 예상 견적이 나옵니다.)';
   }
   
-  const footer = '\n\n상담 요청을 진행하시겠습니까?';
-  if (session.serviceType !== '설치') {
-    return `${header}\n\n${content}\n\n견적을 요청하시겠습니까?`;
-  }
-  
-  return `${header}\n\n${content}${footer}`;
+  return `${header}\n${content}${footer}`;
 }
 
 function createInstallConfirmation(session: UserSession): string {
@@ -270,30 +276,42 @@ ${EMOJI.COMPANY} 설치 공간: ${session.data.installSpace}
 ${EMOJI.MONEY} 설치 예산: ${session.data.installBudget}
 ${EMOJI.CALENDAR} 설치 일정: ${session.data.installSchedule}
 ${EMOJI.INFO} 요청사항: ${session.data.additionalRequests}
-
 ${EMOJI.COMPANY} 고객사: ${session.data.customerName}
-${EMOJI.PERSON} 담당자: ${session.data.contactName}
-💼 직급: ${session.data.contactTitle}
+${EMOJI.PERSON} 고객명: ${session.data.contactName} ${session.data.contactTitle}
 ${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
-function createRentalConfirmation(session: UserSession): string {
+function createRentalIndoorConfirmation(session: UserSession): string {
   const ledSummary = createLEDSummary(session.data.ledSpecs);
   
   return `🔖 서비스: LED 렌탈
-${EMOJI.COMPANY} 고객사: ${session.data.customerName}
 ${EMOJI.INFO} 행사명: ${session.data.eventName}
 ${EMOJI.INFO} 행사장: ${session.data.venue}
 ${EMOJI.CALENDAR} 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)
 ${EMOJI.TOOL} 지지구조물: ${session.data.supportStructureType}
-
 ${EMOJI.MONITOR} LED 사양:
 ${ledSummary}
+${EMOJI.INFO} 요청사항: ${session.data.additionalRequests}
+${EMOJI.COMPANY} 고객사: ${session.data.customerName}
+${EMOJI.PERSON} 고객명: ${session.data.contactName} ${session.data.contactTitle}
+${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
+}
 
-${EMOJI.PERSON} 담당자: ${session.data.contactName}
-💼 직급: ${session.data.contactTitle}
-${EMOJI.PHONE} 연락처: ${session.data.contactPhone}
-${EMOJI.INFO} 요청사항: ${session.data.additionalRequests}`;
+function createRentalOutdoorConfirmation(session: UserSession): string {
+  const ledSummary = createLEDSummary(session.data.ledSpecs);
+  
+  return `🔖 서비스: LED 렌탈
+${EMOJI.INFO} 행사명: ${session.data.eventName}
+${EMOJI.INFO} 행사장: ${session.data.venue}
+${EMOJI.CALENDAR} 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)
+🎯 문의 목적: ${session.data.inquiryPurpose}
+${EMOJI.MONEY} 설치 예산: ${session.data.installBudget}
+${EMOJI.MONITOR} LED 사양:
+${ledSummary}
+${EMOJI.INFO} 요청사항: ${session.data.additionalRequests}
+${EMOJI.COMPANY} 고객사: ${session.data.customerName}
+${EMOJI.PERSON} 고객명: ${session.data.contactName} ${session.data.contactTitle}
+${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
 function createMembershipConfirmation(session: UserSession): string {
@@ -301,29 +319,45 @@ function createMembershipConfirmation(session: UserSession): string {
     const [w, h] = led.size.split('x').map(Number);
     const moduleCount = (w / 500) * (h / 500);
     const power = calculateLEDPower(led.size);
-    return `LED${index + 1}: ${led.size} (${moduleCount}개, ${power})`;
+    
+    let details = `LED${index + 1}: ${led.size} (${moduleCount}개, ${power})`;
+    
+    // 추가 옵션 표시
+    const options = [];
+    if (led.needOperator) {
+      options.push(`오퍼레이터 ${led.operatorDays}일`);
+    }
+    if (led.prompterConnection) {
+      options.push('프롬프터 연결');
+    }
+    if (led.relayConnection) {
+      options.push('중계카메라 연결');
+    }
+    
+    if (options.length > 0) {
+      details += `, ${options.join(', ')}`;
+    }
+    
+    return details;
   }).join('\n');
   
   return `🔖 서비스: 멤버쉽 (${session.data.memberCode})
-${EMOJI.COMPANY} 고객사: ${session.data.customerName}
 ${EMOJI.INFO} 행사명: ${session.data.eventName}
 ${EMOJI.INFO} 행사장: ${session.data.venue}
 ${EMOJI.CALENDAR} 행사 기간: ${session.data.eventStartDate} ~ ${session.data.eventEndDate}
-
 ${EMOJI.MONITOR} LED 사양:
 ${ledSummary}
-
-${EMOJI.PERSON} 담당자: ${session.data.contactName}
-💼 직급: ${session.data.contactTitle}
-${EMOJI.PHONE} 연락처: ${session.data.contactPhone}
-${EMOJI.INFO} 요청사항: ${session.data.additionalRequests}`;
+${EMOJI.INFO} 요청사항: ${session.data.additionalRequests}
+${EMOJI.COMPANY} 고객사: 메쎄이상
+${EMOJI.PERSON} 고객명: ${session.data.contactName} ${session.data.contactTitle}
+${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
 function getSuccessResponseText(session: UserSession, quote: QuoteResult | RentalQuoteResult | null): string {
   if (session.serviceType === '설치') {
     return MESSAGES.INSTALL_SUCCESS_TEMPLATE(
       session.data.customerName || '',
-      session.data.contactName || '',
+      session.data.contactName || '' + (session.data.contactTitle ? ` ${session.data.contactTitle}` : ''),
       session.data.contactPhone || ''
     );
   } else if (session.serviceType === '렌탈') {

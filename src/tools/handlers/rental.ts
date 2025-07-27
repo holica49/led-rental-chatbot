@@ -19,7 +19,8 @@ import {
  shouldContinueToNextLED,
  createLEDCompleteMessage,
  outdoorEventNotice,
- eventInfoConfirmed
+ eventInfoConfirmed,
+ validateSelection
 } from '../../utils/handler-utils.js';
 import { handleResetRequest, checkResetRequest } from './common-handlers.js';
 
@@ -55,39 +56,85 @@ export function handleRentalIndoorOutdoor(message: string, session: UserSession)
 }
 
 export function handleRentalStructureType(message: string, session: UserSession): KakaoResponse {
- // 처음으로 돌아가기 체크
- if (message.includes('처음')) {
-   return handleResetRequest(session);
- }
- 
- if (message.includes('실외')) {
-   session.data.installEnvironment = '실외';
-   session.step = 'rental_led_count';
-   
-   return {
-     text: outdoorEventNotice(),
-     quickReplies: createQuickReplies([
-       { label: BUTTONS.CONTINUE, value: '목공 설치' },
-       { label: BUTTONS.START_OVER, value: '처음부터' }
-     ])
-   };
- } else {
-   session.data.installEnvironment = '실내';
- }
- 
- session.step = 'rental_led_count';
- return {
-   text: confirmAndAsk(
-     '실내 행사로 확인되었습니다',
-     '',
-     MESSAGES.SELECT_STRUCTURE
-   ),
-   quickReplies: createQuickReplies([
-     { label: BUTTONS.STRUCTURE_WOOD, value: '목공 설치' },
-     { label: BUTTONS.STRUCTURE_STANDALONE, value: '단독 설치' }
-   ])
- };
+  // 처음으로 돌아가기 체크
+  if (message.includes('처음')) {
+    return handleResetRequest(session);
+  }
+  
+  if (message.includes('실외')) {
+    session.data.installEnvironment = '실외';
+    session.step = 'inquiry_purpose'; // 실외는 문의 목적으로
+    
+    return {
+      text: outdoorEventNotice() + '\n\n' + MESSAGES.SELECT_PURPOSE,
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.PURPOSE_RESEARCH, value: '정보 조사' },
+        { label: BUTTONS.PURPOSE_PLANNING, value: '아이디어 기획' },
+        { label: BUTTONS.PURPOSE_QUOTE, value: '견적' },
+        { label: BUTTONS.PURPOSE_PURCHASE, value: '구매' },
+        { label: BUTTONS.PURPOSE_OTHER, value: '기타' }
+      ])
+    };
+  } else {
+    session.data.installEnvironment = '실내';
+    session.step = 'rental_led_count';
+    
+    return {
+      text: confirmAndAsk(
+        '실내 행사로 확인되었습니다',
+        '',
+        MESSAGES.SELECT_STRUCTURE
+      ),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.STRUCTURE_WOOD, value: '목공 설치' },
+        { label: BUTTONS.STRUCTURE_STANDALONE, value: '단독 설치' }
+      ])
+    };
+  }
 }
+
+// 실외 전용 핸들러 추가 (rental.ts에 추가)
+export function handleRentalOutdoorPurpose(message: string, session: UserSession): KakaoResponse {
+  const validPurposes = ['정보 조사', '아이디어 기획', '견적', '구매', '기타'];
+  const validation = validateSelection(message, validPurposes, MESSAGES.SELECT_PURPOSE);
+  
+  if (!validation.valid && validation.response) {
+    return validation.response;
+  }
+  
+  session.data.inquiryPurpose = message.trim();
+  session.step = 'rental_outdoor_budget';
+  
+  return {
+    text: confirmAndAsk('문의 목적', session.data.inquiryPurpose, MESSAGES.SELECT_BUDGET),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.BUDGET_UNDER_10M, value: '1000만원 이하' },
+      { label: BUTTONS.BUDGET_10M_30M, value: '1000~3000만원' },
+      { label: BUTTONS.BUDGET_30M_50M, value: '3000~5000만원' },
+      { label: BUTTONS.BUDGET_50M_100M, value: '5000만원~1억' },
+      { label: BUTTONS.BUDGET_OVER_100M, value: '1억 이상' },
+      { label: BUTTONS.BUDGET_UNDECIDED, value: '미정' }
+    ])
+  };
+}
+
+export function handleRentalOutdoorBudget(message: string, session: UserSession): KakaoResponse {
+  const validBudgets = ['1000만원 이하', '1000~3000만원', '3000~5000만원', '5000만원~1억', '1억 이상', '미정'];
+  const validation = validateSelection(message, validBudgets, MESSAGES.SELECT_BUDGET);
+  
+  if (!validation.valid && validation.response) {
+    return validation.response;
+  }
+  
+  session.data.installBudget = message.trim();
+  session.step = 'rental_period';
+  
+  return {
+    text: confirmAndAsk('설치 예산', session.data.installBudget, MESSAGES.INPUT_PERIOD),
+    quickReplies: []
+  };
+}
+
 
 export function handleRentalLEDCount(message: string, session: UserSession): KakaoResponse {
  // 처음으로 돌아가기 체크
@@ -366,47 +413,73 @@ export function handleRentalRelay(message: string, session: UserSession): KakaoR
  }
 }
 
+// rental.ts의 handleRentalPeriod 함수 수정
+
 export function handleRentalPeriod(message: string, session: UserSession): KakaoResponse {
- // 처음으로 돌아가기 체크
- const resetResponse = checkResetRequest(message, session);
- if (resetResponse) return resetResponse;
- 
- const validation = validateEventPeriod(message);
- 
- if (!validation.valid || !validation.startDate || !validation.endDate || !validation.days) {
-   return {
-     text: errorMessage(validation.error || VALIDATION_ERRORS.PERIOD),
-     quickReplies: []
-   };
- }
- 
- session.data.eventStartDate = validation.startDate;
- session.data.eventEndDate = validation.endDate;
- session.data.rentalPeriod = validation.days;
- 
- session.step = 'get_additional_requests';
- 
- return {
-   text: confirmAndAsk(
-     '행사 기간',
-     `${validation.startDate} ~ ${validation.endDate} (${validation.days}일)`,
-     MESSAGES.REQUEST_ADDITIONAL
-   ),
-   quickReplies: createQuickReplies([
-     { label: BUTTONS.NONE, value: '없음' }
-   ])
- };
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  const validation = validateEventPeriod(message);
+  
+  if (!validation.valid || !validation.startDate || !validation.endDate || !validation.days) {
+    return {
+      text: errorMessage(validation.error || VALIDATION_ERRORS.PERIOD),
+      quickReplies: []
+    };
+  }
+  
+  session.data.eventStartDate = validation.startDate;
+  session.data.eventEndDate = validation.endDate;
+  session.data.rentalPeriod = validation.days;
+  
+  // 실외인 경우 LED 개수 선택으로
+  if (session.data.installEnvironment === '실외') {
+    session.step = 'rental_led_count';
+    
+    return {
+      text: confirmAndAsk(
+        '행사 기간',
+        `${validation.startDate} ~ ${validation.endDate} (${validation.days}일)`,
+        MESSAGES.SELECT_LED_COUNT
+      ),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.LED_COUNT[0], value: '1' },
+        { label: BUTTONS.LED_COUNT[1], value: '2' },
+        { label: BUTTONS.LED_COUNT[2], value: '3' },
+        { label: BUTTONS.LED_COUNT[3], value: '4' },
+        { label: BUTTONS.LED_COUNT[4], value: '5' }
+      ])
+    };
+  } else {
+    // 실내는 기존대로 추가 요청사항으로
+    session.step = 'get_additional_requests';
+    
+    return {
+      text: confirmAndAsk(
+        '행사 기간',
+        `${validation.startDate} ~ ${validation.endDate} (${validation.days}일)`,
+        MESSAGES.REQUEST_ADDITIONAL
+      ),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.NONE, value: '없음' }
+      ])
+    };
+  }
 }
 
+// rentalHandlers에 추가
 export const rentalHandlers = {
- 'rental_indoor_outdoor': handleRentalIndoorOutdoor,
- 'rental_structure_type': handleRentalStructureType,
- 'rental_led_count': handleRentalLEDCount,
- 'rental_led_specs': handleRentalLEDSpecs,
- 'rental_stage_height': handleRentalStageHeight,
- 'rental_operator_needs': handleRentalOperatorNeeds,
- 'rental_operator_days': handleRentalOperatorDays,
- 'rental_prompter': handleRentalPrompter,
- 'rental_relay': handleRentalRelay,
- 'rental_period': handleRentalPeriod
+  'rental_indoor_outdoor': handleRentalIndoorOutdoor,
+  'rental_structure_type': handleRentalStructureType,
+  'inquiry_purpose': handleRentalOutdoorPurpose, // 실외 전용
+  'rental_outdoor_budget': handleRentalOutdoorBudget, // 실외 전용
+  'rental_led_count': handleRentalLEDCount,
+  'rental_led_specs': handleRentalLEDSpecs,
+  'rental_stage_height': handleRentalStageHeight,
+  'rental_operator_needs': handleRentalOperatorNeeds,
+  'rental_operator_days': handleRentalOperatorDays,
+  'rental_prompter': handleRentalPrompter,
+  'rental_relay': handleRentalRelay,
+  'rental_period': handleRentalPeriod
 };
