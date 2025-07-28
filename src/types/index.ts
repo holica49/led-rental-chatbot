@@ -337,6 +337,12 @@ export interface UserSession {
   ledCount: number;
   currentLED: number;
   lastMessage?: string;
+  // 이전 단계 정보 추가
+  previousStep?: string;
+  previousData?: SessionData;
+  previousServiceType?: ServiceType;
+  previousLedCount?: number;
+  previousCurrentLED?: number;
 }
 
 // NotionPeopleProperty 타입 추가

@@ -19,17 +19,19 @@ import {
   memberCodeConfirmed,
   eventInfoConfirmed
 } from '../../utils/handler-utils.js';
-import { handleResetRequest } from './common-handlers.js'; // 추가
+import { handleResetRequest, checkResetRequest, checkPreviousRequest } from './common-handlers.js';
 
 export function handleMembershipCode(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const code = message.trim();
   
-  // 처음으로 돌아가기 체크
-  if (message.includes('처음') || message.includes('취소')) {
-    return handleResetRequest(session);
-  }
-
-
   if (code === '001') {
     session.data.memberCode = code;
     session.data.customerName = '메쎄이상';
@@ -50,6 +52,14 @@ export function handleMembershipCode(message: string, session: UserSession): Kak
 }
 
 export function handleMembershipEventInfo(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const result = parseEventInfo(message);
   
   if (result.error) {
@@ -80,6 +90,14 @@ export function handleMembershipEventInfo(message: string, session: UserSession)
 }
 
 export function handleMembershipLEDCount(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validation = validateNumber(message, 1, 5);
   
   if (!validation.valid || !validation.value) {
@@ -115,6 +133,14 @@ export function handleMembershipLEDCount(message: string, session: UserSession):
 }
 
 export function handleMembershipLEDSpecs(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validation = validateAndNormalizeLEDSize(message);
   
   if (!validation.valid || !validation.size) {
@@ -147,6 +173,14 @@ export function handleMembershipLEDSpecs(message: string, session: UserSession):
 }
 
 export function handleMembershipStageHeight(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validation = validateStageHeight(message);
   
   if (!validation.valid || validation.height === undefined) {
@@ -180,6 +214,14 @@ export function handleMembershipStageHeight(message: string, session: UserSessio
 }
 
 export function handleMembershipOperatorNeeds(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const currentLedIndex = getCurrentLEDIndex(session);
   const needsOperator = message.includes('네') || message.includes('필요');
   
@@ -210,6 +252,14 @@ export function handleMembershipOperatorNeeds(message: string, session: UserSess
 }
 
 export function handleMembershipOperatorDays(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validation = validateNumber(message, 1, 10);
   
   if (!validation.valid || !validation.value) {
@@ -244,6 +294,14 @@ export function handleMembershipOperatorDays(message: string, session: UserSessi
 }
 
 export function handleMembershipPrompter(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const currentLedIndex = getCurrentLEDIndex(session);
   const needsPrompter = message.includes('네') || message.includes('필요');
   
@@ -265,6 +323,14 @@ export function handleMembershipPrompter(message: string, session: UserSession):
 }
 
 export function handleMembershipRelay(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const currentLedIndex = getCurrentLEDIndex(session);
   const needsRelay = message.includes('네') || message.includes('필요');
   
@@ -297,6 +363,14 @@ export function handleMembershipRelay(message: string, session: UserSession): Ka
 }
 
 export function handleMembershipPeriod(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validation = validateEventPeriod(message);
   
   if (!validation.valid || !validation.startDate || !validation.endDate) {

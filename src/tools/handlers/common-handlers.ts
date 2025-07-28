@@ -13,9 +13,15 @@ import {
   errorMessage, 
   createQuickReplies,
   validateNotEmpty,
-  createLEDSummary
+  createLEDSummary,
+  serviceSelectedMessage,
+  createLEDSizePrompt,
+  outdoorEventNotice,
+  eventInfoConfirmed,
+  memberCodeConfirmed
 } from '../../utils/handler-utils.js';
 import { EMOJI, DIVIDER } from '../../utils/message-utils.js';
+import { restorePreviousStep, hasPreviousStep } from '../../utils/session-utils.js';
 
 // 리셋 요청 체크 함수
 export function checkResetRequest(message: string, session: UserSession): KakaoResponse | null {
@@ -27,6 +33,435 @@ export function checkResetRequest(message: string, session: UserSession): KakaoR
   
   return null;
 }
+
+// 공통 리셋 요청 처리 함수
+export function handleResetRequest(session: UserSession): KakaoResponse {
+  session.step = 'start';
+  session.serviceType = undefined;
+  session.data = { ledSpecs: [] };
+  session.ledCount = 0;
+  session.currentLED = 1;
+  
+  return {
+    text: `처음부터 다시 시작합니다.\n\n${MESSAGES.GREETING}`,
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.SERVICE_INSTALL, value: '설치' },
+      { label: BUTTONS.SERVICE_RENTAL, value: '렌탈' },
+      { label: BUTTONS.SERVICE_MEMBERSHIP, value: '멤버쉽' }
+    ])
+  };
+}
+
+/**
+ * 이전 단계로 돌아가기 요청 체크
+ */
+export function checkPreviousRequest(message: string, session: UserSession): KakaoResponse | null {
+  const previousKeywords = ['이전', '뒤로', '돌아가', '전으로', '전 단계'];
+  
+  if (previousKeywords.some(keyword => message.includes(keyword))) {
+    return handlePreviousRequest(session);
+  }
+  
+  return null;
+}
+
+/**
+ * 이전 단계로 돌아가기 처리
+ */
+export function handlePreviousRequest(session: UserSession): KakaoResponse {
+  if (!hasPreviousStep(session)) {
+    return {
+      text: '이전 단계가 없습니다.\n처음으로 돌아가시려면 "처음으로"라고 입력해주세요.',
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.START_OVER, value: '처음으로' }
+      ])
+    };
+  }
+
+  const restored = restorePreviousStep(session);
+  
+  if (!restored) {
+    return {
+      text: '이전 단계로 돌아갈 수 없습니다.',
+      quickReplies: []
+    };
+  }
+
+  // 이전 단계의 질문을 다시 표시
+  return getQuestionForStep(session);
+}
+
+/**
+ * 각 단계별 질문 반환 (이전 단계로 돌아갔을 때 사용)
+ */
+function getQuestionForStep(session: UserSession): KakaoResponse {
+  switch (session.step) {
+    // 공통 단계
+    case 'select_service':
+      return {
+        text: MESSAGES.GREETING,
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.SERVICE_INSTALL, value: '설치' },
+          { label: BUTTONS.SERVICE_RENTAL, value: '렌탈' },
+          { label: BUTTONS.SERVICE_MEMBERSHIP, value: '멤버쉽' }
+        ])
+      };
+    
+    // 설치 서비스 단계
+    case 'install_environment':
+      return {
+        text: serviceSelectedMessage('LED 설치', MESSAGES.SELECT_ENVIRONMENT),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.INDOOR_SIMPLE, value: '실내' },
+          { label: BUTTONS.OUTDOOR_SIMPLE, value: '실외' }
+        ])
+      };
+    
+    case 'install_region':
+      return {
+        text: confirmAndAsk(
+          `${session.data.installEnvironment} 설치로 선택하셨습니다`,
+          '',
+          MESSAGES.INPUT_REGION
+        ),
+        quickReplies: []
+      };
+    
+    case 'install_space':
+      return {
+        text: confirmAndAsk('설치 지역', session.data.installRegion || '', MESSAGES.SELECT_SPACE),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.SPACE_CORPORATE, value: '기업' },
+          { label: BUTTONS.SPACE_RETAIL, value: '상가' },
+          { label: BUTTONS.SPACE_HOSPITAL, value: '병원' },
+          { label: BUTTONS.SPACE_PUBLIC, value: '공공' },
+          { label: BUTTONS.SPACE_HOTEL, value: '숙박' },
+          { label: BUTTONS.SPACE_EXHIBITION, value: '전시홀' },
+          { label: BUTTONS.SPACE_OTHER, value: '기타' }
+        ])
+      };
+    
+    case 'inquiry_purpose':
+      const prevConfirm = session.serviceType === '설치' 
+        ? confirmAndAsk('설치 공간', session.data.installSpace || '', MESSAGES.SELECT_PURPOSE)
+        : confirmAndAsk('문의 목적', session.data.inquiryPurpose || '', MESSAGES.SELECT_PURPOSE);
+      
+      return {
+        text: prevConfirm,
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.PURPOSE_RESEARCH, value: '정보 조사' },
+          { label: BUTTONS.PURPOSE_PLANNING, value: '아이디어 기획' },
+          { label: BUTTONS.PURPOSE_QUOTE, value: '견적' },
+          { label: BUTTONS.PURPOSE_PURCHASE, value: '구매' },
+          { label: BUTTONS.PURPOSE_OTHER, value: '기타' }
+        ])
+      };
+    
+    case 'install_budget':
+    case 'rental_outdoor_budget':
+      return {
+        text: confirmAndAsk('문의 목적', session.data.inquiryPurpose || '', MESSAGES.SELECT_BUDGET),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.BUDGET_UNDER_10M, value: '1000만원 이하' },
+          { label: BUTTONS.BUDGET_10M_30M, value: '1000~3000만원' },
+          { label: BUTTONS.BUDGET_30M_50M, value: '3000~5000만원' },
+          { label: BUTTONS.BUDGET_50M_100M, value: '5000만원~1억' },
+          { label: BUTTONS.BUDGET_OVER_100M, value: '1억 이상' },
+          { label: BUTTONS.BUDGET_UNDECIDED, value: '미정' }
+        ])
+      };
+    
+    case 'install_schedule':
+      return {
+        text: confirmAndAsk('설치 예산', session.data.installBudget || '', MESSAGES.INPUT_SCHEDULE),
+        quickReplies: []
+      };
+    
+    // 렌탈 서비스 단계
+    case 'rental_indoor_outdoor':
+      return {
+        text: serviceSelectedMessage('LED 렌탈', MESSAGES.INPUT_EVENT_INFO),
+        quickReplies: []
+      };
+    
+    case 'rental_structure_type':
+      return {
+        text: eventInfoConfirmed(
+          session.data.eventName || '', 
+          session.data.venue || '', 
+          MESSAGES.SELECT_INDOOR_OUTDOOR
+        ),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.INDOOR, value: '실내' },
+          { label: BUTTONS.OUTDOOR, value: '실외' }
+        ])
+      };
+    
+    case 'rental_led_count':
+      if (session.data.installEnvironment === '실외') {
+        return {
+          text: confirmAndAsk(
+            '행사 기간',
+            `${session.data.eventStartDate} ~ ${session.data.eventEndDate} (${session.data.rentalPeriod}일)`,
+            MESSAGES.SELECT_LED_COUNT
+          ),
+          quickReplies: createQuickReplies([
+            { label: BUTTONS.LED_COUNT[0], value: '1' },
+            { label: BUTTONS.LED_COUNT[1], value: '2' },
+            { label: BUTTONS.LED_COUNT[2], value: '3' },
+            { label: BUTTONS.LED_COUNT[3], value: '4' },
+            { label: BUTTONS.LED_COUNT[4], value: '5' }
+          ])
+        };
+      } else {
+        return {
+          text: confirmAndAsk(
+            '실내 행사로 확인되었습니다',
+            '',
+            MESSAGES.SELECT_STRUCTURE
+          ),
+          quickReplies: createQuickReplies([
+            { label: BUTTONS.STRUCTURE_WOOD, value: '목공 설치' },
+            { label: BUTTONS.STRUCTURE_STANDALONE, value: '단독 설치' }
+          ])
+        };
+      }
+    
+    case 'rental_led_specs':
+      if (session.ledCount && session.currentLED <= session.ledCount) {
+        return {
+          text: createLEDSizePrompt(session.currentLED),
+          quickReplies: createQuickReplies([
+            { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
+            { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
+            { label: BUTTONS.LED_SIZE_4000_2500, value: '4000x2500' }
+          ])
+        };
+      }
+      return {
+        text: MESSAGES.SELECT_LED_COUNT,
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.LED_COUNT[0], value: '1' },
+          { label: BUTTONS.LED_COUNT[1], value: '2' },
+          { label: BUTTONS.LED_COUNT[2], value: '3' },
+          { label: BUTTONS.LED_COUNT[3], value: '4' },
+          { label: BUTTONS.LED_COUNT[4], value: '5' }
+        ])
+      };
+    
+    case 'rental_stage_height':
+    case 'membership_stage_height':
+      const currentLed = session.data.ledSpecs[session.currentLED - 1];
+      return {
+        text: confirmAndAsk(
+          `LED ${session.currentLED}번째 개소`,
+          currentLed?.size || '',
+          MESSAGES.INPUT_STAGE_HEIGHT
+        ),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.STAGE_HEIGHT_0, value: '0mm' },
+          { label: BUTTONS.STAGE_HEIGHT_600, value: '600mm' },
+          { label: BUTTONS.STAGE_HEIGHT_800, value: '800mm' },
+          { label: BUTTONS.STAGE_HEIGHT_1000, value: '1000mm' }
+        ])
+      };
+    
+    case 'rental_operator_needs':
+    case 'membership_operator_needs':
+      return {
+        text: confirmAndAsk(
+          `LED ${session.currentLED}번째 개소 무대 높이`,
+          `${session.data.ledSpecs[session.currentLED - 1]?.stageHeight || 0}mm`,
+          MESSAGES.ASK_OPERATOR
+        ),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.YES, value: '네' },
+          { label: BUTTONS.NO, value: '아니요' }
+        ])
+      };
+    
+    case 'rental_operator_days':
+    case 'membership_operator_days':
+      return {
+        text: confirmAndAsk('오퍼레이터 필요', '', MESSAGES.ASK_OPERATOR_DAYS),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.DAYS[0], value: '1' },
+          { label: BUTTONS.DAYS[1], value: '2' },
+          { label: BUTTONS.DAYS[2], value: '3' },
+          { label: BUTTONS.DAYS[3], value: '4' },
+          { label: BUTTONS.DAYS[4], value: '5' }
+        ])
+      };
+    
+    case 'rental_prompter':
+    case 'membership_prompter':
+      const needsOp = session.data.ledSpecs[session.currentLED - 1]?.needOperator;
+      const opDays = session.data.ledSpecs[session.currentLED - 1]?.operatorDays;
+      const prevText = needsOp 
+        ? confirmAndAsk('오퍼레이터', `${opDays}일`, MESSAGES.ASK_PROMPTER)
+        : confirmAndAsk('오퍼레이터 불필요', '', MESSAGES.ASK_PROMPTER);
+      
+      return {
+        text: prevText,
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.YES, value: '네' },
+          { label: BUTTONS.NO, value: '아니요' }
+        ])
+      };
+    
+    case 'rental_relay':
+    case 'membership_relay':
+      const needsPrompter = session.data.ledSpecs[session.currentLED - 1]?.prompterConnection;
+      return {
+        text: confirmAndAsk(
+          `프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}`,
+          '',
+          MESSAGES.ASK_RELAY
+        ),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.YES, value: '네' },
+          { label: BUTTONS.NO, value: '아니요' }
+        ])
+      };
+    
+    case 'rental_period':
+      if (session.data.installEnvironment === '실외') {
+        return {
+          text: confirmAndAsk('설치 예산', session.data.installBudget || '', MESSAGES.INPUT_PERIOD),
+          quickReplies: []
+        };
+      } else {
+        return {
+          text: createLEDCompleteMessage(session) + '\n\n' + MESSAGES.INPUT_PERIOD,
+          quickReplies: []
+        };
+      }
+    
+    // 멤버쉽 서비스 단계
+    case 'membership_code':
+      return {
+        text: serviceSelectedMessage('멤버쉽', MESSAGES.INPUT_MEMBER_CODE),
+        quickReplies: []
+      };
+    
+    case 'membership_event_info':
+      return {
+        text: memberCodeConfirmed(session.data.memberCode || '001'),
+        quickReplies: []
+      };
+    
+    case 'membership_led_count':
+      return {
+        text: eventInfoConfirmed(
+          session.data.eventName || '',
+          session.data.venue || '',
+          MESSAGES.SELECT_LED_COUNT
+        ),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.LED_COUNT[0], value: '1' },
+          { label: BUTTONS.LED_COUNT[1], value: '2' },
+          { label: BUTTONS.LED_COUNT[2], value: '3' },
+          { label: BUTTONS.LED_COUNT[3], value: '4' },
+          { label: BUTTONS.LED_COUNT[4], value: '5' }
+        ])
+      };
+    
+    case 'membership_led_specs':
+      return {
+        text: confirmAndAsk(
+          `총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다`,
+          '',
+          createLEDSizePrompt(session.currentLED)
+        ),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
+          { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
+          { label: BUTTONS.LED_SIZE_4000_2500, value: '4000x2500' }
+        ])
+      };
+    
+    case 'membership_period':
+      return {
+        text: createLEDCompleteMessage(session) + '\n\n' + MESSAGES.INPUT_PERIOD,
+        quickReplies: []
+      };
+    
+    // 공통 단계 (고객 정보)
+    case 'get_additional_requests':
+      const prevStepText = session.serviceType === '설치' 
+        ? confirmAndAsk('설치 일정', session.data.installSchedule || '', MESSAGES.REQUEST_ADDITIONAL)
+        : confirmAndAsk(
+            '행사 기간',
+            `${session.data.eventStartDate} ~ ${session.data.eventEndDate}`,
+            MESSAGES.REQUEST_ADDITIONAL
+          );
+      
+      return {
+        text: prevStepText,
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.NONE, value: '없음' }
+        ])
+      };
+    
+    case 'get_customer_company':
+      return {
+        text: confirmAndAsk('요청사항이 저장되었습니다', '', MESSAGES.INPUT_COMPANY),
+        quickReplies: []
+      };
+    
+    case 'get_contact_name':
+      if (session.serviceType === '멤버쉽') {
+        return {
+          text: confirmAndAsk('요청사항이 저장되었습니다', '', MESSAGES.INPUT_NAME),
+          quickReplies: []
+        };
+      } else {
+        return {
+          text: confirmAndAsk('고객사', session.data.customerName || '', MESSAGES.INPUT_NAME),
+          quickReplies: []
+        };
+      }
+    
+    case 'get_contact_title':
+      return {
+        text: confirmAndAsk('담당자', `${session.data.contactName}님` || '', MESSAGES.INPUT_TITLE),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.TITLE_MANAGER, value: '매니저' },
+          { label: BUTTONS.TITLE_SENIOR, value: '책임' },
+          { label: BUTTONS.TITLE_TEAM_LEADER, value: '팀장' },
+          { label: BUTTONS.TITLE_DIRECTOR, value: '이사' }
+        ])
+      };
+    
+    case 'get_contact_phone':
+      return {
+        text: confirmAndAsk('직급', session.data.contactTitle || '', MESSAGES.INPUT_PHONE),
+        quickReplies: []
+      };
+    
+    case 'final_confirmation':
+      return {
+        text: createFinalConfirmationMessage(session),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.CONFIRM, value: '네' },
+          { label: BUTTONS.CANCEL, value: '취소' }
+        ])
+      };
+    
+    default:
+      // 기본 처리 - 서비스 선택으로
+      return {
+        text: MESSAGES.GREETING,
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.SERVICE_INSTALL, value: '설치' },
+          { label: BUTTONS.SERVICE_RENTAL, value: '렌탈' },
+          { label: BUTTONS.SERVICE_MEMBERSHIP, value: '멤버쉽' }
+        ])
+      };
+  }
+}
+
+// 나머지 기존 함수들은 그대로 유지
 
 export function handleAdditionalRequests(message: string, session: UserSession): KakaoResponse {
   if (message.trim() === '없음' || message.trim() === '') {
@@ -240,8 +675,6 @@ export async function handleFinalConfirmation(message: string, session: UserSess
 
 // Helper Functions
 
-// common-handlers.ts의 createFinalConfirmationMessage 함수 수정
-
 function createFinalConfirmationMessage(session: UserSession): string {
   const header = `${EMOJI.CHECK} 모든 정보가 입력되었습니다!\n${EMOJI.INFO} 최종 확인\n${DIVIDER}`;
   
@@ -353,6 +786,11 @@ ${EMOJI.PERSON} 고객명: ${session.data.contactName} ${session.data.contactTit
 ${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
+function createLEDCompleteMessage(session: UserSession): string {
+  const summary = createLEDSummary(session.data.ledSpecs);
+  return `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${summary}`;
+}
+
 function getSuccessResponseText(session: UserSession, quote: QuoteResult | RentalQuoteResult | null): string {
   if (session.serviceType === '설치') {
     return MESSAGES.INSTALL_SUCCESS_TEMPLATE(
@@ -396,24 +834,4 @@ function calculateLEDPower(size: string): string {
   const moduleCount = (width / 500) * (height / 500);
   const totalPower = moduleCount * 0.2;
   return `${totalPower.toFixed(1)}kW`;
-}
-
-// src/tools/handlers/common-handlers.ts
-
-// 공통 리셋 요청 처리 함수
-export function handleResetRequest(session: UserSession): KakaoResponse {
-  session.step = 'start';
-  session.serviceType = undefined;
-  session.data = { ledSpecs: [] };
-  session.ledCount = 0;
-  session.currentLED = 1;
-  
-  return {
-    text: `처음부터 다시 시작합니다.\n\n${MESSAGES.GREETING}`,
-    quickReplies: createQuickReplies([
-      { label: BUTTONS.SERVICE_INSTALL, value: '설치' },
-      { label: BUTTONS.SERVICE_RENTAL, value: '렌탈' },
-      { label: BUTTONS.SERVICE_MEMBERSHIP, value: '멤버쉽' }
-    ])
-  };
 }

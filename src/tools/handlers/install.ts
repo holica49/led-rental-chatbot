@@ -8,12 +8,16 @@ import {
   validateSelection,
   createInstallProjectName
 } from '../../utils/handler-utils.js';
-import { checkResetRequest } from './common-handlers.js'; // 추가
+import { checkResetRequest, checkPreviousRequest } from './common-handlers.js';
 
 export function handleInstallEnvironment(message: string, session: UserSession): KakaoResponse {
   // 처음으로 돌아가기 체크
   const resetResponse = checkResetRequest(message, session);
   if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
 
   if (message.includes('실내')) {
     session.data.installEnvironment = '실내';
@@ -41,6 +45,14 @@ export function handleInstallEnvironment(message: string, session: UserSession):
 }
 
 export function handleInstallRegion(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validation = validateNotEmpty(message, '설치 지역');
   if (!validation.valid) {
     return {
@@ -68,6 +80,14 @@ export function handleInstallRegion(message: string, session: UserSession): Kaka
 }
 
 export function handleInstallSpace(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validSpaces = ['기업', '상가', '병원', '공공', '숙박', '전시홀', '기타'];
   const validation = validateSelection(message, validSpaces, MESSAGES.SELECT_SPACE);
   
@@ -91,6 +111,14 @@ export function handleInstallSpace(message: string, session: UserSession): Kakao
 }
 
 export function handleInquiryPurpose(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validPurposes = ['정보 조사', '아이디어 기획', '견적', '구매', '기타'];
   const validation = validateSelection(message, validPurposes, MESSAGES.SELECT_PURPOSE);
   
@@ -115,6 +143,14 @@ export function handleInquiryPurpose(message: string, session: UserSession): Kak
 }
 
 export function handleInstallBudget(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validBudgets = ['1000만원 이하', '1000~3000만원', '3000~5000만원', '5000만원~1억', '1억 이상', '미정'];
   const validation = validateSelection(message, validBudgets, MESSAGES.SELECT_BUDGET);
   
@@ -132,6 +168,14 @@ export function handleInstallBudget(message: string, session: UserSession): Kaka
 }
 
 export function handleInstallSchedule(message: string, session: UserSession): KakaoResponse {
+  // 처음으로 돌아가기 체크
+  const resetResponse = checkResetRequest(message, session);
+  if (resetResponse) return resetResponse;
+  
+  // 이전으로 돌아가기 체크
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) return previousResponse;
+
   const validation = validateNotEmpty(message, '설치 일정');
   if (!validation.valid) {
     return {

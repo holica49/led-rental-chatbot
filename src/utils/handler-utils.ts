@@ -111,15 +111,10 @@ export function handleEnvironmentSelection(
  * LED 크기 입력 프롬프트 생성
  */
 export function createLEDSizePrompt(ledNumber: number): string {
-  return `🖥️ LED ${ledNumber}번째 화면의 크기를 알려주세요.
+  return `LED ${ledNumber}번째 화면의 크기를 알려주세요.
 
-💡 가로x세로 형식으로 입력해 주시면 됩니다.
-(단위: mm, 예시: 5000x3000)
-
-자주 사용하는 크기:
-• 6000x3000
-• 4000x3000
-• 4000x2500`;
+💡 가로x세로 형식으로 입력해 주시면 됩니다. (단위: mm)
+예시: 5000x3000`;
 }
 
 /**

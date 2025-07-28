@@ -1,10 +1,10 @@
-// src/tools/message-processor.ts
-
 import { UserSession, KakaoResponse } from '../types/index.js';
 import { isModificationRequest, isResetRequest } from './utils/request-utils.js';
 import { handlers, handleStart, handleSelectService, handleDefault } from './handlers/index.js';
 import { MESSAGES, BUTTONS } from '../constants/messages.js';
 import { createQuickReplies } from '../utils/handler-utils.js';
+import { checkPreviousRequest } from './handlers/common-handlers.js';
+import { savePreviousStep } from '../utils/session-utils.js';
 
 export function handleModificationRequest(_message: string, _session: UserSession): KakaoResponse {
   return {
@@ -41,6 +41,12 @@ export async function processUserMessage(message: string, session: UserSession):
   if (resetKeywords.some(keyword => message === keyword || message.includes(`${keyword} 시작`))) {
     return handleResetRequest(session);
   }
+
+  // 이전 단계로 돌아가기 체크 (추가)
+  const previousResponse = checkPreviousRequest(message, session);
+  if (previousResponse) {
+    return previousResponse;
+  }
   
   // 수정 요청 체크
   if (isModificationRequest(message)) {
@@ -50,6 +56,9 @@ export async function processUserMessage(message: string, session: UserSession):
   if (isResetRequest(message)) {
     return handleResetRequest(session);
   }
+  
+  // 현재 상태 저장 (핸들러 실행 전)
+  savePreviousStep(session);
   
   switch (session.step) {
     case 'start':

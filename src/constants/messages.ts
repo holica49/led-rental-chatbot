@@ -1,40 +1,35 @@
-// src/constants/messages.ts
-
 import { EMOJI } from '../utils/message-utils.js';
 
 /**
- * 챗봇 메시지 상수 (친절한 톤 버전)
- * 포맷팅은 message-utils.ts에서 처리
+ * 챗봇 메시지 상수 (간결한 버전)
+ * 이모지 최소화, 핵심 정보 중심
  */
 
 export const MESSAGES = {
   // 기본 메시지
-  GREETING: `안녕하세요! LED 전문 기업 오리온디스플레이입니다. 😊
+  GREETING: `안녕하세요! 오리온디스플레이입니다.
 어떤 서비스를 도와드릴까요?
 
-📍 설치: 매장이나 건물에 LED를 고정 설치합니다
-📅 렌탈: 행사나 이벤트용으로 단기간 대여합니다
-💎 멤버쉽: VIP 회원 전용 특별 할인 서비스입니다`,
+🏢 설치 - 매장이나 건물에 LED를 고정 설치합니다
+📅 렌탈 - 행사나 이벤트용으로 단기간 대여합니다
+⭐ 멤버쉽 - VIP 회원 전용 특별 할인 서비스입니다`,
 
   ERROR: '죄송합니다. 일시적인 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.',
   CANCEL: '요청이 취소되었습니다.\n\n처음부터 다시 시작하시려면 아무 메시지나 입력해주세요.',
   
   // 프롬프트
-  REQUEST_ADDITIONAL: `추가로 문의하실 내용이 있으신가요? 📝
+  REQUEST_ADDITIONAL: `추가로 문의하실 내용이 있으신가요?
 
 💡 설치 위치에 대한 자세한 설명이나 특별한 요청사항을 남겨주세요.
-(예: 건물 1층 로비 정면 벽, 천장 높이 5m 등)
 
 없으시면 '없음'이라고 입력해 주세요.`,
 
-  SELECT_ENVIRONMENT: `설치 환경을 선택해 주세요. 🏢
+  SELECT_ENVIRONMENT: `설치 환경을 선택해 주세요.
 
-🌞 실외: 날씨에 노출되는 외부 공간
-🏠 실내: 날씨로부터 보호되는 내부 공간
+💡 실내: 날씨로부터 보호되는 내부 공간
+실외: 날씨에 노출되는 외부 공간`,
 
-💡 환경에 따라 LED 사양과 가격이 달라집니다.`,
-
-  INPUT_REGION: '설치하실 지역을 입력해주세요.\n예: 서울, 경기, 부산 등',
+  INPUT_REGION: '설치하실 지역을 입력해주세요.\n예: 서울, 경기, 부산',
   
   SELECT_SPACE: `어떤 공간에 설치하실 예정인가요?
 
@@ -42,14 +37,14 @@ export const MESSAGES = {
 
   SELECT_PURPOSE: '문의 목적을 알려주세요.',
   
-  SELECT_BUDGET: `예산 범위를 알려주세요. 💰
+  SELECT_BUDGET: `예산 범위를 알려주세요.
 
-💡 대략적인 범위도 괜찮습니다.
+💡 대략적인 범위로 말씀해 주시면 
 예산에 맞는 최적의 솔루션을 제안해 드리겠습니다.`,
 
-  INPUT_SCHEDULE: '언제 설치가 필요하신가요?\n예: 2025년 8월, 3개월 후, 내년 상반기 등',
+  INPUT_SCHEDULE: '설치 희망 시기를 알려주세요.\n\n💡 예: 3개월 내, 8월경, 2025-07-10까지 등',
   
-  INPUT_EVENT_INFO: `행사명과 행사장을 알려주세요. 📋
+  INPUT_EVENT_INFO: `행사명과 행사장을 알려주세요.
 
 💡 형식: 행사명 / 행사장
 예시: 커피박람회 / 수원메쎄 2홀`,
@@ -58,57 +53,50 @@ export const MESSAGES = {
   
   SELECT_STRUCTURE: `지지구조물 타입을 선택해주세요.
 
-🔨 목공 설치: 안정적이고 견고한 설치
-🏗️ 단독 설치: 독립적인 스탠드 방식`,
+💡 목공 설치: 안정적이고 견고한 설치
+단독 설치: 독립적인 스탠드 방식`,
 
-  SELECT_LED_COUNT: `몇 개소의 LED 디스플레이가 필요하신가요? 🖥️
+  SELECT_LED_COUNT: `몇 개소의 LED 디스플레이가 필요하신가요?
 
 💡 예: 무대 정면 1개, 측면 2개 = 총 3개소`,
 
-  INPUT_STAGE_HEIGHT: `${EMOJI.RULER} 무대 높이를 알려주세요. (단위: mm)
+  INPUT_STAGE_HEIGHT: `무대 높이를 알려주세요. (단위: mm)
 
-💡 바닥에 설치하시면 0을 입력해 주세요.
-무대 높이에 따라 설치 방법이 달라집니다.`,
+💡 바닥에 설치하시면 0을 입력해 주세요.`,
 
-  ASK_OPERATOR: `${EMOJI.MANAGER} 오퍼레이터가 필요하신가요?
+  ASK_OPERATOR: `오퍼레이터가 필요하신가요?
 
-💡 오퍼레이터는 행사 중 LED 화면을 전문적으로 운영하는 기술자입니다.
-영상 송출, 화면 전환 등을 담당합니다.`,
+💡 오퍼레이터는 행사 중 LED 화면을 전문적으로 운영하는 기술자입니다.`,
 
-  ASK_OPERATOR_DAYS: `${EMOJI.CALENDAR} 오퍼레이터가 몇 일 동안 필요하신가요?
+  ASK_OPERATOR_DAYS: `오퍼레이터가 몇 일 동안 필요하신가요?
 
 💡 보통 리허설 1일 + 행사 기간으로 계산합니다.`,
 
-  ASK_PROMPTER: `${EMOJI.TV} 프롬프터 연결이 필요하신가요?
+  ASK_PROMPTER: `프롬프터 연결이 필요하신가요?
 
-💡 프롬프터는 발표자가 원고를 볼 수 있는 장치입니다.
-발표나 연설이 있는 행사에서 주로 사용됩니다.`,
+💡 프롬프터는 발표자가 원고를 볼 수 있는 장치입니다.`,
 
-  ASK_RELAY: `${EMOJI.CAMERA} 중계카메라가 있으신 경우, 연결이 필요하신가요?
+  ASK_RELAY: `중계카메라가 있으신 경우, 연결이 필요하신가요?
 
 💡 무대나 행사장을 촬영하여 LED에 실시간으로 송출할 수 있습니다.`,
 
-  INPUT_PERIOD: `${EMOJI.CALENDAR} 행사 기간을 알려주세요. 📅
+  INPUT_PERIOD: `행사 기간을 알려주세요.
 
-💡 예시: 2025-07-09 ~ 2025-07-11
-설치와 철거 시간도 고려해 주세요.`,
+💡 예시: 2025-07-09 ~ 2025-07-11`,
 
-  INPUT_COMPANY: `${EMOJI.COMPANY} 고객사명을 알려주세요.
+  INPUT_COMPANY: `고객사명을 알려주세요.`,
 
-💡 정확한 회사명을 입력해 주시면 견적서 발행에 도움이 됩니다.`,
+  INPUT_NAME: `담당자님의 성함을 알려주세요.`,
 
-  INPUT_NAME: `${EMOJI.PERSON} 담당자님의 성함을 알려주세요. 😊`,
-
-  INPUT_TITLE: `💼 직급을 알려주세요.
+  INPUT_TITLE: `직급을 알려주세요.
 
 💡 견적서와 공식 서류에 기재됩니다.`,
 
-  INPUT_PHONE: `${EMOJI.PHONE} 연락 가능한 전화번호를 알려주세요. 📞
+  INPUT_PHONE: `연락 가능한 전화번호를 알려주세요.
 
-💡 견적서 발송과 상세 상담을 위해 필요합니다.
-예: 010-1234-5678`,
+💡 예: 010-1234-5678`,
 
-  INPUT_MEMBER_CODE: `VIP 회원님, 환영합니다! 🌟
+  INPUT_MEMBER_CODE: `VIP 회원님, 환영합니다!
 멤버쉽 코드를 입력해 주세요.
 
 💡 코드를 모르시면 담당자에게 문의해 주세요.`,
@@ -202,35 +190,35 @@ ${DIVIDER}
 // 버튼 라벨
 export const BUTTONS = {
   // 서비스
-  SERVICE_INSTALL: `${EMOJI.BUILDING} LED 설치`,
-  SERVICE_RENTAL: `${EMOJI.PACKAGE} LED 렌탈`,
-  SERVICE_MEMBERSHIP: `${EMOJI.PEOPLE} 멤버쉽 서비스`,
+  SERVICE_INSTALL: '🏢 LED 설치',
+  SERVICE_RENTAL: '📅 LED 렌탈',
+  SERVICE_MEMBERSHIP: '⭐ 멤버쉽 서비스',
   
   // 환경
-  INDOOR: `${EMOJI.INDOOR} 실내`,
-  OUTDOOR: `${EMOJI.OUTDOOR} 실외`,
-  INDOOR_SIMPLE: '🏢 실내 설치',
-  OUTDOOR_SIMPLE: '🌳 실외 설치',
+  INDOOR: '실내',
+  OUTDOOR: '실외',
+  INDOOR_SIMPLE: '실내 설치',
+  OUTDOOR_SIMPLE: '실외 설치',
   
   // 구조물
-  STRUCTURE_WOOD: `${EMOJI.TOOL} 목공 설치`,
-  STRUCTURE_STANDALONE: `${EMOJI.STRUCTURE} 단독 설치`,
+  STRUCTURE_WOOD: '목공 설치',
+  STRUCTURE_STANDALONE: '단독 설치',
   
   // 공간
-  SPACE_CORPORATE: '🏢 기업',
-  SPACE_RETAIL: '🏪 상가',
-  SPACE_HOSPITAL: '🏥 병원',
-  SPACE_PUBLIC: '🏛️ 공공',
-  SPACE_HOTEL: '🏨 숙박',
-  SPACE_EXHIBITION: '🎪 전시홀',
-  SPACE_OTHER: '🔸 기타',
+  SPACE_CORPORATE: '기업',
+  SPACE_RETAIL: '상가',
+  SPACE_HOSPITAL: '병원',
+  SPACE_PUBLIC: '공공',
+  SPACE_HOTEL: '숙박',
+  SPACE_EXHIBITION: '전시홀',
+  SPACE_OTHER: '기타',
   
   // 목적
-  PURPOSE_RESEARCH: '🔍 정보 조사',
-  PURPOSE_PLANNING: '💡 아이디어 기획',
-  PURPOSE_QUOTE: '💰 견적',
-  PURPOSE_PURCHASE: '🛒 구매',
-  PURPOSE_OTHER: '🔸 기타',
+  PURPOSE_RESEARCH: '정보 조사',
+  PURPOSE_PLANNING: '아이디어 기획',
+  PURPOSE_QUOTE: '견적',
+  PURPOSE_PURCHASE: '구매',
+  PURPOSE_OTHER: '기타',
   
   // 예산
   BUDGET_UNDER_10M: '1000만원 이하',
@@ -272,15 +260,17 @@ export const BUTTONS = {
   START_OVER: '처음으로',
   NEW_QUOTE: '새 견적 요청',
   CONTINUE: '네, 진행합니다',
+  PREVIOUS: '이전',  // 추가
 };
 
 // 검증 에러 메시지
 export const VALIDATION_ERRORS = {
-  PHONE: '올바른 전화번호 형식이 아닙니다.\n예시: 010-1234-5678, 02-1234-5678',
-  LED_SIZE: `LED 크기 형식이 올바르지 않습니다. 😅
+  PHONE: '올바른 전화번호 형식이 아닙니다.\n예시: 010-1234-5678',
+  
+  LED_SIZE: `LED 크기 형식이 올바르지 않습니다.
 
 💡 올바른 형식: 가로x세로 (단위: mm)
-예시: 6000x3000, 4000x3000, 4000x2500`,
+예시: 6000x3000, 4000x3000`,
 
   LED_SIZE_UNIT: (width: number, height: number) => 
     `LED 크기는 500mm 단위로 입력해주세요.
@@ -289,16 +279,16 @@ export const VALIDATION_ERRORS = {
 
   LED_SIZE_MIN: 'LED 크기는 최소 500x500mm 이상이어야 합니다.',
   
-  STAGE_HEIGHT: `무대 높이 형식이 올바르지 않습니다. 😅
+  STAGE_HEIGHT: `무대 높이 형식이 올바르지 않습니다.
 
 💡 숫자만 입력하거나 단위를 포함해서 입력해 주세요.
-예시: 0, 600, 600mm, 60cm, 0.6m`,
+예시: 0, 600, 600mm`,
 
   STAGE_HEIGHT_RANGE: '무대 높이는 0mm ~ 10000mm(10m) 사이로 입력해주세요.',
   NUMBER: '숫자를 입력해주세요.',
   NUMBER_RANGE: (min: number, max: number) => `${min}에서 ${max} 사이의 숫자를 입력해주세요.`,
   
-  PERIOD: `행사 기간 형식이 올바르지 않습니다. 😅
+  PERIOD: `행사 기간 형식이 올바르지 않습니다.
 
 💡 올바른 형식: YYYY-MM-DD ~ YYYY-MM-DD
 예시: 2025-07-09 ~ 2025-07-11`,
@@ -306,14 +296,12 @@ export const VALIDATION_ERRORS = {
   DATE: '유효하지 않은 날짜입니다.',
   DATE_ORDER: '시작일이 종료일보다 늦을 수 없습니다.',
   
-  EVENT_INFO: `형식이 올바르지 않습니다. 😅
+  EVENT_INFO: `형식이 올바르지 않습니다.
 
 💡 올바른 형식: 행사명 / 행사장
-예시:
-• 커피박람회 / 수원메쎄 2홀
-• 전시회 / 킨텍스 1홀`,
+예시: 커피박람회 / 수원메쎄 2홀`,
 
-  MEMBER_CODE: `유효하지 않은 멤버 코드입니다. 😅
+  MEMBER_CODE: `유효하지 않은 멤버 코드입니다.
 
 다시 확인 후 입력해주세요.
 💡 코드를 모르시면 담당자(010-2797-2504)에게 문의해 주세요.`,

@@ -5,8 +5,9 @@ import {
   handleContactTitle,
   handleContactPhone,
   handleFinalConfirmation,
-  handleResetRequest,  // 추가
-  checkResetRequest    // 추가
+  handleResetRequest,
+  checkResetRequest,
+  checkPreviousRequest  // 추가
 } from './common-handlers.js';
 
 export const commonHandlers = {
@@ -19,4 +20,8 @@ export const commonHandlers = {
 };
 
 // 유틸리티 함수들도 export
-export { handleResetRequest, checkResetRequest };
+export { 
+  handleResetRequest, 
+  checkResetRequest,
+  checkPreviousRequest  // 추가
+};
