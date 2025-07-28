@@ -96,7 +96,7 @@ export function handleInstallSpace(message: string, session: UserSession): Kakao
   }
   
   session.data.installSpace = message.trim();
-  session.step = 'inquiry_purpose';
+  session.step = 'install_inquiry_purpose';  // 변경: inquiry_purpose -> install_inquiry_purpose
   
   return {
     text: confirmAndAsk('설치 공간', session.data.installSpace, MESSAGES.SELECT_PURPOSE),
@@ -200,7 +200,7 @@ export const installHandlers = {
   'install_environment': handleInstallEnvironment,
   'install_region': handleInstallRegion,
   'install_space': handleInstallSpace,
-  'inquiry_purpose': handleInquiryPurpose,
+  'install_inquiry_purpose': handleInquiryPurpose,  // 변경: inquiry_purpose -> install_inquiry_purpose
   'install_budget': handleInstallBudget,
   'install_schedule': handleInstallSchedule
 };

@@ -70,7 +70,7 @@ export function handleRentalStructureType(message: string, session: UserSession)
   
   if (message.includes('실외')) {
     session.data.installEnvironment = '실외';
-    session.step = 'inquiry_purpose';
+    session.step = 'rental_inquiry_purpose';  // 변경: inquiry_purpose -> rental_inquiry_purpose
     
     return {
       text: outdoorEventNotice() + '\n\n' + MESSAGES.SELECT_PURPOSE,
@@ -522,7 +522,7 @@ export function handleRentalPeriod(message: string, session: UserSession): Kakao
 export const rentalHandlers = {
   'rental_indoor_outdoor': handleRentalIndoorOutdoor,
   'rental_structure_type': handleRentalStructureType,
-  'inquiry_purpose': handleRentalOutdoorPurpose,
+  'rental_inquiry_purpose': handleRentalOutdoorPurpose,  // 변경: inquiry_purpose -> rental_inquiry_purpose
   'rental_outdoor_budget': handleRentalOutdoorBudget,
   'rental_led_count': handleRentalLEDCount,
   'rental_led_specs': handleRentalLEDSpecs,

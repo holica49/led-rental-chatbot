@@ -27,7 +27,7 @@ export const MESSAGES = {
   SELECT_ENVIRONMENT: `설치 환경을 선택해 주세요.
 
 💡 실내: 날씨로부터 보호되는 내부 공간
-실외: 날씨에 노출되는 외부 공간`,
+🌳 실외: 날씨에 노출되는 외부 공간`,
 
   INPUT_REGION: '설치하실 지역을 입력해주세요.\n예: 서울, 경기, 부산',
   
@@ -43,7 +43,7 @@ export const MESSAGES = {
 예산에 맞는 최적의 솔루션을 제안해 드리겠습니다.`,
 
   INPUT_SCHEDULE: '설치 희망 시기를 알려주세요.\n\n💡 예: 3개월 내, 8월경, 2025-07-10까지 등',
-  
+
   INPUT_EVENT_INFO: `행사명과 행사장을 알려주세요.
 
 💡 형식: 행사명 / 행사장
@@ -177,7 +177,7 @@ ${DIVIDER}
 ${DIVIDER}
 💎 ${event} 빠른 견적
 • 예상 견적가: ${amount.toLocaleString()}원 (VAT 포함)
-• 우선 배정 서비스
+* 해당 금액은 예상 금액이며, 전문가 상담 후 변경될 수 있습니다.
 ${DIVIDER}
 📞 최고의 전문가
 👨‍💼 최수삼 렌탈팀장

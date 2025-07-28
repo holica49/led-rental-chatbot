@@ -81,12 +81,12 @@ export function handleDefault(session: UserSession): KakaoResponse {
   return handleStart(session);
 }
 
-// 모든 핸들러 통합
+// 모든 핸들러 통합 - 순서 중요: 공통 핸들러를 먼저, 서비스별 핸들러를 나중에
 export const handlers: HandlerMap = {
   'start': (_message: string, session: UserSession) => handleStart(session),
   'select_service': (message: string, session: UserSession) => handleSelectService(message, session),
+  ...commonHandlers,
   ...installHandlers,
   ...rentalHandlers,
-  ...membershipHandlers,
-  ...commonHandlers
+  ...membershipHandlers
 };
