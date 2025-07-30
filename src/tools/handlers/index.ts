@@ -1,5 +1,3 @@
-// src/tools/handlers/index.ts
-
 import { HandlerMap } from './types.js';
 import { commonHandlers } from './common.js';
 import { installHandlers } from './install.js';

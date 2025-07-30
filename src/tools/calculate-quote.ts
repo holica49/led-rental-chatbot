@@ -12,19 +12,72 @@ const CONSTANTS = {
   POWER_UNIT_PRICE: 300000,
   TRANSPORT_BASE: 300000,
   TRANSPORT_PER_TRUCK: 200000,
-  VAT_RATE: 0.1
+  VAT_RATE: 0.1,
+  // 멤버쉽 할인 관련 상수 추가
+  MEMBERSHIP_FREE_MODULES: 500,
+  MEMBERSHIP_MODULE_PRICE: 34000
 };
 
-// LED 모듈 계산
-export function calculateModules(ledSpecs: LEDSpec[]): { count: number; price: number } {
+// LED 정보 계산 (대각선 인치, 해상도, 소비전력, 전기설치 방식)
+export function calculateLEDInfo(size: string): {
+  diagonalInch: string;
+  resolution: string;
+  powerConsumption: string;
+  electricalMethod: string;
+} {
+  const [width, height] = size.split('x').map(Number);
+  
+  // 대각선 인치 계산 (피타고라스 정리)
+  const diagonalMm = Math.sqrt(width * width + height * height);
+  const diagonalInch = Math.round(diagonalMm / 25.4);
+  
+  // 해상도 계산 (모듈당 128x128 픽셀 기준)
+  const widthModules = width / CONSTANTS.MODULE_SIZE;
+  const heightModules = height / CONSTANTS.MODULE_SIZE;
+  const widthPixels = widthModules * 128;
+  const heightPixels = heightModules * 128;
+  
+  // 소비전력 계산
+  const moduleCount = widthModules * heightModules;
+  const powerKw = moduleCount * CONSTANTS.POWER_PER_MODULE;
+  
+  // 전기설치 방식 결정
+  let electricalMethod = '단상 220V';
+  if (powerKw > 10) {
+    electricalMethod = '삼상 380V';
+  }
+  
+  return {
+    diagonalInch: `${diagonalInch}인치`,
+    resolution: `${widthPixels}x${heightPixels}`,
+    powerConsumption: `${powerKw.toFixed(1)}kW`,
+    electricalMethod
+  };
+}
+
+// LED 모듈 계산 (멤버쉽 할인 적용)
+export function calculateModules(ledSpecs: LEDSpec[], isMembership: boolean = false): { count: number; price: number } {
   const totalModules = ledSpecs.reduce((sum, led) => {
     const [width, height] = led.size.split('x').map(Number);
     return sum + (width / CONSTANTS.MODULE_SIZE) * (height / CONSTANTS.MODULE_SIZE);
   }, 0);
 
+  let price = 0;
+  
+  if (isMembership) {
+    // 멤버쉽: 500개까지 무료, 501개부터 개당 34,000원
+    if (totalModules > CONSTANTS.MEMBERSHIP_FREE_MODULES) {
+      const chargeableModules = totalModules - CONSTANTS.MEMBERSHIP_FREE_MODULES;
+      price = chargeableModules * CONSTANTS.MEMBERSHIP_MODULE_PRICE;
+    }
+  } else {
+    // 일반: 개당 50,000원
+    price = totalModules * CONSTANTS.MODULE_BASE_PRICE;
+  }
+
   return {
     count: totalModules,
-    price: totalModules * CONSTANTS.MODULE_BASE_PRICE
+    price
   };
 }
 
@@ -151,18 +204,25 @@ export function calculatePeriodSurcharge(basePrice: number, days: number): {
   };
 }
 
-// 멀티 LED 견적 계산 (멤버쉽용)
-export function calculateMultiLEDQuote(ledSpecs: LEDSpec[]): QuoteResult {
-  const modules = calculateModules(ledSpecs);
+// 멀티 LED 견적 계산 (멤버쉽용 - 수정됨)
+export function calculateMultiLEDQuote(ledSpecs: LEDSpec[], isMembership: boolean = false): QuoteResult {
+  const modules = calculateModules(ledSpecs, isMembership);
   const maxHeight = Math.max(...ledSpecs.map(led => led.stageHeight || 0));
   const structure = calculateStructure(ledSpecs, maxHeight);
   const controller = calculateControllers(modules.count);
   const power = calculatePower(modules.count);
   const installation = calculateInstallation(modules.count);
+  
+  // 오퍼레이터 비용 계산 (LED별 오퍼레이터 일수 합산)
+  const totalOperatorDays = ledSpecs.reduce((sum, led) => {
+    return sum + (led.needOperator ? led.operatorDays : 0);
+  }, 0);
+  
   const operation = {
-    days: 1,
-    totalPrice: CONSTANTS.OPERATOR_DAILY_RATE
+    days: totalOperatorDays,
+    totalPrice: totalOperatorDays * CONSTANTS.OPERATOR_DAILY_RATE
   };
+  
   const transport = calculateTransport(modules.count);
   
   const subtotal = modules.price + structure.totalPrice + controller.totalPrice + 
@@ -197,15 +257,19 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpec[]): QuoteResult {
 
 // 렌탈 LED 견적 계산
 export function calculateRentalLEDQuote(ledSpecs: LEDSpec[], rentalDays: number): RentalQuoteResult {
-  const baseQuote = calculateMultiLEDQuote(ledSpecs);
+  const baseQuote = calculateMultiLEDQuote(ledSpecs, false);
   
   // 렌탈 기간별 할증 적용
   const periodSurcharge = calculatePeriodSurcharge(baseQuote.subtotal, rentalDays);
   
   // 운영 인력은 렌탈 기간만큼
+  const totalOperatorDays = ledSpecs.reduce((sum, led) => {
+    return sum + (led.needOperator ? led.operatorDays : 0);
+  }, 0);
+  
   const operation = {
-    days: rentalDays,
-    totalPrice: CONSTANTS.OPERATOR_DAILY_RATE * rentalDays
+    days: totalOperatorDays * rentalDays,
+    totalPrice: totalOperatorDays * rentalDays * CONSTANTS.OPERATOR_DAILY_RATE
   };
   
   const subtotal = baseQuote.ledModules.price + baseQuote.structure.totalPrice + 

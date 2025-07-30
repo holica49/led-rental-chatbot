@@ -1,4 +1,5 @@
 import { UserSession, QuoteResult, RentalQuoteResult } from '../../types/index.js';
+import { calculateLEDInfo } from '../calculate-quote.js';
 
 export function prepareNotionData(
   session: UserSession, 
@@ -28,22 +29,36 @@ export function prepareNotionData(
       totalQuoteAmount: 0,
     };
   } else if (session.serviceType === '렌탈') {
+    // LED 추가 정보 계산
+    const ledsWithInfo = session.data.ledSpecs.map((led: any) => {
+      const ledInfo = calculateLEDInfo(led.size);
+      return {
+        ...led,
+        ...ledInfo
+      };
+    });
+    
     notionData = {
       ...notionData,
       installEnvironment: session.data.installEnvironment || '실내',
       supportStructureType: session.data.supportStructureType || '',
-      eventSchedule: session.data.rentalPeriod ? `${session.data.rentalPeriod}일` : '',
+      eventSchedule: schedules?.eventSchedule || '',
       periodSurchargeAmount: (quote as RentalQuoteResult)?.periodSurcharge?.surchargeAmount || 0,
       installSchedule: schedules?.installSchedule || '',
       rehearsalSchedule: schedules?.rehearsalSchedule || '',
       dismantleSchedule: schedules?.dismantleSchedule || '',
-      ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
+      ...ledsWithInfo.reduce((acc: any, led: any, index: number) => {
         acc[`led${index + 1}`] = led;
         return acc;
       }, {}),
       totalQuoteAmount: quote?.total || 0,
       totalModuleCount: quote?.totalModuleCount || 0,
       ledModuleCost: quote?.ledModules?.price || 0,
+      structureCost: quote?.structure?.totalPrice || 0,
+      controllerCost: quote?.controller?.totalPrice || 0,
+      powerCost: quote?.power?.totalPrice || 0,
+      installationCost: quote?.installation?.totalPrice || 0,
+      operatorCost: quote?.operation?.totalPrice || 0,
       transportCost: quote?.transport?.price || 0
     };
     
@@ -53,6 +68,15 @@ export function prepareNotionData(
       notionData.installBudget = session.data.installBudget || '';
     }
   } else if (session.serviceType === '멤버쉽') {
+    // LED 추가 정보 계산
+    const ledsWithInfo = session.data.ledSpecs.map((led: any) => {
+      const ledInfo = calculateLEDInfo(led.size);
+      return {
+        ...led,
+        ...ledInfo
+      };
+    });
+    
     notionData = {
       ...notionData,
       memberCode: session.data.memberCode || '',
@@ -60,7 +84,7 @@ export function prepareNotionData(
       installSchedule: schedules?.installSchedule || '',
       rehearsalSchedule: schedules?.rehearsalSchedule || '',
       dismantleSchedule: schedules?.dismantleSchedule || '',
-      ...session.data.ledSpecs.reduce((acc: any, led: any, index: number) => {
+      ...ledsWithInfo.reduce((acc: any, led: any, index: number) => {
         acc[`led${index + 1}`] = led;
         return acc;
       }, {}),

@@ -610,7 +610,7 @@ export async function handleFinalConfirmation(message: string, session: UserSess
         quote = calculateRentalLEDQuote(sessionCopy.data.ledSpecs, sessionCopy.data.rentalPeriod);
         schedules = calculateScheduleDates(sessionCopy.data.eventStartDate!, sessionCopy.data.eventEndDate!);
       } else if (sessionCopy.serviceType === '멤버쉽') {
-        quote = calculateMultiLEDQuote(sessionCopy.data.ledSpecs);
+        quote = calculateMultiLEDQuote(sessionCopy.data.ledSpecs, true);
         schedules = calculateScheduleDates(sessionCopy.data.eventStartDate!, sessionCopy.data.eventEndDate!);
       }
 

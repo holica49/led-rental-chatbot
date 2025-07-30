@@ -214,6 +214,20 @@ function buildNotionProperties(args: NotionToolInput): Record<string, any> {
       const [width, height] = led.size.split('x').map(Number);
       const moduleCount = (width / 500) * (height / 500);
       properties[`LED${i} 모듈 수량`] = { number: moduleCount };
+      
+      // LED 추가 정보 (새로 추가)
+      if (led.diagonalInch) {
+        properties[`LED${i} 대각선 인치`] = { rich_text: [{ text: { content: led.diagonalInch } }] };
+      }
+      if (led.resolution) {
+        properties[`LED${i} 해상도`] = { rich_text: [{ text: { content: led.resolution } }] };
+      }
+      if (led.powerConsumption) {
+        properties[`LED${i} 소비전력`] = { rich_text: [{ text: { content: led.powerConsumption } }] };
+      }
+      if (led.electricalMethod) {
+        properties[`LED${i} 전기설치 방식`] = { rich_text: [{ text: { content: led.electricalMethod } }] };
+      }
     }
   }
 
