@@ -5,18 +5,26 @@ const CONSTANTS = {
   MODULE_SIZE: 500,
   MODULE_BASE_PRICE: 50000,
   POWER_PER_MODULE: 0.2, // kW
-  OPERATOR_DAILY_RATE: 500000,
-  INSTALLATION_WORKER_RATE: 350000,
-  STRUCTURE_UNIT_PRICE: 30000,
-  CONTROLLER_UNIT_PRICE: 1500000,
-  POWER_UNIT_PRICE: 300000,
-  TRANSPORT_BASE: 300000,
-  TRANSPORT_PER_TRUCK: 200000,
+  OPERATOR_DAILY_RATE: 280000, // 수정: 500000 -> 280000
+  INSTALLATION_WORKER_RATE: 160000, // 수정: 350000 -> 160000
+  STRUCTURE_PRICE_UNDER_4M: 20000, // 수정: 평방미터당 가격
+  STRUCTURE_PRICE_OVER_4M: 25000, // 수정: 평방미터당 가격
+  CONTROLLER_PRICE_UNDER_200: 200000, // 수정: 200인치 미만
+  CONTROLLER_PRICE_OVER_200: 500000, // 수정: 200인치 이상
+  POWER_PRICE: 500000, // 수정: 250인치 이상만
+  TRANSPORT_BASE: 200000, // 수정: 200개 이하 고정
   VAT_RATE: 0.1,
-  // 멤버쉽 할인 관련 상수 추가
+  // 멤버쉽 할인 관련 상수
   MEMBERSHIP_FREE_MODULES: 500,
   MEMBERSHIP_MODULE_PRICE: 34000
 };
+
+// LED 인치 계산
+export function calculateInch(size: string): number {
+  const [width, height] = size.split('x').map(Number);
+  const diagonalMm = Math.sqrt(width * width + height * height);
+  return diagonalMm / 25.4;
+}
 
 // LED 정보 계산 (대각선 인치, 해상도, 소비전력, 전기설치 방식)
 export function calculateLEDInfo(size: string): {
@@ -27,9 +35,8 @@ export function calculateLEDInfo(size: string): {
 } {
   const [width, height] = size.split('x').map(Number);
   
-  // 대각선 인치 계산 (피타고라스 정리)
-  const diagonalMm = Math.sqrt(width * width + height * height);
-  const diagonalInch = Math.round(diagonalMm / 25.4);
+  // 대각선 인치 계산
+  const diagonalInch = calculateInch(size);
   
   // 해상도 계산 (모듈당 128x128 픽셀 기준)
   const widthModules = width / CONSTANTS.MODULE_SIZE;
@@ -48,7 +55,7 @@ export function calculateLEDInfo(size: string): {
   }
   
   return {
-    diagonalInch: `${diagonalInch}인치`,
+    diagonalInch: `${Math.round(diagonalInch)}인치`,
     resolution: `${widthPixels}x${heightPixels}`,
     powerConsumption: `${powerKw.toFixed(1)}kW`,
     electricalMethod
@@ -81,79 +88,110 @@ export function calculateModules(ledSpecs: LEDSpec[], isMembership: boolean = fa
   };
 }
 
-// 구조물 비용 계산
-export function calculateStructure(ledSpecs: LEDSpec[], maxHeight: number): { 
+// 구조물 비용 계산 (수정됨 - 평방미터 기준)
+export function calculateStructure(ledSpecs: LEDSpec[]): { 
   unitPrice: number; 
   totalPrice: number; 
   description: string;
+  area: number;
 } {
-  const totalModules = calculateModules(ledSpecs).count;
+  let totalPrice = 0;
+  let totalArea = 0;
   
-  let unitPrice = CONSTANTS.STRUCTURE_UNIT_PRICE;
-  let description = '기본형';
+  ledSpecs.forEach(led => {
+    const [width, height] = led.size.split('x').map(Number);
+    const area = (width * height) / 1000000; // 평방미터로 변환
+    totalArea += area;
+    
+    // 높이에 따른 단가 적용
+    const unitPrice = height < 4000 ? CONSTANTS.STRUCTURE_PRICE_UNDER_4M : CONSTANTS.STRUCTURE_PRICE_OVER_4M;
+    totalPrice += area * unitPrice;
+  });
   
-  if (maxHeight > 5000) {
-    unitPrice = 50000;
-    description = '대형 (5m 이상)';
-  } else if (maxHeight > 3000) {
-    unitPrice = 40000;
-    description = '중형 (3-5m)';
-  }
+  // 평균 단가 계산 (표시용)
+  const avgUnitPrice = Math.round(totalPrice / totalArea);
   
   return {
-    unitPrice,
-    totalPrice: totalModules * unitPrice,
-    description
+    unitPrice: avgUnitPrice,
+    totalPrice: Math.round(totalPrice),
+    description: '시스템 비계',
+    area: totalArea
   };
 }
 
-// 프로세서 개수 계산
-export function calculateControllers(moduleCount: number): { count: number; totalPrice: number } {
-  const count = Math.ceil(moduleCount / 200);
+// 프로세서 개수 계산 (수정됨 - 인치 기준)
+export function calculateControllers(ledSpecs: LEDSpec[]): { count: number; totalPrice: number } {
+  let totalPrice = 0;
+  let count = 0;
+  
+  ledSpecs.forEach(led => {
+    const inch = calculateInch(led.size);
+    if (inch < 200) {
+      totalPrice += CONSTANTS.CONTROLLER_PRICE_UNDER_200;
+    } else {
+      totalPrice += CONSTANTS.CONTROLLER_PRICE_OVER_200;
+    }
+    count++;
+  });
+  
   return {
     count,
-    totalPrice: count * CONSTANTS.CONTROLLER_UNIT_PRICE
+    totalPrice
   };
 }
 
-// 전원 개수 계산
-export function calculatePower(moduleCount: number): { 
+// 전원 개수 계산 (수정됨 - 250인치 기준)
+export function calculatePower(ledSpecs: LEDSpec[]): { 
   requiredCount: number; 
   totalPrice: number; 
   totalPower: number;
 } {
-  const totalPower = moduleCount * CONSTANTS.POWER_PER_MODULE;
-  const requiredCount = Math.ceil(totalPower / 30); // 30kW per unit
+  let totalPrice = 0;
+  let requiredCount = 0;
+  let totalPower = 0;
+  
+  ledSpecs.forEach(led => {
+    const inch = calculateInch(led.size);
+    const [width, height] = led.size.split('x').map(Number);
+    const moduleCount = (width / CONSTANTS.MODULE_SIZE) * (height / CONSTANTS.MODULE_SIZE);
+    totalPower += moduleCount * CONSTANTS.POWER_PER_MODULE;
+    
+    if (inch >= 250) {
+      totalPrice += CONSTANTS.POWER_PRICE;
+      requiredCount++;
+    }
+  });
   
   return {
     requiredCount,
-    totalPrice: requiredCount * CONSTANTS.POWER_UNIT_PRICE,
+    totalPrice,
     totalPower
   };
 }
 
-// 설치 인력 계산
+// 설치 인력 계산 (수정됨 - 새로운 기준)
 export function calculateInstallation(moduleCount: number): {
   workers: number;
   workerRange: string;
   totalPrice: number;
 } {
   let workers: number;
-  let workerRange: string;
   
-  if (moduleCount <= 50) {
-    workers = 2;
-    workerRange = '2명';
-  } else if (moduleCount <= 100) {
+  if (moduleCount <= 60) {
     workers = 3;
-    workerRange = '2-3명';
-  } else if (moduleCount <= 200) {
-    workers = 4;
-    workerRange = '3-4명';
+  } else if (moduleCount <= 100) {
+    workers = 5;
+  } else if (moduleCount <= 150) {
+    workers = 7;
+  } else if (moduleCount <= 250) {
+    workers = 9;
+  } else if (moduleCount <= 300) {
+    workers = 12;
   } else {
-    workers = Math.ceil(moduleCount / 50);
-    workerRange = `${workers-1}-${workers}명`;
+    workers = 15;
   }
+  
+  const workerRange = `${workers}명`;
   
   return {
     workers,
@@ -162,23 +200,15 @@ export function calculateInstallation(moduleCount: number): {
   };
 }
 
-// 운송비 계산
+// 운송비 계산 (수정됨 - 200개 기준)
 export function calculateTransport(moduleCount: number): {
   price: number;
   range: string;
   trucks: number;
 } {
-  const trucks = Math.ceil(moduleCount / 100);
-  const price = CONSTANTS.TRANSPORT_BASE + (trucks - 1) * CONSTANTS.TRANSPORT_PER_TRUCK;
-  
-  let range: string;
-  if (trucks === 1) {
-    range = '1톤';
-  } else if (trucks <= 2) {
-    range = '1-2.5톤';
-  } else {
-    range = `${trucks-1}-${trucks}톤`;
-  }
+  const price = CONSTANTS.TRANSPORT_BASE; // 200개 이하 고정, 초과시 별도 협의
+  const range = moduleCount <= 200 ? '기본' : '별도 협의';
+  const trucks = 1; // 기본 1대
   
   return { price, range, trucks };
 }
@@ -208,15 +238,18 @@ export function calculatePeriodSurcharge(basePrice: number, days: number): {
 export function calculateMultiLEDQuote(ledSpecs: LEDSpec[], isMembership: boolean = false): QuoteResult {
   const modules = calculateModules(ledSpecs, isMembership);
   const maxHeight = Math.max(...ledSpecs.map(led => led.stageHeight || 0));
-  const structure = calculateStructure(ledSpecs, maxHeight);
-  const controller = calculateControllers(modules.count);
-  const power = calculatePower(modules.count);
+  const structure = calculateStructure(ledSpecs);
+  const controller = calculateControllers(ledSpecs);
+  const power = calculatePower(ledSpecs);
   const installation = calculateInstallation(modules.count);
   
-  // 오퍼레이터 비용 계산 (LED별 오퍼레이터 일수 합산)
-  const totalOperatorDays = ledSpecs.reduce((sum, led) => {
-    return sum + (led.needOperator ? led.operatorDays : 0);
-  }, 0);
+  // 오퍼레이터 비용 계산 (실제 필요한 경우만)
+  let totalOperatorDays = 0;
+  ledSpecs.forEach(led => {
+    if (led.needOperator && led.operatorDays > 0) {
+      totalOperatorDays += led.operatorDays;
+    }
+  });
   
   const operation = {
     days: totalOperatorDays,
@@ -262,10 +295,13 @@ export function calculateRentalLEDQuote(ledSpecs: LEDSpec[], rentalDays: number)
   // 렌탈 기간별 할증 적용
   const periodSurcharge = calculatePeriodSurcharge(baseQuote.subtotal, rentalDays);
   
-  // 운영 인력은 렌탈 기간만큼
-  const totalOperatorDays = ledSpecs.reduce((sum, led) => {
-    return sum + (led.needOperator ? led.operatorDays : 0);
-  }, 0);
+  // 렌탈은 운영 인력이 렌탈 기간만큼 필요
+  let totalOperatorDays = 0;
+  ledSpecs.forEach(led => {
+    if (led.needOperator && led.operatorDays > 0) {
+      totalOperatorDays += led.operatorDays;
+    }
+  });
   
   const operation = {
     days: totalOperatorDays * rentalDays,

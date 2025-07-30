@@ -58,9 +58,13 @@ export function prepareNotionData(
       controllerCost: quote?.controller?.totalPrice || 0,
       powerCost: quote?.power?.totalPrice || 0,
       installationCost: quote?.installation?.totalPrice || 0,
-      operatorCost: quote?.operation?.totalPrice || 0,
       transportCost: quote?.transport?.price || 0
     };
+    
+    // 오퍼레이터 비용이 있을 때만 추가
+    if (quote?.operation?.totalPrice && quote.operation.totalPrice > 0) {
+      notionData.operatorCost = quote.operation.totalPrice;
+    }
     
     // 실외 렌탈인 경우 추가 필드
     if (session.data.installEnvironment === '실외') {
@@ -95,7 +99,6 @@ export function prepareNotionData(
       controllerCost: quote?.controller?.totalPrice || 0,
       powerCost: quote?.power?.totalPrice || 0,
       installationCost: quote?.installation?.totalPrice || 0,
-      operatorCost: quote?.operation?.totalPrice || 0,
       transportCost: quote?.transport?.price || 0,
       maxStageHeight: quote?.maxStageHeight || 0,
       installationWorkers: quote?.installationWorkers || 0,
@@ -106,6 +109,11 @@ export function prepareNotionData(
       structureUnitPrice: quote?.structureUnitPrice || 0,
       structureUnitPriceDescription: quote?.structureUnitPriceDescription || ''
     };
+    
+    // 오퍼레이터 비용이 있을 때만 추가
+    if (quote?.operation?.totalPrice && quote.operation.totalPrice > 0) {
+      notionData.operatorCost = quote.operation.totalPrice;
+    }
   }
   
   return notionData;
