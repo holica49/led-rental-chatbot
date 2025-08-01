@@ -166,6 +166,42 @@ export function handleRentalLEDCount(message: string, session: UserSession): Kak
   const previousResponse = checkPreviousRequest(message, session);
   if (previousResponse) return previousResponse;
   
+  // 실외 렌탈인 경우 - LED 개수만 처리
+  if (session.data.installEnvironment === '실외') {
+    const validation = validateNumber(message, 1, 5);
+    if (!validation.valid || !validation.value) {
+      return {
+        text: errorMessage(validation.error || VALIDATION_ERRORS.NUMBER_RANGE(1, 5)),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.LED_COUNT[0], value: '1' },
+          { label: BUTTONS.LED_COUNT[1], value: '2' },
+          { label: BUTTONS.LED_COUNT[2], value: '3' },
+          { label: BUTTONS.LED_COUNT[3], value: '4' },
+          { label: BUTTONS.LED_COUNT[4], value: '5' }
+        ])
+      };
+    }
+    
+    session.ledCount = validation.value;
+    session.currentLED = 1;
+    session.data.ledSpecs = [];
+    session.step = 'rental_led_specs';
+    
+    return {
+      text: confirmAndAsk(
+        `총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다`,
+        '',
+        createLEDSizePrompt(session.currentLED)
+      ),
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
+        { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
+        { label: BUTTONS.LED_SIZE_4000_2500, value: '4000x2500' }
+      ])
+    };
+  }
+  
+  // 실내 렌탈인 경우 - 기존 로직 (지지구조물 선택 포함)
   // 지지구조물 선택 처리
   if (message.includes('목공')) {
     session.data.supportStructureType = '목공 설치';
