@@ -24,7 +24,7 @@ export const SERVICE_TOTAL_STEPS = {
   RENTAL: 12,     // 실내 기준 (LED 1개 기준)
   RENTAL_OUTDOOR: 13,  // 실외는 예산/목적 추가
   MEMBERSHIP: 11  // 멤버코드~연락처까지 (LED 1개 기준)
-} as const;
+} as const; 
 
 // 서비스별 단계 번호 계산 함수
 export function getStepNumber(serviceType: string, currentStep: string, ledCount: number = 1, currentLED: number = 1): number {
