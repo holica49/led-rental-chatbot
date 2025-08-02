@@ -346,5 +346,5 @@ export const PROCESS_CONFIG: Record<string, ServiceProcess> = {
 // Quick Replies 설정은 별도 파일에서 import
 import { BUTTONS } from '../constants/messages.js';
 import { getQuickRepliesConfig } from './quick-replies-config.js';
-
+ 
 export const QUICK_REPLIES_CONFIG = getQuickRepliesConfig(BUTTONS);
