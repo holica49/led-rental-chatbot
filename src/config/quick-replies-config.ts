@@ -1,6 +1,5 @@
-import { BUTTONS } from '../constants/messages.js';
-
-export const QUICK_REPLIES_CONFIG = {
+// Lazy evaluation을 위해 함수로 감싸기
+export const getQuickRepliesConfig = (BUTTONS: any) => ({
   SERVICE_SELECT: [
     { label: BUTTONS.SERVICE_INSTALL, value: '설치' },
     { label: BUTTONS.SERVICE_RENTAL, value: '렌탈' },
@@ -101,4 +100,4 @@ export const QUICK_REPLIES_CONFIG = {
   NEW_QUOTE_SELECT: [
     { label: BUTTONS.NEW_QUOTE, value: '처음부터' },
   ],
-} as const;
+} as const);
