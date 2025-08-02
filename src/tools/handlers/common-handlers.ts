@@ -753,23 +753,20 @@ function createMembershipConfirmation(session: UserSession): string {
     const moduleCount = (w / 500) * (h / 500);
     const power = calculateLEDPower(led.size);
     
-    let details = `LED${index + 1}: ${led.size} (${moduleCount}개, ${power})`;
+    let details = `LED${index + 1}: ${led.size} (${moduleCount}개, ${power}`;
     
     // 추가 옵션 표시
-    const options = [];
     if (led.needOperator) {
-      options.push(`오퍼레이터 ${led.operatorDays}일`);
+      details += `, 오퍼레이터 ${led.operatorDays}일`;
     }
     if (led.prompterConnection) {
-      options.push('프롬프터 연결');
+      details += ', 프롬프터 연결';
     }
     if (led.relayConnection) {
-      options.push('중계카메라 연결');
+      details += ', 중계카메라 연결';
     }
     
-    if (options.length > 0) {
-      details += `, ${options.join(', ')}`;
-    }
+    details += ')';
     
     return details;
   }).join('\n');

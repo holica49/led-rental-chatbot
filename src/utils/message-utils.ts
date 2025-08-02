@@ -152,10 +152,11 @@ export function calculateModuleCount(size: string): number {
 export function createLEDSummary(ledSpecs: Array<{ size: string; stageHeight?: number }>): string {
   return ledSpecs.map((led, index) => {
     const moduleCount = calculateModuleCount(led.size);
-    let summary = formatLEDInfo(index + 1, led.size, moduleCount);
+    let summary = `LED${index + 1}: ${led.size} (${moduleCount}개`;
     if (led.stageHeight !== undefined) {
-      summary += `, 무대높이: ${led.stageHeight}mm`;
+      summary += `, 무대높이 : ${led.stageHeight}mm`;
     }
+    summary += ')';
     return summary;
   }).join('\n');
 }
