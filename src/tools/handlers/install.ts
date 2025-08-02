@@ -6,7 +6,8 @@ import {
   createQuickReplies,
   validateNotEmpty,
   validateSelection,
-  createInstallProjectName
+  createInstallProjectName,
+  askWithProgress
 } from '../../utils/handler-utils.js';
 import { checkResetRequest, checkPreviousRequest } from './common-handlers.js';
 
@@ -25,7 +26,7 @@ export function handleInstallEnvironment(message: string, session: UserSession):
     session.data.installEnvironment = '실외';
   } else {
     return {
-      text: MESSAGES.SELECT_ENVIRONMENT,
+      text: askWithProgress(MESSAGES.SELECT_ENVIRONMENT, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.INDOOR_SIMPLE, value: '실내' },
         { label: BUTTONS.OUTDOOR_SIMPLE, value: '실외' }
@@ -35,11 +36,7 @@ export function handleInstallEnvironment(message: string, session: UserSession):
   
   session.step = 'install_region';
   return {
-    text: confirmAndAsk(
-      `${session.data.installEnvironment} 설치로 선택하셨습니다`,
-      '',
-      MESSAGES.INPUT_REGION
-    ),
+    text: askWithProgress(MESSAGES.INPUT_REGION, session),
     quickReplies: []
   };
 }
@@ -66,7 +63,7 @@ export function handleInstallRegion(message: string, session: UserSession): Kaka
   session.step = 'install_space';
 
   return {
-    text: confirmAndAsk('설치 지역', session.data.installRegion, MESSAGES.SELECT_SPACE),
+    text: askWithProgress(MESSAGES.SELECT_SPACE, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.SPACE_CORPORATE, value: '기업' },
       { label: BUTTONS.SPACE_RETAIL, value: '상가' },
@@ -89,17 +86,17 @@ export function handleInstallSpace(message: string, session: UserSession): Kakao
   if (previousResponse) return previousResponse;
 
   const validSpaces = ['기업', '상가', '병원', '공공', '숙박', '전시홀', '기타'];
-  const validation = validateSelection(message, validSpaces, MESSAGES.SELECT_SPACE);
+  const validation = validateSelection(message, validSpaces, MESSAGES.SELECT_SPACE, session);
   
   if (!validation.valid && validation.response) {
     return validation.response;
   }
   
   session.data.installSpace = message.trim();
-  session.step = 'install_inquiry_purpose';  // 변경: inquiry_purpose -> install_inquiry_purpose
+  session.step = 'install_inquiry_purpose';
   
   return {
-    text: confirmAndAsk('설치 공간', session.data.installSpace, MESSAGES.SELECT_PURPOSE),
+    text: askWithProgress(MESSAGES.SELECT_PURPOSE, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.PURPOSE_RESEARCH, value: '정보 조사' },
       { label: BUTTONS.PURPOSE_PLANNING, value: '아이디어 기획' },
@@ -120,7 +117,7 @@ export function handleInquiryPurpose(message: string, session: UserSession): Kak
   if (previousResponse) return previousResponse;
 
   const validPurposes = ['정보 조사', '아이디어 기획', '견적', '구매', '기타'];
-  const validation = validateSelection(message, validPurposes, MESSAGES.SELECT_PURPOSE);
+  const validation = validateSelection(message, validPurposes, MESSAGES.SELECT_PURPOSE, session);
   
   if (!validation.valid && validation.response) {
     return validation.response;
@@ -130,7 +127,7 @@ export function handleInquiryPurpose(message: string, session: UserSession): Kak
   session.step = 'install_budget';
   
   return {
-    text: confirmAndAsk('문의 목적', session.data.inquiryPurpose, MESSAGES.SELECT_BUDGET),
+    text: askWithProgress(MESSAGES.SELECT_BUDGET, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.BUDGET_UNDER_10M, value: '1000만원 이하' },
       { label: BUTTONS.BUDGET_10M_30M, value: '1000~3000만원' },
@@ -152,7 +149,7 @@ export function handleInstallBudget(message: string, session: UserSession): Kaka
   if (previousResponse) return previousResponse;
 
   const validBudgets = ['1000만원 이하', '1000~3000만원', '3000~5000만원', '5000만원~1억', '1억 이상', '미정'];
-  const validation = validateSelection(message, validBudgets, MESSAGES.SELECT_BUDGET);
+  const validation = validateSelection(message, validBudgets, MESSAGES.SELECT_BUDGET, session);
   
   if (!validation.valid && validation.response) {
     return validation.response;
@@ -162,7 +159,7 @@ export function handleInstallBudget(message: string, session: UserSession): Kaka
   session.step = 'install_schedule';
   
   return {
-    text: confirmAndAsk('설치 예산', session.data.installBudget, MESSAGES.INPUT_SCHEDULE),
+    text: askWithProgress(MESSAGES.INPUT_SCHEDULE, session),
     quickReplies: []
   };
 }
@@ -189,7 +186,7 @@ export function handleInstallSchedule(message: string, session: UserSession): Ka
   session.step = 'get_additional_requests';
   
   return {
-    text: confirmAndAsk('설치 일정', session.data.installSchedule, MESSAGES.REQUEST_ADDITIONAL),
+    text: askWithProgress(MESSAGES.REQUEST_ADDITIONAL, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.NONE, value: '없음' }
     ])
@@ -200,7 +197,7 @@ export const installHandlers = {
   'install_environment': handleInstallEnvironment,
   'install_region': handleInstallRegion,
   'install_space': handleInstallSpace,
-  'install_inquiry_purpose': handleInquiryPurpose,  // 변경: inquiry_purpose -> install_inquiry_purpose
+  'install_inquiry_purpose': handleInquiryPurpose,
   'install_budget': handleInstallBudget,
   'install_schedule': handleInstallSchedule
 };

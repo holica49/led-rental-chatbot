@@ -1,5 +1,3 @@
-// src/tools/handlers/rental.ts
-
 import { UserSession, KakaoResponse } from '../../types/index.js';
 import { 
   validateAndNormalizeLEDSize, 
@@ -20,7 +18,8 @@ import {
   createLEDCompleteMessage,
   outdoorEventNotice,
   eventInfoConfirmed,
-  validateSelection
+  validateSelection,
+  askWithProgress
 } from '../../utils/handler-utils.js';
 import { handleResetRequest, checkResetRequest, checkPreviousRequest } from './common-handlers.js';
 
@@ -47,11 +46,7 @@ export function handleRentalIndoorOutdoor(message: string, session: UserSession)
   session.step = 'rental_structure_type';
   
   return {
-    text: eventInfoConfirmed(
-      session.data.eventName, 
-      session.data.venue, 
-      MESSAGES.SELECT_INDOOR_OUTDOOR
-    ),
+    text: askWithProgress(MESSAGES.SELECT_INDOOR_OUTDOOR, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.INDOOR, value: '실내' },
       { label: BUTTONS.OUTDOOR, value: '실외' }
@@ -70,10 +65,10 @@ export function handleRentalStructureType(message: string, session: UserSession)
   
   if (message.includes('실외')) {
     session.data.installEnvironment = '실외';
-    session.step = 'rental_inquiry_purpose';  // 변경: inquiry_purpose -> rental_inquiry_purpose
+    session.step = 'rental_inquiry_purpose';
     
     return {
-      text: outdoorEventNotice() + '\n\n' + MESSAGES.SELECT_PURPOSE,
+      text: askWithProgress(outdoorEventNotice() + '\n\n' + MESSAGES.SELECT_PURPOSE, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.PURPOSE_RESEARCH, value: '정보 조사' },
         { label: BUTTONS.PURPOSE_PLANNING, value: '아이디어 기획' },
@@ -87,11 +82,7 @@ export function handleRentalStructureType(message: string, session: UserSession)
     session.step = 'rental_led_count';
     
     return {
-      text: confirmAndAsk(
-        '실내 행사로 확인되었습니다',
-        '',
-        MESSAGES.SELECT_STRUCTURE
-      ),
+      text: askWithProgress(MESSAGES.SELECT_STRUCTURE, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.STRUCTURE_WOOD, value: '목공 설치' },
         { label: BUTTONS.STRUCTURE_STANDALONE, value: '단독 설치' }
@@ -110,7 +101,7 @@ export function handleRentalOutdoorPurpose(message: string, session: UserSession
   if (previousResponse) return previousResponse;
 
   const validPurposes = ['정보 조사', '아이디어 기획', '견적', '구매', '기타'];
-  const validation = validateSelection(message, validPurposes, MESSAGES.SELECT_PURPOSE);
+  const validation = validateSelection(message, validPurposes, MESSAGES.SELECT_PURPOSE, session);
   
   if (!validation.valid && validation.response) {
     return validation.response;
@@ -120,7 +111,7 @@ export function handleRentalOutdoorPurpose(message: string, session: UserSession
   session.step = 'rental_outdoor_budget';
   
   return {
-    text: confirmAndAsk('문의 목적', session.data.inquiryPurpose, MESSAGES.SELECT_BUDGET),
+    text: askWithProgress(MESSAGES.SELECT_BUDGET, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.BUDGET_UNDER_10M, value: '1000만원 이하' },
       { label: BUTTONS.BUDGET_10M_30M, value: '1000~3000만원' },
@@ -142,7 +133,7 @@ export function handleRentalOutdoorBudget(message: string, session: UserSession)
   if (previousResponse) return previousResponse;
 
   const validBudgets = ['1000만원 이하', '1000~3000만원', '3000~5000만원', '5000만원~1억', '1억 이상', '미정'];
-  const validation = validateSelection(message, validBudgets, MESSAGES.SELECT_BUDGET);
+  const validation = validateSelection(message, validBudgets, MESSAGES.SELECT_BUDGET, session);
   
   if (!validation.valid && validation.response) {
     return validation.response;
@@ -152,7 +143,7 @@ export function handleRentalOutdoorBudget(message: string, session: UserSession)
   session.step = 'rental_period';
   
   return {
-    text: confirmAndAsk('설치 예산', session.data.installBudget, MESSAGES.INPUT_PERIOD),
+    text: askWithProgress(MESSAGES.INPUT_PERIOD, session),
     quickReplies: []
   };
 }
@@ -188,11 +179,7 @@ export function handleRentalLEDCount(message: string, session: UserSession): Kak
     session.step = 'rental_led_specs';
     
     return {
-      text: confirmAndAsk(
-        `총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다`,
-        '',
-        createLEDSizePrompt(session.currentLED)
-      ),
+      text: createLEDSizePrompt(session.currentLED, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
         { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
@@ -209,7 +196,7 @@ export function handleRentalLEDCount(message: string, session: UserSession): Kak
     session.data.supportStructureType = '단독 설치';
   } else if (!session.data.supportStructureType) {
     return {
-      text: MESSAGES.SELECT_STRUCTURE,
+      text: askWithProgress(MESSAGES.SELECT_STRUCTURE, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.STRUCTURE_WOOD, value: '목공 설치' },
         { label: BUTTONS.STRUCTURE_STANDALONE, value: '단독 설치' }
@@ -219,11 +206,7 @@ export function handleRentalLEDCount(message: string, session: UserSession): Kak
   
   session.step = 'rental_led_specs';
   return {
-    text: confirmAndAsk(
-      '지지구조물',
-      session.data.supportStructureType,
-      MESSAGES.SELECT_LED_COUNT
-    ),
+    text: askWithProgress(MESSAGES.SELECT_LED_COUNT, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.LED_COUNT[0], value: '1' },
       { label: BUTTONS.LED_COUNT[1], value: '2' },
@@ -264,11 +247,7 @@ export function handleRentalLEDSpecs(message: string, session: UserSession): Kak
     session.data.ledSpecs = [];
     
     return {
-      text: confirmAndAsk(
-        `총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다`,
-        '',
-        createLEDSizePrompt(session.currentLED)
-      ),
+      text: createLEDSizePrompt(session.currentLED, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
         { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
@@ -294,11 +273,7 @@ export function handleRentalLEDSpecs(message: string, session: UserSession): Kak
   session.step = 'rental_stage_height';
   
   return {
-    text: confirmAndAsk(
-      `LED ${session.currentLED}번째 개소`,
-      validation.size,
-      MESSAGES.INPUT_STAGE_HEIGHT
-    ),
+    text: askWithProgress(MESSAGES.INPUT_STAGE_HEIGHT, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.STAGE_HEIGHT_0, value: '0mm' },
       { label: BUTTONS.STAGE_HEIGHT_600, value: '600mm' },
@@ -337,11 +312,7 @@ export function handleRentalStageHeight(message: string, session: UserSession): 
   session.step = 'rental_operator_needs';
   
   return {
-    text: confirmAndAsk(
-      `LED ${session.currentLED}번째 개소 무대 높이`,
-      `${validation.height}mm`,
-      MESSAGES.ASK_OPERATOR
-    ),
+    text: askWithProgress(MESSAGES.ASK_OPERATOR, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.YES, value: '네' },
       { label: BUTTONS.NO, value: '아니요' }
@@ -366,7 +337,7 @@ export function handleRentalOperatorNeeds(message: string, session: UserSession)
   if (needsOperator) {
     session.step = 'rental_operator_days';
     return {
-      text: confirmAndAsk('오퍼레이터 필요', '', MESSAGES.ASK_OPERATOR_DAYS),
+      text: askWithProgress(MESSAGES.ASK_OPERATOR_DAYS, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.DAYS[0], value: '1' },
         { label: BUTTONS.DAYS[1], value: '2' },
@@ -378,7 +349,7 @@ export function handleRentalOperatorNeeds(message: string, session: UserSession)
   } else {
     session.step = 'rental_prompter';
     return {
-      text: confirmAndAsk('오퍼레이터 불필요', '', MESSAGES.ASK_PROMPTER),
+      text: askWithProgress(MESSAGES.ASK_PROMPTER, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.YES, value: '네' },
         { label: BUTTONS.NO, value: '아니요' }
@@ -417,11 +388,7 @@ export function handleRentalOperatorDays(message: string, session: UserSession):
   session.step = 'rental_prompter';
   
   return {
-    text: confirmAndAsk(
-      '오퍼레이터',
-      `${validation.value}일`,
-      MESSAGES.ASK_PROMPTER
-    ),
+    text: askWithProgress(MESSAGES.ASK_PROMPTER, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.YES, value: '네' },
       { label: BUTTONS.NO, value: '아니요' }
@@ -446,11 +413,7 @@ export function handleRentalPrompter(message: string, session: UserSession): Kak
   session.step = 'rental_relay';
   
   return {
-    text: confirmAndAsk(
-      `프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}`,
-      '',
-      MESSAGES.ASK_RELAY
-    ),
+    text: askWithProgress(MESSAGES.ASK_RELAY, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.YES, value: '네' },
       { label: BUTTONS.NO, value: '아니요' }
@@ -477,11 +440,7 @@ export function handleRentalRelay(message: string, session: UserSession): KakaoR
     session.step = 'rental_led_specs';
     
     return {
-      text: confirmAndAsk(
-        `LED ${session.currentLED - 1}번째 개소 설정 완료`,
-        '',
-        createLEDSizePrompt(session.currentLED)
-      ),
+      text: createLEDSizePrompt(session.currentLED, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
         { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
@@ -492,7 +451,7 @@ export function handleRentalRelay(message: string, session: UserSession): KakaoR
     session.step = 'rental_period';
     
     return {
-      text: createLEDCompleteMessage(session) + '\n\n' + MESSAGES.INPUT_PERIOD,
+      text: createLEDCompleteMessage(session) + '\n\n' + askWithProgress(MESSAGES.INPUT_PERIOD, session),
       quickReplies: []
     };
   }
@@ -525,11 +484,7 @@ export function handleRentalPeriod(message: string, session: UserSession): Kakao
     session.step = 'rental_led_count';
     
     return {
-      text: confirmAndAsk(
-        '행사 기간',
-        `${validation.startDate} ~ ${validation.endDate} (${validation.days}일)`,
-        MESSAGES.SELECT_LED_COUNT
-      ),
+      text: askWithProgress(MESSAGES.SELECT_LED_COUNT, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.LED_COUNT[0], value: '1' },
         { label: BUTTONS.LED_COUNT[1], value: '2' },
@@ -543,11 +498,7 @@ export function handleRentalPeriod(message: string, session: UserSession): Kakao
     session.step = 'get_additional_requests';
     
     return {
-      text: confirmAndAsk(
-        '행사 기간',
-        `${validation.startDate} ~ ${validation.endDate} (${validation.days}일)`,
-        MESSAGES.REQUEST_ADDITIONAL
-      ),
+      text: askWithProgress(MESSAGES.REQUEST_ADDITIONAL, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.NONE, value: '없음' }
       ])
@@ -558,7 +509,7 @@ export function handleRentalPeriod(message: string, session: UserSession): Kakao
 export const rentalHandlers = {
   'rental_indoor_outdoor': handleRentalIndoorOutdoor,
   'rental_structure_type': handleRentalStructureType,
-  'rental_inquiry_purpose': handleRentalOutdoorPurpose,  // 변경: inquiry_purpose -> rental_inquiry_purpose
+  'rental_inquiry_purpose': handleRentalOutdoorPurpose,
   'rental_outdoor_budget': handleRentalOutdoorBudget,
   'rental_led_count': handleRentalLEDCount,
   'rental_led_specs': handleRentalLEDSpecs,

@@ -18,6 +18,77 @@ export interface ServiceProcess {
   steps: Record<string, ProcessStep>;
 }
 
+// 서비스별 총 단계 수 (최종 확인 제외)
+export const SERVICE_TOTAL_STEPS = {
+  INSTALL: 10,    // 환경~연락처까지
+  RENTAL: 12,     // 실내 기준 (LED 1개 기준)
+  RENTAL_OUTDOOR: 13,  // 실외는 예산/목적 추가
+  MEMBERSHIP: 11  // 멤버코드~연락처까지 (LED 1개 기준)
+} as const;
+
+// 서비스별 단계 번호 계산 함수
+export function getStepNumber(serviceType: string, currentStep: string, ledCount: number = 1, currentLED: number = 1): number {
+  // LED 관련 단계들
+  const ledSteps = ['led_specs', 'stage_height', 'operator_needs', 'operator_days', 'prompter', 'relay'];
+  
+  // 현재 단계가 LED 관련 단계인지 확인
+  const isLedStep = ledSteps.some(step => currentStep.includes(step));
+  
+  if (isLedStep && ledCount > 1) {
+    // LED 단계 기본 번호 계산
+    const baseStepMap: Record<string, number> = {
+      'rental_led_specs': 5,
+      'rental_stage_height': 5,
+      'rental_operator_needs': 5,
+      'rental_operator_days': 5,
+      'rental_prompter': 5,
+      'rental_relay': 5,
+      'membership_led_specs': 4,
+      'membership_stage_height': 4,
+      'membership_operator_needs': 4,
+      'membership_operator_days': 4,
+      'membership_prompter': 4,
+      'membership_relay': 4,
+    };
+    
+    const baseStep = baseStepMap[currentStep] || 5;
+    // LED별로 6개 단계씩 추가
+    return baseStep + (currentLED - 1) * 6;
+  }
+  
+  // 일반 단계 매핑
+  const stepMap: Record<string, number> = {
+    // 설치
+    'install_environment': 1,
+    'install_region': 2,
+    'install_space': 3,
+    'install_inquiry_purpose': 4,
+    'install_budget': 5,
+    'install_schedule': 6,
+    'get_additional_requests': 7,
+    'get_customer_company': 8,
+    'get_contact_name': 9,
+    'get_contact_title': 10,
+    'get_contact_phone': 10,
+    
+    // 렌탈
+    'rental_indoor_outdoor': 1,
+    'rental_structure_type': 2,
+    'rental_inquiry_purpose': 3,  // 실외만
+    'rental_outdoor_budget': 4,    // 실외만
+    'rental_led_count': 3,         // 실내는 3, 실외는 5
+    'rental_period': 6 + (ledCount - 1) * 6,
+    
+    // 멤버쉽
+    'membership_code': 1,
+    'membership_event_info': 2,
+    'membership_led_count': 3,
+    'membership_period': 4 + (ledCount - 1) * 6,
+  };
+  
+  return stepMap[currentStep] || 1;
+}
+
 export const PROCESS_CONFIG: Record<string, ServiceProcess> = {
   // 설치 서비스 프로세스
   INSTALL: {

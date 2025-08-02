@@ -18,7 +18,8 @@ import {
   createLEDSizePrompt,
   outdoorEventNotice,
   eventInfoConfirmed,
-  memberCodeConfirmed
+  memberCodeConfirmed,
+  askWithProgress
 } from '../../utils/handler-utils.js';
 import { EMOJI, DIVIDER } from '../../utils/message-utils.js';
 import { restorePreviousStep, hasPreviousStep } from '../../utils/session-utils.js';
@@ -473,10 +474,9 @@ export function handleAdditionalRequests(message: string, session: UserSession):
   session.step = session.serviceType === '멤버쉽' ? 'get_contact_name' : 'get_customer_company';
   
   return {
-    text: confirmAndAsk(
-      '요청사항이 저장되었습니다',
-      '',
-      session.serviceType === '멤버쉽' ? MESSAGES.INPUT_NAME : MESSAGES.INPUT_COMPANY
+    text: askWithProgress(
+      session.serviceType === '멤버쉽' ? MESSAGES.INPUT_NAME : MESSAGES.INPUT_COMPANY,
+      session
     ),
     quickReplies: []
   };
@@ -495,7 +495,7 @@ export function handleCustomerCompany(message: string, session: UserSession): Ka
   session.step = 'get_contact_name';
   
   return {
-    text: confirmAndAsk('고객사', session.data.customerName, MESSAGES.INPUT_NAME),
+    text: askWithProgress(MESSAGES.INPUT_NAME, session),
     quickReplies: []
   };
 }
@@ -514,7 +514,7 @@ export function handleContactName(message: string, session: UserSession): KakaoR
     session.data.customerName = message.trim();
     
     return {
-      text: confirmAndAsk('고객사', session.data.customerName, MESSAGES.INPUT_NAME),
+      text: askWithProgress(MESSAGES.INPUT_NAME, session),
       quickReplies: []
     };
   }
@@ -531,7 +531,7 @@ export function handleContactName(message: string, session: UserSession): KakaoR
   session.step = 'get_contact_title';
   
   return {
-    text: confirmAndAsk('담당자', `${session.data.contactName}님`, MESSAGES.INPUT_TITLE),
+    text: askWithProgress(MESSAGES.INPUT_TITLE, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.TITLE_MANAGER, value: '매니저' },
       { label: BUTTONS.TITLE_SENIOR, value: '책임' },
@@ -559,7 +559,7 @@ export function handleContactTitle(message: string, session: UserSession): Kakao
   session.step = 'get_contact_phone';
   
   return {
-    text: confirmAndAsk('직급', session.data.contactTitle, MESSAGES.INPUT_PHONE),
+    text: askWithProgress(MESSAGES.INPUT_PHONE, session),
     quickReplies: []
   };
 }

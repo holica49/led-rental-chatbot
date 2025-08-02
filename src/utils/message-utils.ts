@@ -1,5 +1,8 @@
 // src/utils/message-utils.ts
 
+import { getStepNumber, SERVICE_TOTAL_STEPS } from '../config/process-config.js';
+import { UserSession } from '../types/index.js';
+
 /**
  * 메시지 관련 유틸리티 통합
  */
@@ -34,10 +37,39 @@ export const EMOJI = {
 } as const;
 
 /**
+ * 진행 상황 표시 헬퍼
+ */
+function getProgressText(session: UserSession): string {
+  if (!session.serviceType || !session.step) return '';
+  
+  const serviceType = session.serviceType.toUpperCase();
+  const isOutdoor = session.data.installEnvironment === '실외';
+  const ledCount = session.ledCount || 1;
+  const currentLED = session.currentLED || 1;
+  
+  // 서비스별 총 단계 수 결정
+  let totalSteps = SERVICE_TOTAL_STEPS[serviceType as keyof typeof SERVICE_TOTAL_STEPS] || 10;
+  
+  // 렌탈 실외는 단계가 더 많음
+  if (serviceType === 'RENTAL' && isOutdoor) {
+    totalSteps = SERVICE_TOTAL_STEPS.RENTAL_OUTDOOR;
+  }
+  
+  // LED 개수가 여러 개면 단계 추가
+  if (ledCount > 1) {
+    totalSteps += (ledCount - 1) * 6; // LED당 6개 단계 추가
+  }
+  
+  const currentStep = getStepNumber(session.serviceType, session.step, ledCount, currentLED);
+  
+  return `[${currentStep}/${totalSteps}]`;
+}
+
+/**
  * 서비스 선택 완료 메시지
  */
 export function serviceSelectedMessage(serviceName: string, nextPrompt: string): string {
-  return `${getServiceEmoji(serviceName)} ${serviceName} 서비스를 선택하셨습니다.\n\n${DIVIDER}\n\n${nextPrompt}`;
+  return `${getServiceEmoji(serviceName)} ${serviceName} 서비스를 선택하셨습니다.\n\n${nextPrompt}`;
 }
 
 /**
@@ -48,10 +80,26 @@ export function confirmMessage(label: string, value: string): string {
 }
 
 /**
- * 확인 메시지 + 다음 질문
+ * 확인 메시지 + 다음 질문 (진행 상황 포함)
  */
-export function confirmAndAsk(label: string, value: string, nextPrompt: string): string {
-  return `${confirmMessage(label, value)}\n\n${DIVIDER}\n\n${nextPrompt}`;
+export function confirmAndAsk(label: string, value: string, nextPrompt: string, session?: UserSession): string {
+  // value가 있을 때만 이전 답변 표시 (제거됨)
+  // 진행 상황만 표시
+  const progress = session ? getProgressText(session) : '';
+  
+  if (progress) {
+    return `${progress} ${nextPrompt}`;
+  }
+  
+  return nextPrompt;
+}
+
+/**
+ * 진행 상황과 함께 질문만 표시
+ */
+export function askWithProgress(prompt: string, session: UserSession): string {
+  const progress = getProgressText(session);
+  return `${progress} ${prompt}`;
 }
 
 /**
@@ -156,26 +204,23 @@ export function createFinalConfirmMessage(data: FinalConfirmData): string {
  * 실외 행사 알림 메시지
  */
 export function outdoorEventNotice(): string {
-  return `${EMOJI.OUTDOOR} 실외 행사로 확인되었습니다.\n\n${DIVIDER}\n\n실외 행사는 최수삼 팀장이 별도로 상담을 도와드립니다.\n\n${EMOJI.PERSON} 담당: 최수삼 팀장\n${EMOJI.PHONE} 연락처: 010-2797-2504\n\n견적 요청은 계속 진행하시겠습니까?`;
+  return `${EMOJI.OUTDOOR} 실외 행사로 확인되었습니다.\n\n실외 행사는 최수삼 팀장이 별도로 상담을 도와드립니다.\n\n${EMOJI.PERSON} 담당: 최수삼 팀장\n${EMOJI.PHONE} 연락처: 010-2797-2504\n\n견적 요청은 계속 진행하시겠습니까?`;
 }
 
 /**
- * 멤버 코드 확인 메시지
+ * 멤버 코드 확인 메시지 (진행 상황 포함)
  */
-export function memberCodeConfirmed(code: string, companyName: string = '메쎄이상'): string {
-  return confirmAndAsk(
-    '멤버 코드 확인',
-    `${code} (${companyName})`,
-    '행사명과 행사장을 알려주세요.\n예: 커피박람회 / 수원메쎄 2홀'
-  );
+export function memberCodeConfirmed(code: string, companyName: string = '메쎄이상', session?: UserSession): string {
+  const progress = session ? getProgressText(session) : '';
+  return `${progress} 행사명과 행사장을 알려주세요.\n\n💡 형식: 행사명 / 행사장\n예시: 커피박람회 / 수원메쎄 2홀`;
 }
 
 /**
- * 행사 정보 확인 메시지
+ * 행사 정보 확인 메시지 (진행 상황 포함)
  */
-export function eventInfoConfirmed(eventName: string, venue: string, nextPrompt: string): string {
-  const info = `${successMessage('행사 정보 확인')}\n${EMOJI.INFO} 행사명: ${eventName}\n${EMOJI.INFO} 행사장: ${venue}`;
-  return sectionMessage(info, nextPrompt);
+export function eventInfoConfirmed(eventName: string, venue: string, nextPrompt: string, session?: UserSession): string {
+  const progress = session ? getProgressText(session) : '';
+  return `${progress} ${nextPrompt}`;
 }
 
 /**

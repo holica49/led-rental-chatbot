@@ -17,7 +17,8 @@ import {
   shouldContinueToNextLED,
   createLEDCompleteMessage,
   memberCodeConfirmed,
-  eventInfoConfirmed
+  eventInfoConfirmed,
+  askWithProgress
 } from '../../utils/handler-utils.js';
 import { handleResetRequest, checkResetRequest, checkPreviousRequest } from './common-handlers.js';
 
@@ -38,7 +39,7 @@ export function handleMembershipCode(message: string, session: UserSession): Kak
     session.step = 'membership_event_info';
     
     return {
-      text: memberCodeConfirmed(code),
+      text: memberCodeConfirmed(code, '메쎄이상', session),
       quickReplies: []
     };
   } else {
@@ -74,11 +75,7 @@ export function handleMembershipEventInfo(message: string, session: UserSession)
   session.step = 'membership_led_count';
   
   return {
-    text: eventInfoConfirmed(
-      session.data.eventName,
-      session.data.venue,
-      MESSAGES.SELECT_LED_COUNT
-    ),
+    text: askWithProgress(MESSAGES.SELECT_LED_COUNT, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.LED_COUNT[0], value: '1' },
       { label: BUTTONS.LED_COUNT[1], value: '2' },
@@ -119,11 +116,7 @@ export function handleMembershipLEDCount(message: string, session: UserSession):
   session.step = 'membership_led_specs';
   
   return {
-    text: confirmAndAsk(
-      `총 ${session.ledCount}개소의 LED 설정을 진행하겠습니다`,
-      '',
-      createLEDSizePrompt(session.currentLED)
-    ),
+    text: createLEDSizePrompt(session.currentLED, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
       { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
@@ -158,11 +151,7 @@ export function handleMembershipLEDSpecs(message: string, session: UserSession):
   session.step = 'membership_stage_height';
   
   return {
-    text: confirmAndAsk(
-      `LED ${session.currentLED}번째 개소`,
-      validation.size,
-      MESSAGES.INPUT_STAGE_HEIGHT
-    ),
+    text: askWithProgress(MESSAGES.INPUT_STAGE_HEIGHT, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.STAGE_HEIGHT_0, value: '0mm' },
       { label: BUTTONS.STAGE_HEIGHT_600, value: '600mm' },
@@ -201,11 +190,7 @@ export function handleMembershipStageHeight(message: string, session: UserSessio
   session.step = 'membership_operator_needs';
   
   return {
-    text: confirmAndAsk(
-      `LED ${session.currentLED}번째 개소 무대 높이`,
-      `${validation.height}mm`,
-      MESSAGES.ASK_OPERATOR
-    ),
+    text: askWithProgress(MESSAGES.ASK_OPERATOR, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.YES, value: '네' },
       { label: BUTTONS.NO, value: '아니요' }
@@ -230,7 +215,7 @@ export function handleMembershipOperatorNeeds(message: string, session: UserSess
   if (needsOperator) {
     session.step = 'membership_operator_days';
     return {
-      text: confirmAndAsk('오퍼레이터 필요', '', MESSAGES.ASK_OPERATOR_DAYS),
+      text: askWithProgress(MESSAGES.ASK_OPERATOR_DAYS, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.DAYS[0], value: '1' },
         { label: BUTTONS.DAYS[1], value: '2' },
@@ -242,7 +227,7 @@ export function handleMembershipOperatorNeeds(message: string, session: UserSess
   } else {
     session.step = 'membership_prompter';
     return {
-      text: confirmAndAsk('오퍼레이터 불필요', '', MESSAGES.ASK_PROMPTER),
+      text: askWithProgress(MESSAGES.ASK_PROMPTER, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.YES, value: '네' },
         { label: BUTTONS.NO, value: '아니요' }
@@ -281,11 +266,7 @@ export function handleMembershipOperatorDays(message: string, session: UserSessi
   session.step = 'membership_prompter';
   
   return {
-    text: confirmAndAsk(
-      '오퍼레이터',
-      `${validation.value}일`,
-      MESSAGES.ASK_PROMPTER
-    ),
+    text: askWithProgress(MESSAGES.ASK_PROMPTER, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.YES, value: '네' },
       { label: BUTTONS.NO, value: '아니요' }
@@ -310,11 +291,7 @@ export function handleMembershipPrompter(message: string, session: UserSession):
   session.step = 'membership_relay';
   
   return {
-    text: confirmAndAsk(
-      `프롬프터 연결 ${needsPrompter ? '필요' : '불필요'}`,
-      '',
-      MESSAGES.ASK_RELAY
-    ),
+    text: askWithProgress(MESSAGES.ASK_RELAY, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.YES, value: '네' },
       { label: BUTTONS.NO, value: '아니요' }
@@ -341,11 +318,7 @@ export function handleMembershipRelay(message: string, session: UserSession): Ka
     session.step = 'membership_led_specs';
     
     return {
-      text: confirmAndAsk(
-        `LED ${session.currentLED - 1}번째 개소 설정 완료`,
-        '',
-        createLEDSizePrompt(session.currentLED)
-      ),
+      text: createLEDSizePrompt(session.currentLED, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.LED_SIZE_6000_3000, value: '6000x3000' },
         { label: BUTTONS.LED_SIZE_4000_3000, value: '4000x3000' },
@@ -356,7 +329,7 @@ export function handleMembershipRelay(message: string, session: UserSession): Ka
     session.step = 'membership_period';
     
     return {
-      text: createLEDCompleteMessage(session) + '\n\n' + MESSAGES.INPUT_PERIOD,
+      text: createLEDCompleteMessage(session) + '\n\n' + askWithProgress(MESSAGES.INPUT_PERIOD, session),
       quickReplies: []
     };
   }
@@ -386,11 +359,7 @@ export function handleMembershipPeriod(message: string, session: UserSession): K
   session.step = 'get_additional_requests';
   
   return {
-    text: confirmAndAsk(
-      '행사 기간',
-      `${validation.startDate} ~ ${validation.endDate}`,
-      MESSAGES.REQUEST_ADDITIONAL
-    ),
+    text: askWithProgress(MESSAGES.REQUEST_ADDITIONAL, session),
     quickReplies: createQuickReplies([
       { label: BUTTONS.NONE, value: '없음' }
     ])

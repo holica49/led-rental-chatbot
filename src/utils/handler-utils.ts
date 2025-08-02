@@ -12,7 +12,8 @@ import {
   eventInfoConfirmed,
   memberCodeConfirmed,
   outdoorEventNotice,
-  createInstallProjectName
+  createInstallProjectName,
+  askWithProgress
 } from './message-utils.js';
 
 // Re-export message utils
@@ -26,7 +27,8 @@ export {
   eventInfoConfirmed,
   memberCodeConfirmed,
   outdoorEventNotice,
-  createInstallProjectName
+  createInstallProjectName,
+  askWithProgress
 } from './message-utils.js';
 
 /**
@@ -78,7 +80,7 @@ export function handleEnvironmentSelection(
   
   if (!isIndoor && !isOutdoor) {
     return {
-      text: MESSAGES.SELECT_ENVIRONMENT,
+      text: askWithProgress(MESSAGES.SELECT_ENVIRONMENT, session),
       quickReplies: createQuickReplies([
         { label: BUTTONS.INDOOR_SIMPLE, value: '실내' },
         { label: BUTTONS.OUTDOOR_SIMPLE, value: '실외' }
@@ -90,11 +92,10 @@ export function handleEnvironmentSelection(
   session.step = nextStep;
   
   return {
-    text: confirmAndAsk(
-      `${session.data.installEnvironment} ${session.serviceType === '설치' ? '설치' : '행사'}로 선택하셨습니다`,
-      '',
+    text: askWithProgress(
       session.serviceType === '설치' ? MESSAGES.INPUT_REGION : 
-      isOutdoor ? outdoorEventNotice() : MESSAGES.SELECT_STRUCTURE
+      isOutdoor ? outdoorEventNotice() : MESSAGES.SELECT_STRUCTURE,
+      session
     ),
     quickReplies: session.serviceType === '설치' ? [] :
       isOutdoor ? createQuickReplies([
@@ -108,13 +109,18 @@ export function handleEnvironmentSelection(
 }
 
 /**
- * LED 크기 입력 프롬프트 생성
+ * LED 크기 입력 프롬프트 생성 (진행 상황 포함)
  */
-export function createLEDSizePrompt(ledNumber: number): string {
-  return `LED ${ledNumber}번째 화면의 크기를 알려주세요.
+export function createLEDSizePrompt(ledNumber: number, session?: UserSession): string {
+  const prompt = `LED ${ledNumber}번째 화면의 크기를 알려주세요.
 
 💡 가로x세로 형식으로 입력해 주시면 됩니다. (단위: mm)
 예시: 5000x3000`;
+  
+  if (session) {
+    return askWithProgress(prompt, session);
+  }
+  return prompt;
 }
 
 /**
@@ -146,7 +152,7 @@ export function shouldContinueToNextLED(session: UserSession): boolean {
 }
 
 /**
- * LED 설정 완료 메시지 생성
+ * LED 설정 완료 메시지 생성 (진행 상황 포함)
  */
 export function createLEDCompleteMessage(session: UserSession): string {
   const summary = createLEDSummary(session.data.ledSpecs);
@@ -169,12 +175,12 @@ export function validateNotEmpty(value: string, fieldName: string): { valid: boo
 /**
  * 선택 옵션 검증
  */
-export function validateSelection(value: string, options: string[], promptMessage: string): { valid: boolean; response?: KakaoResponse } {
+export function validateSelection(value: string, options: string[], promptMessage: string, session?: UserSession): { valid: boolean; response?: KakaoResponse } {
   if (!options.includes(value.trim())) {
     return {
       valid: false,
       response: {
-        text: promptMessage,
+        text: session ? askWithProgress(promptMessage, session) : promptMessage,
         quickReplies: createQuickReplies(options.map(opt => ({ label: opt })))
       }
     };
