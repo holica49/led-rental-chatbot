@@ -1,4 +1,4 @@
-// src/config/process-config.ts
+import { MESSAGES, BUTTONS } from '../constants/messages.js';
 
 /**
  * 챗봇 프로세스 플로우 설정
@@ -446,6 +446,3 @@ export const QUICK_REPLIES_CONFIG = {
     { label: BUTTONS.NEW_QUOTE, value: '처음부터' },
   ],
 } as const;
-
-// messages.ts import 필요
-import { MESSAGES, BUTTONS } from '../constants/messages.js';
