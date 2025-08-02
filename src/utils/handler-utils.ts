@@ -114,8 +114,9 @@ export function handleEnvironmentSelection(
 export function createLEDSizePrompt(ledNumber: number, session?: UserSession): string {
   const prompt = `LED ${ledNumber}번째 화면의 크기를 알려주세요.
 
-💡 가로x세로 형식으로 입력해 주시면 됩니다. (단위: mm)
-예시: 5000x3000`;
+가로x세로 형식으로 입력해 주시면 됩니다. (단위: mm)
+
+💡 예시: 5000x3000`;
   
   if (session) {
     return askWithProgress(prompt, session);
