@@ -607,7 +607,8 @@ export async function handleFinalConfirmation(message: string, session: UserSess
       let schedules: { eventSchedule: string; installSchedule: string; rehearsalSchedule: string; dismantleSchedule: string } | null = null;
 
       if (sessionCopy.serviceType === '렌탈' && sessionCopy.data.rentalPeriod) {
-        quote = calculateRentalLEDQuote(sessionCopy.data.ledSpecs, sessionCopy.data.rentalPeriod);
+        const isIndoor = sessionCopy.data.installEnvironment === '실내';
+        quote = calculateRentalLEDQuote(sessionCopy.data.ledSpecs, sessionCopy.data.rentalPeriod, isIndoor);
         schedules = calculateScheduleDates(sessionCopy.data.eventStartDate!, sessionCopy.data.eventEndDate!);
       } else if (sessionCopy.serviceType === '멤버쉽') {
         quote = calculateMultiLEDQuote(sessionCopy.data.ledSpecs, true);

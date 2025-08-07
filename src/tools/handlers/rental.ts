@@ -448,12 +448,25 @@ export function handleRentalRelay(message: string, session: UserSession): KakaoR
       ])
     };
   } else {
-    session.step = 'rental_period';
-    
-    return {
-      text: createLEDCompleteMessage(session) + '\n\n' + askWithProgress(MESSAGES.INPUT_PERIOD, session),
-      quickReplies: []
-    };
+    // 실외는 이미 행사 기간을 입력받았으므로 바로 추가 요청사항으로
+    if (session.data.installEnvironment === '실외') {
+      session.step = 'get_additional_requests';
+      
+      return {
+        text: createLEDCompleteMessage(session) + '\n\n' + askWithProgress(MESSAGES.REQUEST_ADDITIONAL, session),
+        quickReplies: createQuickReplies([
+          { label: BUTTONS.NONE, value: '없음' }
+        ])
+      };
+    } else {
+      // 실내는 행사 기간 입력
+      session.step = 'rental_period';
+      
+      return {
+        text: createLEDCompleteMessage(session) + '\n\n' + askWithProgress(MESSAGES.INPUT_PERIOD, session),
+        quickReplies: []
+      };
+    }
   }
 }
 

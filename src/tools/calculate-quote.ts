@@ -302,13 +302,11 @@ export function calculateMultiLEDQuote(ledSpecs: LEDSpec[], isMembership: boolea
 }
 
 // 렌탈 LED 견적 계산
-export function calculateRentalLEDQuote(ledSpecs: LEDSpec[], rentalDays: number): RentalQuoteResult {
-  const baseQuote = calculateMultiLEDQuote(ledSpecs, false);
+export function calculateRentalLEDQuote(ledSpecs: LEDSpec[], rentalDays: number, isIndoor: boolean = true): RentalQuoteResult {
+  const modules = calculateModules(ledSpecs, false);
+  const transport = calculateTransport(modules.count);
   
-  // 렌탈 기간별 할증 적용
-  const periodSurcharge = calculatePeriodSurcharge(baseQuote.subtotal, rentalDays);
-  
-  // 렌탈은 운영 인력이 렌탈 기간만큼 필요
+  // 오퍼레이터 비용 계산
   let totalOperatorDays = 0;
   ledSpecs.forEach(led => {
     if (led.needOperator && led.operatorDays > 0) {
@@ -317,26 +315,63 @@ export function calculateRentalLEDQuote(ledSpecs: LEDSpec[], rentalDays: number)
   });
   
   const operation = {
-    days: totalOperatorDays * rentalDays,
-    totalPrice: totalOperatorDays * rentalDays * CONSTANTS.OPERATOR_DAILY_RATE
+    days: totalOperatorDays,
+    totalPrice: totalOperatorDays * CONSTANTS.OPERATOR_DAILY_RATE
   };
   
-  const subtotal = baseQuote.ledModules.price + baseQuote.structure.totalPrice + 
-                  baseQuote.controller.totalPrice + baseQuote.power.totalPrice + 
-                  baseQuote.installation.totalPrice + operation.totalPrice + 
-                  baseQuote.transport.price + periodSurcharge.surchargeAmount;
+  // 기간 할증 계산 (LED 모듈 비용에만 적용)
+  const periodSurcharge = calculatePeriodSurcharge(modules.price, rentalDays);
+  
+  // 실내 렌탈은 일부 항목만 계산
+  const structure = { 
+    unitPrice: 0, 
+    totalPrice: 0, 
+    description: '시스템 비계', 
+    area: 0 
+  };
+  const controller = { 
+    count: 0, 
+    totalPrice: 0 
+  };
+  const power = { 
+    requiredCount: 0, 
+    totalPrice: 0, 
+    totalPower: 0 
+  };
+  const installation = { 
+    workers: 0, 
+    workerRange: '0명', 
+    totalPrice: 0 
+  };
+  
+  // 렌탈 실내: LED 모듈 + 운반비 + 오퍼레이터 + 기간할증
+  const subtotal = modules.price + transport.price + operation.totalPrice + periodSurcharge.surchargeAmount;
   
   const vat = Math.round(subtotal * CONSTANTS.VAT_RATE);
   const total = subtotal + vat;
   
   return {
-    ...baseQuote,
+    totalModuleCount: modules.count,
+    ledModules: modules,
+    structure,
+    controller,
+    power,
+    installation,
     operation,
+    transport,
     periodSurcharge,
     subtotal,
     vat,
     total,
-    rentalDays
+    rentalDays,
+    maxStageHeight: Math.max(...ledSpecs.map(led => led.stageHeight || 0)),
+    installationWorkers: 0,
+    installationWorkerRange: '0명',
+    controllerCount: 0,
+    powerRequiredCount: 0,
+    transportRange: transport.range,
+    structureUnitPrice: 0,
+    structureUnitPriceDescription: '시스템 비계'
   };
 }
 
