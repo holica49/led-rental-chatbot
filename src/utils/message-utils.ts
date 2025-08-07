@@ -60,6 +60,11 @@ function getProgressText(session: UserSession): string {
     totalSteps += (ledCount - 1) * 6; // LED당 6개 단계 추가
   }
   
+  // 최종 확인 단계는 제외
+  if (session.step === 'final_confirmation') {
+    totalSteps += 1;
+  }
+  
   const currentStep = getStepNumber(session.serviceType, session.step, ledCount, currentLED);
   
   return `[${currentStep}/${totalSteps}]`;
@@ -147,7 +152,7 @@ export function calculateModuleCount(size: string): number {
 }
 
 /**
- * LED 요약 생성
+ * LED 요약 생성 (수정됨)
  */
 export function createLEDSummary(ledSpecs: Array<{ size: string; stageHeight?: number }>): string {
   return ledSpecs.map((led, index) => {
