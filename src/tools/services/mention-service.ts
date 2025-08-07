@@ -1,141 +1,121 @@
 import { Client } from '@notionhq/client';
-import { LEDSpec } from '../../types/index.js';  // 이 줄 추가
+import { LEDSpec } from '../../types/index.js';
+import { 
+  STATUS_MESSAGES, 
+  getNotionServiceType, 
+  getManagerId, 
+  getManagerName,
+  COMMON_ELEMENTS 
+} from '../../constants/notion-messages.js';
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-  interface MentionEventData {
-    serviceType?: string;
-    eventName?: string;
-    customerName?: string;
-    contactName?: string;
-    contactTitle?: string;
-    contactPhone?: string;
-    eventPeriod?: string;
-    venue?: string;
-    totalAmount?: number;
-    ledSpecs?: LEDSpec[];
-  }
+interface MentionEventData {
+  serviceType?: string;
+  eventName?: string;
+  customerName?: string;
+  contactName?: string;
+  contactTitle?: string;
+  contactPhone?: string;
+  eventPeriod?: string;
+  venue?: string;
+  totalAmount?: number;
+  ledSpecs?: LEDSpec[];
+  memberCode?: string;
+}
 
 export async function addMentionToPage(pageId: string, eventData: MentionEventData) {
   try {
-    const managersConfig = JSON.parse(process.env.MANAGERS_CONFIG || '{"managers":[]}');
+    const notionServiceType = getNotionServiceType(eventData.serviceType || '');
+    const managerId = getManagerId(notionServiceType);
+    const managerName = getManagerName(notionServiceType);
     
-    let targetManagers = [];
-    
-    if (eventData.serviceType === '설치') {
-      targetManagers = managersConfig.managers.filter((m: any) => 
-        m.notionId === '225d872b-594c-8157-b968-0002e2380097'
-      );
-    } else if (eventData.serviceType === '렌탈' || eventData.serviceType === '멤버쉽') {
-      targetManagers = managersConfig.managers.filter((m: any) => 
-        m.notionId === '237d872b-594c-8174-9ab2-00024813e3a9'
-      );
-    } else {
-      targetManagers = managersConfig.managers.filter((m: any) => m.isActive);
-    }
-    
-    if (targetManagers.length === 0) {
-      console.warn('지정된 담당자가 없습니다.');
-      return;
-    }
-    
-    const richTextContent: any[] = [
-      {
-        type: 'text',
-        text: { content: '🚨 새로운 견적 요청이 접수되었습니다!\n\n' },
-        annotations: { bold: true, color: 'red' }
-      },
-      {
-        type: 'text',
-        text: { content: `🔖 서비스 유형: ${eventData.serviceType}\n` },
-        annotations: { bold: true }
-      },
-      {
-        type: 'text',
-        text: { content: `📋 행사명: ${eventData.eventName}\n` },
-        annotations: { bold: true }
-      },
-      {
-        type: 'text',
-        text: { content: `🏢 고객사: ${eventData.customerName}\n` }
-      },
-      {
-        type: 'text',
-        text: { content: `👤 담당자: ${eventData.contactName} (${eventData.contactTitle})\n` }
-      },
-      {
-        type: 'text',
-        text: { content: `📞 연락처: ${eventData.contactPhone}\n` }
-      },
-      {
-        type: 'text',
-        text: { content: `📅 행사기간: ${eventData.eventPeriod}\n` }
-      },
-      {
-        type: 'text',
-        text: { content: `🎪 행사장: ${eventData.venue}\n` }
-      },
-      {
-        type: 'text',
-        text: { content: `💰 견적금액: ${eventData.totalAmount?.toLocaleString() || '계산중'}원\n\n` }
-      }
-    ];
-    
+    // LED 사양 포맷팅
+    let ledSpecsText = '';
     if (eventData.ledSpecs && eventData.ledSpecs.length > 0) {
-      richTextContent.push({
-        type: 'text',
-        text: { content: '📺 LED 사양:\n' },
-        annotations: { bold: true }
-      });
-      
-      eventData.ledSpecs.forEach((spec: any, index: number) => {
+      ledSpecsText = eventData.ledSpecs.map((spec: any, index: number) => {
         const [w, h] = spec.size.split('x').map(Number);
         const moduleCount = (w / 500) * (h / 500);
-        richTextContent.push({
-          type: 'text',
-          text: { content: `${index + 1}. ${spec.size} (무대높이: ${spec.stageHeight}mm, ${moduleCount}개)\n` }
-        });
-      });
+        return `${index + 1}. ${spec.size} (무대높이: ${spec.stageHeight}mm, ${moduleCount}개)`;
+      }).join('\n');
     }
     
-    richTextContent.push({
-      type: 'text',
-      text: { content: '\n' + '─'.repeat(15) + '\n' }
-    });
+    // 템플릿 선택 및 변수 치환
+    let messageTemplate = STATUS_MESSAGES.QUOTE_REQUEST_TO_REVIEW[notionServiceType];
     
-    richTextContent.push({
-      type: 'text',
-      text: { content: '담당자 확인 요청: ' },
-      annotations: { bold: true }
-    });
+    // 변수 치환
+    let messageText = messageTemplate
+      .replace('{{eventName}}', eventData.eventName || '')
+      .replace('{{customerName}}', eventData.customerName || '')
+      .replace('{{contactName}}', eventData.contactName || '')
+      .replace('{{contactTitle}}', eventData.contactTitle || '')
+      .replace('{{contactPhone}}', eventData.contactPhone || '')
+      .replace('{{eventPeriod}}', eventData.eventPeriod || '')
+      .replace('{{venue}}', eventData.venue || '')
+      .replace('{{ledSpecs}}', ledSpecsText)
+      .replace('{{memberCode}}', eventData.memberCode || '')
+      .replace('{{totalAmount}}', eventData.totalAmount?.toLocaleString() || '0')
+      .replace('{{mention}}', `${COMMON_ELEMENTS.MENTION_REQUEST}@${managerName}`)
+      .replace('{{timestamp}}', COMMON_ELEMENTS.TIMESTAMP.replace('{{timestamp}}', new Date().toLocaleString('ko-KR')));
     
-    targetManagers.forEach((manager: any, index: number) => {
-      richTextContent.push({
-        type: 'mention',
-        mention: {
-          type: 'user',
-          user: { id: manager.notionId }
+    // Notion rich text 형식으로 변환
+    const richTextContent: any[] = [];
+    
+    // 메시지를 줄바꿈으로 분리하여 처리
+    const lines = messageText.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // 담당자 확인 요청 줄 처리
+      if (line.includes(COMMON_ELEMENTS.MENTION_REQUEST)) {
+        const beforeMention = line.split('@')[0];
+        const afterMention = line.split('@')[1] || '';
+        
+        richTextContent.push({
+          type: 'text',
+          text: { content: beforeMention },
+          annotations: { bold: true }
+        });
+        
+        richTextContent.push({
+          type: 'mention',
+          mention: {
+            type: 'user',
+            user: { id: managerId }
+          }
+        });
+        
+        if (afterMention) {
+          richTextContent.push({
+            type: 'text',
+            text: { content: afterMention }
+          });
         }
-      });
-      
-      if (manager.department) {
+      } else {
+        // 일반 텍스트 처리
+        const isBold = line.includes('새로운') || line.includes('정보:') || line.includes('사양:') || line.includes('다음 단계:');
+        
         richTextContent.push({
           type: 'text',
-          text: { content: `(${manager.department})` }
+          text: { content: line },
+          annotations: { bold: isBold }
         });
       }
       
-      if (index < targetManagers.length - 1) {
+      // 줄바꿈 추가 (마지막 줄 제외)
+      if (i < lines.length - 1) {
         richTextContent.push({
           type: 'text',
-          text: { content: ', ' }
+          text: { content: '\n' }
         });
       }
-    });
+    }
     
+    // 빠른 확인 요청 추가
     richTextContent.push({
       type: 'text',
-      text: { content: '\n\n⏰ 빠른 확인 부탁드립니다!' },
+      text: { content: `\n\n${COMMON_ELEMENTS.QUICK_CHECK}` },
       annotations: { bold: true }
     });
     
