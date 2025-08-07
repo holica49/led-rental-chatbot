@@ -37,7 +37,7 @@ export function checkResetRequest(message: string, session: UserSession): KakaoR
 
 // 공통 리셋 요청 처리 함수
 export function handleResetRequest(session: UserSession): KakaoResponse {
-  session.step = 'start';
+  session.step = 'select_service';
   session.serviceType = undefined;
   session.data = { ledSpecs: [] };
   session.ledCount = 0;
@@ -616,9 +616,11 @@ export async function handleFinalConfirmation(message: string, session: UserSess
 
       const responseText = getSuccessResponseText(sessionCopy, quote);
 
-      session.step = 'start';
+      session.step = 'select_service';  // 'start' -> 'select_service' 변경
       session.data = { ledSpecs: [] };
       session.serviceType = undefined;
+      session.ledCount = 0;
+      session.currentLED = 1;
       
       // 비동기 Notion 저장
       setImmediate(async () => {

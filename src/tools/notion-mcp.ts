@@ -169,28 +169,30 @@ function buildNotionProperties(args: NotionToolInput): Record<string, any> {
   }
 
   if (args.serviceType === '렌탈') {
-    if (args.installEnvironment) {
-      properties['설치 환경'] = { select: { name: args.installEnvironment } };
-    }
-    if (args.supportStructureType) {
-      properties['지지구조물 방식'] = { select: { name: args.supportStructureType } };
-    }
-    // 렌탈 실외인 경우 추가 필드
-    if (args.installEnvironment === '실외') {
-      if (args.inquiryPurpose) {
-        properties['문의 목적'] = { select: { name: args.inquiryPurpose } };
+      if (args.installEnvironment) {
+        properties['설치 환경'] = { select: { name: args.installEnvironment } };
       }
-      if (args.installBudget) {
-        properties['설치 예산'] = { select: { name: args.installBudget } };
+      if (args.supportStructureType) {
+        properties['지지구조물 방식'] = { select: { name: args.supportStructureType } };
+      }
+      // 렌탈 실외인 경우 추가 필드
+      if (args.installEnvironment === '실외') {
+        if (args.inquiryPurpose) {
+          properties['문의 목적'] = { select: { name: args.inquiryPurpose } };
+        }
+        if (args.installBudget) {
+          properties['설치 예산'] = { select: { name: args.installBudget } };
+        }
+      }
+      // 렌탈 특화 비용 필드
+      if (args.periodSurchargeAmount !== undefined) {
+        properties['기간 할증 비용'] = { number: args.periodSurchargeAmount };
       }
     }
-    // 렌탈 비용 필드들
-    if (args.transportCost !== undefined) {
-      properties['운반 비용'] = { number: args.transportCost };
-    }
-    if (args.periodSurchargeAmount !== undefined) {
-      properties['기간 할증 비용'] = { number: args.periodSurchargeAmount };
-    }
+
+  // 운반비는 렌탈과 멤버쉽 모두에 적용
+  if ((args.serviceType === '렌탈' || args.serviceType === '멤버쉽') && args.transportCost !== undefined) {
+    properties['운반 비용'] = { number: args.transportCost };
   }
 
   if (args.serviceType === '멤버쉽' && args.memberCode) {

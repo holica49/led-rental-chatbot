@@ -12,7 +12,6 @@ const CONSTANTS = {
   CONTROLLER_PRICE_UNDER_200: 200000, // 수정: 200인치 미만
   CONTROLLER_PRICE_OVER_200: 500000, // 수정: 200인치 이상
   POWER_PRICE: 500000, // 수정: 250인치 이상만
-  TRANSPORT_BASE: 200000, // 수정: 200개 이하 고정
   VAT_RATE: 0.1,
   // 멤버쉽 할인 관련 상수
   MEMBERSHIP_FREE_MODULES: 500,
@@ -200,15 +199,29 @@ export function calculateInstallation(moduleCount: number): {
   };
 }
 
-// 운송비 계산 (수정됨 - 200개 기준)
+// 운송비 계산 (모듈 개수별 구간 적용)
 export function calculateTransport(moduleCount: number): {
   price: number;
   range: string;
   trucks: number;
 } {
-  const price = CONSTANTS.TRANSPORT_BASE; // 200개 이하 고정, 초과시 별도 협의
-  const range = moduleCount <= 200 ? '기본' : '별도 협의';
-  const trucks = 1; // 기본 1대
+  let price: number;
+  let range: string;
+  let trucks: number;
+  
+  if (moduleCount <= 200) {
+    price = 200000;
+    range = '200개 이하';
+    trucks = 1;
+  } else if (moduleCount <= 400) {
+    price = 500000;
+    range = '201~400개';
+    trucks = 2;
+  } else {
+    price = 700000;
+    range = '401개 이상';
+    trucks = 3;
+  }
   
   return { price, range, trucks };
 }
