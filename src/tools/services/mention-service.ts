@@ -22,6 +22,13 @@ interface MentionEventData {
   totalAmount?: number;
   ledSpecs?: LEDSpec[];
   memberCode?: string;
+  // 설치 서비스 추가 필드
+  installSpace?: string;
+  installEnvironment?: string;
+  installSchedule?: string;
+  installBudget?: string;
+  inquiryPurpose?: string;
+  additionalRequests?: string;
 }
 
 export async function addMentionToPage(pageId: string, eventData: MentionEventData) {
@@ -36,7 +43,27 @@ export async function addMentionToPage(pageId: string, eventData: MentionEventDa
       ledSpecsText = eventData.ledSpecs.map((spec: any, index: number) => {
         const [w, h] = spec.size.split('x').map(Number);
         const moduleCount = (w / 500) * (h / 500);
-        return `${index + 1}. ${spec.size} (무대높이: ${spec.stageHeight}mm, ${moduleCount}개)`;
+        
+        let specText = `${index + 1}. ${spec.size} (무대높이: ${spec.stageHeight}mm`;
+        
+        // 오퍼레이터 정보 추가
+        if (spec.needOperator && spec.operatorDays > 0) {
+          specText += `, 오퍼레이터 ${spec.operatorDays}일`;
+        }
+        
+        // 프롬프터 정보 추가
+        if (spec.prompterConnection) {
+          specText += ', 프롬프터';
+        }
+        
+        // 중계카메라 정보 추가
+        if (spec.relayConnection) {
+          specText += ', 중계카메라';
+        }
+        
+        specText += ')';
+        
+        return specText;
       }).join('\n');
     }
     
@@ -55,6 +82,13 @@ export async function addMentionToPage(pageId: string, eventData: MentionEventDa
       .replace('{{ledSpecs}}', ledSpecsText)
       .replace('{{memberCode}}', eventData.memberCode || '')
       .replace('{{totalAmount}}', eventData.totalAmount?.toLocaleString() || '0')
+      // 설치 서비스 추가 필드
+      .replace('{{installSpace}}', eventData.installSpace || '')
+      .replace('{{installEnvironment}}', eventData.installEnvironment || '')
+      .replace('{{installSchedule}}', eventData.installSchedule || '')
+      .replace('{{installBudget}}', eventData.installBudget || '')
+      .replace('{{inquiryPurpose}}', eventData.inquiryPurpose || '')
+      .replace('{{additionalRequests}}', eventData.additionalRequests || '')
       .replace('{{mention}}', `${COMMON_ELEMENTS.MENTION_REQUEST}@${managerName}`)
       .replace('{{timestamp}}', COMMON_ELEMENTS.TIMESTAMP.replace('{{timestamp}}', new Date().toLocaleString('ko-KR')));
     

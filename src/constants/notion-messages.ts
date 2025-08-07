@@ -52,9 +52,14 @@ export const STATUS_MESSAGES = {
 ✅ 프로젝트 정보:
 - 프로젝트명: {{eventName}}
 - 고객사: {{customerName}}
-- 구축 예정지: {{venue}}
-- 고객: {{contactName}}
+- 고객: {{contactName}} {{contactTitle}}
 - 연락처: {{contactPhone}}
+- 구축 예정지: {{venue}}
+- 설치 공간: {{installSpace}} ({{installEnvironment}})
+- 설치 기간: {{installSchedule}}
+- 설치 예산: {{installBudget}}
+- 문의 목적: {{inquiryPurpose}}
+- 문의사항: {{additionalRequests}}
 
 📋 다음 단계:
 1. 고객 요구사항 검토
@@ -62,50 +67,50 @@ export const STATUS_MESSAGES = {
 3. "견적 승인"으로 상태 변경
 
 {{mention}}
-{{timestamp}}` as const,  // as const 추가
+{{timestamp}}` as const,
 
     RENTAL: `📊 새로운 렌탈 행사 견적 요청
 
 ✅ 행사 정보:
 - 행사명: {{eventName}}
+- 행사장: {{venue}} ({{installEnvironment}})
 - 고객사: {{customerName}}
-- 행사장: {{venue}}
-- 고객: {{contactName}}
+- 고객: {{contactName}} {{contactTitle}}
 - 연락처: {{contactPhone}}
 - 행사 기간: {{eventPeriod}}
+- 문의사항: {{additionalRequests}}
 
 🖥️ LED 사양:
 {{ledSpecs}}
 
 📋 다음 단계:
-1. 견적 정보 검토
-2. 견적서 및 요청서 작성
+1. 행사 정보 검토
+2. 견적서 또는 요청서 작성
 3. 파일 업로드 (자동 승인됨)
 
 {{mention}}
-{{timestamp}}` as const,  // as const 추가
+{{timestamp}}` as const,
 
     MEMBERSHIP: `📊 멤버쉽 행사 견적 요청
 
 ✅ 행사 정보:
 - 행사명: {{eventName}}
-- 고객사: {{customerName}} (멤버쉽)
 - 행사장: {{venue}}
-- 고객: {{contactName}}
+- 고객사: {{customerName}} (멤버쉽)
+- 고객: {{contactName}} {{contactTitle}}
 - 연락처: {{contactPhone}}
 - 행사 기간: {{eventPeriod}}
-- 멤버 코드: {{memberCode}}
 
 🖥️ LED 사양:
 {{ledSpecs}}
 
 📋 다음 단계:
-1. 견적 정보 검토
+1. 행사 정보 검토
 2. 견적서 및 요청서 작성
 3. 파일 업로드 (자동 승인됨)
 
 {{mention}}
-{{timestamp}}` as const,  // as const 추가
+{{timestamp}}` as const,
   },
 
   // 견적 검토 → 견적 승인

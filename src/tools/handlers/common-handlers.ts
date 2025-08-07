@@ -638,7 +638,14 @@ export async function handleFinalConfirmation(message: string, session: UserSess
             eventPeriod: notionData.eventSchedule || notionData.requiredTiming,
             venue: notionData.venue || notionData.installRegion,
             totalAmount: notionData.totalQuoteAmount,
-            ledSpecs: sessionCopy.data.ledSpecs
+            ledSpecs: sessionCopy.data.ledSpecs,
+            // 설치 서비스 추가 필드
+            installSpace: notionData.installSpace,
+            installEnvironment: notionData.installEnvironment,
+            installSchedule: notionData.eventSchedule || notionData.installSchedule,
+            installBudget: notionData.installBudget,
+            inquiryPurpose: notionData.inquiryPurpose,
+            additionalRequests: notionData.additionalRequests
           });
           
           console.log('✅ Notion 저장 완료');
