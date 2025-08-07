@@ -38,11 +38,11 @@ export function calculateLEDInfo(size: string): {
   // 대각선 인치 계산
   const diagonalInch = calculateInch(size);
   
-  // 해상도 계산 (모듈당 128x128 픽셀 기준)
+  // 해상도 계산 (모듈당 168x168 픽셀 기준)
   const widthModules = width / CONSTANTS.MODULE_SIZE;
   const heightModules = height / CONSTANTS.MODULE_SIZE;
-  const widthPixels = widthModules * 128;
-  const heightPixels = heightModules * 128;
+  const widthPixels = widthModules * 168;
+  const heightPixels = heightModules * 168;
   
   // 소비전력 계산
   const moduleCount = widthModules * heightModules;

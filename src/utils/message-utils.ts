@@ -1,5 +1,3 @@
-// src/utils/message-utils.ts
-
 import { getStepNumber, SERVICE_TOTAL_STEPS } from '../config/process-config.js';
 import { UserSession } from '../types/index.js';
 
