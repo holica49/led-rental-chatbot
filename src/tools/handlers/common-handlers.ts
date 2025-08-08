@@ -725,7 +725,32 @@ ${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
 function createRentalIndoorConfirmation(session: UserSession): string {
-  const ledSummary = createLEDSummary(session.data.ledSpecs);
+  const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
+    const [w, h] = led.size.split('x').map(Number);
+    const widthPixels = Math.round((w / 500) * 168);
+    const heightPixels = Math.round((h / 500) * 168);
+    
+    let details = `LED${index + 1}: ${led.size}mm (${widthPixels}x${heightPixels}px`;
+    
+    if (led.stageHeight !== undefined) {
+      details += `, 무대높이 : ${led.stageHeight}mm`;
+    }
+    
+    // 추가 옵션 표시
+    if (led.needOperator) {
+      details += `, 오퍼레이터 ${led.operatorDays}일`;
+    }
+    if (led.prompterConnection) {
+      details += ', 프롬프터 연결';
+    }
+    if (led.relayConnection) {
+      details += ', 중계카메라 연결';
+    }
+    
+    details += ')';
+    
+    return details;
+  }).join('\n');
   
   return `🔖 서비스: LED 렌탈
 ${EMOJI.INFO} 행사명: ${session.data.eventName}
@@ -741,7 +766,15 @@ ${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
 function createRentalOutdoorConfirmation(session: UserSession): string {
-  const ledSummary = createLEDSummary(session.data.ledSpecs);
+  const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
+    let details = `LED${index + 1}: ${led.size}`;
+    
+    if (led.stageHeight !== undefined) {
+      details += ` (무대높이 : ${led.stageHeight}mm)`;
+    }
+    
+    return details;
+  }).join('\n');
   
   return `🔖 서비스: LED 렌탈
 ${EMOJI.INFO} 행사명: ${session.data.eventName}
@@ -760,10 +793,11 @@ ${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 function createMembershipConfirmation(session: UserSession): string {
   const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
     const [w, h] = led.size.split('x').map(Number);
-    const moduleCount = (w / 500) * (h / 500);
+    const widthPixels = Math.round((w / 500) * 168);
+    const heightPixels = Math.round((h / 500) * 168);
     const power = calculateLEDPower(led.size);
     
-    let details = `LED${index + 1}: ${led.size} (${moduleCount}개, ${power}`;
+    let details = `LED${index + 1}: ${led.size}mm (${widthPixels}x${heightPixels}px, ${power}`;
     
     // 추가 옵션 표시
     if (led.needOperator) {
