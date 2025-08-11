@@ -1,5 +1,76 @@
 # 현재 작업 상황
-## 진행 중인 작업 (2025-08-09) 🆕
+## 진행 중인 작업 (2025-08-11) 🆕
+LINE WORKS 업무봇 개발 🔴
+
+ 기존 코드 분석 (Step D 완료)
+
+ 재사용 가능 모듈 식별
+ Notion 서비스, 계산 로직 등 확인
+
+
+ LINE WORKS Bot API 이해 (Step B 완료)
+
+ 인증 방식 파악
+ 메시지 포맷 구조 확인
+
+
+ 프로젝트 구조 설계 (Step A 진행중)
+
+ 기존 프로젝트에 통합 결정
+ 필요 파일 생성
+ 패키지 설치 (jsonwebtoken, axios)
+
+
+ LINE WORKS 인증 구현
+
+ LineWorksAuth 클래스 작성
+ JWT 토큰 생성 로직
+ Private Key 설정 필요 ⚠️
+ OAuth Scopes 설정 필요 ⚠️
+
+
+
+LINE WORKS Bot 정보
+yamlBot ID: 10569178
+Bot Secret: [재발급 필요 - 보안상 노출됨]
+Domain ID: 92438
+현재 문제 상황
+
+인증 오류: 'invalid_scope' 에러 발생
+해결 방법:
+
+Console > API > Client App > OAuth Scopes 설정
+Private Key 다운로드 및 프로젝트에 저장
+Service Account ID 확인
+
+
+
+완료된 파일
+
+✅ src/config/lineworks-auth.ts - 인증 클래스
+✅ src/tools/lineworks-bot.ts - 봇 메인 클래스
+✅ src/test-lineworks-auth.ts - 인증 테스트
+✅ 타입 정의 추가
+
+다음 작업
+
+LINE WORKS Console에서 OAuth Scopes 설정
+Private Key 다운로드 및 설정
+인증 테스트 성공
+Webhook 엔드포인트 구현
+Railway 배포
+
+진행 중인 작업 (2025-08-09)
+카카오 FAQ 챗봇 ✅ (기본 완료)
+
+✅ 카카오 i 오픈빌더 학습 기능 활용
+✅ 엔티티 3종 등록 (LED_TYPE, SERVICE_TYPE, PRICE_TERM)
+✅ FAQ 블록 7개 생성
+✅ 폴백 처리 설정
+✅ 커스텀 메뉴 연동
+⚠️ 파라미터 동적 처리 미완성 (추후 개선)
+
+
 ### 이원화 봇 전략 확정 🔴
  카카오톡: B2C 고객 상담 (FAQ 중심)
  LINE WORKS: B2E 내부 업무 관리 (DB 쿼리 중심)

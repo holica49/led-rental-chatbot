@@ -8,9 +8,12 @@ config();
 async function testAuth() {
   console.log('=== LINE WORKS Bot 정보 ===');
   console.log('Bot ID:', process.env.LINEWORKS_BOT_ID);
+  console.log('Client ID:', process.env.LINEWORKS_CLIENT_ID);
   console.log('Domain ID:', process.env.LINEWORKS_DOMAIN_ID);
   console.log('Bot Secret 길이:', process.env.LINEWORKS_BOT_SECRET?.length);
+  console.log('Client Secret 길이:', process.env.LINEWORKS_CLIENT_SECRET?.length);
   console.log('Bot Secret 앞 5자:', process.env.LINEWORKS_BOT_SECRET?.substring(0, 5) + '...');
+  console.log();
   
   // API v1.0 테스트
   await testV1Auth();
@@ -28,8 +31,7 @@ async function testAuth() {
     try {
       const botInfo = await auth.getBotInfo();
       console.log('✅ Bot 정보 조회 성공!');
-      console.log('Bot Name:', botInfo.name);
-      console.log('Bot Status:', botInfo.status);
+      console.log('Bot 응답:', JSON.stringify(botInfo, null, 2));
     } catch (error) {
       console.log('⚠️ Bot 정보 조회 실패 (권한 문제일 수 있음)');
     }

@@ -3,14 +3,13 @@ import dotenv from 'dotenv';
 import { handleKakaoWebhook } from './tools/kakao-chatbot.js';
 import { startPollingService, getPollingService } from './tools/notion-polling.js';
 import { startSchedulerService, getSchedulerService } from './tools/notion-scheduler.js';
-import { LineWorksBot } from './tools/lineworks-bot.js';
+import lineWorksRouter from './tools/lineworks-bot.js';
 
 // 환경 변수 로드
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const lineWorksBot = new LineWorksBot();
 
 // PORT 디버깅
 console.log('Environment PORT:', process.env.PORT);
@@ -94,17 +93,8 @@ app.post('/polling/trigger', async (req: Request, res: Response) => {
   }
 });
 
-// LINE WORKS Webhook 엔드포인트
-app.post('/lineworks/callback', async (req, res) => {
-  try {
-    const signature = req.headers['x-works-signature'] as string;
-    await lineWorksBot.handleWebhook(req.body, signature);
-    res.status(200).json({ status: 'ok' });
-  } catch (error) {
-    console.error('LINE WORKS webhook error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// LINE WORKS 라우터 연결
+app.use('/lineworks', lineWorksRouter);
 
 // 테스트 엔드포인트
 app.post('/test', (req: Request, res: Response) => {
@@ -140,7 +130,9 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 const server = app.listen(PORT, () => {
   console.log(`🚀 LED Rental Kakao Chatbot Server`);
   console.log(`✅ Server is running on port ${PORT}`);
-  console.log(`📍 Webhook endpoint: http://localhost:${PORT}/kakao/skill`);
+  console.log(`📍 Webhook endpoints:`);
+  console.log(`   - Kakao: http://localhost:${PORT}/kakao/skill`);
+  console.log(`   - LINE WORKS: http://localhost:${PORT}/lineworks/callback`);
   
   // 환경 변수 체크
   const requiredEnvVars = ['NOTION_API_KEY', 'NOTION_DATABASE_ID'];
@@ -158,6 +150,7 @@ const server = app.listen(PORT, () => {
     }).catch(error => {
       console.error('❌ Failed to start Notion polling service:', error);
     });
+    
     // Notion 스케줄러 서비스 시작
     console.log('📅 Starting Notion scheduler service...');
     startSchedulerService().then(() => {
@@ -165,6 +158,16 @@ const server = app.listen(PORT, () => {
     }).catch(error => {
       console.error('❌ Failed to start Notion scheduler service:', error);
     });
+  }
+  
+  // LINE WORKS 환경 변수 체크
+  const lineWorksVars = ['LINEWORKS_BOT_ID', 'LINEWORKS_BOT_SECRET', 'LINEWORKS_CLIENT_ID', 'LINEWORKS_DOMAIN_ID'];
+  const missingLineWorksVars = lineWorksVars.filter(v => !process.env[v]);
+  
+  if (missingLineWorksVars.length > 0) {
+    console.warn(`⚠️  Missing LINE WORKS variables: ${missingLineWorksVars.join(', ')}`);
+  } else {
+    console.log('✅ All LINE WORKS environment variables are set');
   }
 });
 
@@ -174,7 +177,7 @@ process.on('SIGTERM', () => {
   const pollingService = getPollingService();
   const schedulerService = getSchedulerService();
   pollingService.stopPolling();
-  schedulerService.stopScheduler();  // 추가
+  schedulerService.stopScheduler();
   server.close(() => {
     process.exit(0);
   });
@@ -185,7 +188,7 @@ process.on('SIGINT', () => {
   const pollingService = getPollingService();
   const schedulerService = getSchedulerService();
   pollingService.stopPolling();
-  schedulerService.stopScheduler();  // 추가
+  schedulerService.stopScheduler();
   server.close(() => {
     process.exit(0);
   });
