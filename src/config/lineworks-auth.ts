@@ -197,9 +197,17 @@ export class LineWorksAuth {
   async sendMessage(userId: string, content: any): Promise<void> {
     try {
       const headers = await this.getAuthHeaders();
+      
+      // content 객체로 감싸기
+      const requestBody = {
+        content: content
+      };
+      
+      console.log('메시지 전송 요청:', JSON.stringify(requestBody, null, 2));
+      
       const response = await axios.post(
         `https://www.worksapis.com/v1.0/bots/${this.config.botId}/users/${userId}/messages`,
-        content,  // content를 직접 전송 (이미 올바른 구조)
+        requestBody,
         { headers }
       );
       
