@@ -76,9 +76,15 @@ export class LineWorksAuth {
     const currentTime = Math.floor(Date.now() / 1000);
     const privateKey = this.getPrivateKey();
     
+    // Service Account ID가 있으면 사용, 없으면 Client ID 사용
+    const serviceAccountId = this.config.serviceAccount || `${this.config.clientId}.${this.config.domainId}`;
+    
+    console.log('JWT 생성 중...');
+    console.log('Service Account ID:', serviceAccountId);
+    
     const payload = {
-      iss: this.config.clientId,
-      sub: this.config.serviceAccount || this.config.clientId,
+      iss: this.config.clientId,  // Client ID를 발급자로
+      sub: serviceAccountId,       // Service Account ID를 주체로
       iat: currentTime,
       exp: currentTime + 3600
     };
