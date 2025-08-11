@@ -42,10 +42,8 @@ interface LineWorksMessage {
 async function sendTextMessage(userId: string, text: string) {
   const authInstance = await getAuth();
   await authInstance.sendMessage(userId, {
-    content: {
-      type: 'text',
-      text: text
-    }
+    type: 'text',
+    text: text
   });
 }
 

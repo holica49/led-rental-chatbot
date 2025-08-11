@@ -199,9 +199,7 @@ export class LineWorksAuth {
       const headers = await this.getAuthHeaders();
       const response = await axios.post(
         `https://www.worksapis.com/v1.0/bots/${this.config.botId}/users/${userId}/messages`,
-        {
-          content: content
-        },
+        content,  // content를 직접 전송 (이미 올바른 구조)
         { headers }
       );
       
