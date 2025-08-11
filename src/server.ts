@@ -3,12 +3,14 @@ import dotenv from 'dotenv';
 import { handleKakaoWebhook } from './tools/kakao-chatbot.js';
 import { startPollingService, getPollingService } from './tools/notion-polling.js';
 import { startSchedulerService, getSchedulerService } from './tools/notion-scheduler.js';
+import { LineWorksBot } from './tools/lineworks-bot.js';
 
 // 환경 변수 로드
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const lineWorksBot = new LineWorksBot();
 
 // PORT 디버깅
 console.log('Environment PORT:', process.env.PORT);
@@ -89,6 +91,18 @@ app.post('/polling/trigger', async (req: Request, res: Response) => {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
     });
+  }
+});
+
+// LINE WORKS Webhook 엔드포인트
+app.post('/lineworks/callback', async (req, res) => {
+  try {
+    const signature = req.headers['x-works-signature'] as string;
+    await lineWorksBot.handleWebhook(req.body, signature);
+    res.status(200).json({ status: 'ok' });
+  } catch (error) {
+    console.error('LINE WORKS webhook error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

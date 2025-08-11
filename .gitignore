@@ -54,3 +54,5 @@ coverage/
 
 # Jest
 jest.config.js
+
+private_key.pem

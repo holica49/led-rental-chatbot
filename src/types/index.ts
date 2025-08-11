@@ -534,3 +534,29 @@ export interface EventPeriodValidationResult extends ValidationResult {
   endDate?: string;
   days?: number;
 }
+
+// src/types/index.ts에 추가
+export interface LineWorksEvent {
+  type: 'message' | 'postback' | 'join' | 'leave';
+  source: {
+    userId: string;
+    domainId: number;
+  };
+  message?: {
+    type: 'text' | 'image' | 'file';
+    text?: string;
+    id?: string;
+  };
+  timestamp: string;
+}
+
+export interface LineWorksMessage {
+  content: {
+    type: 'text' | 'button_template' | 'flex';
+    text?: string;
+    contentText?: string;
+    altText?: string;
+    actions?: any[];
+    contents?: any;
+  };
+}

@@ -224,3 +224,18 @@ led-rental-mcp/
 - 자동화 안됨: Notion 필드명 확인
 - 날짜 파싱 오류: 행사 일정 형식 확인
 - import 오류: .js 확장자 및 circular dependency 확인
+
+## 현재 개발 중인 기능 🆕
+
+### LINE WORKS 업무봇
+- **목적**: 내부 직원용 업무 관리 (프로젝트 현황, 일정, 재고)
+- **상태**: 인증 구현 중 (OAuth Scopes 설정 필요)
+- **주요 파일**:
+  - `src/config/lineworks-auth.ts`
+  - `src/tools/lineworks-bot.ts`
+  - `src/test-lineworks-auth.ts`
+- **남은 작업**:
+  - Private Key 설정
+  - OAuth Scopes 설정
+  - Webhook 구현
+  - Railway 배포
