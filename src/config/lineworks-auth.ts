@@ -50,14 +50,22 @@ export class LineWorksAuth {
    * Private Key 파일 읽기
    */
   private getPrivateKey(): string {
+    // 먼저 환경 변수에서 시도
+    if (process.env.LINEWORKS_PRIVATE_KEY) {
+      console.log('✅ Private Key를 환경 변수에서 찾았습니다.');
+      // 환경 변수의 개행 문자 복원
+      return process.env.LINEWORKS_PRIVATE_KEY.replace(/\\n/g, '\n');
+    }
+    
+    // 파일에서 읽기 시도 (로컬 개발용)
     try {
       const keyPath = path.join(process.cwd(), 'private_key.pem');
       const key = fs.readFileSync(keyPath, 'utf8');
       console.log('✅ Private Key 파일을 찾았습니다.');
       return key;
     } catch (error) {
-      console.log('❌ Private Key 파일이 없습니다. 프로젝트 루트에 private_key.pem 파일을 추가해주세요.');
-      throw new Error('Private Key 파일이 필요합니다.');
+      console.log('❌ Private Key 파일이 없습니다. 환경 변수 LINEWORKS_PRIVATE_KEY를 설정해주세요.');
+      throw new Error('Private Key가 필요합니다.');
     }
   }
 
