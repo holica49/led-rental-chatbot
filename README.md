@@ -1,6 +1,6 @@
-# LED Rental MCP - Kakao Chatbot Integration
+# LED Rental MCP - Kakao Chatbot & LINE WORKS Bot Integration
 
-LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Model Context Protocol)를 통해 Claude와 연동되며, Notion 데이터베이스와 연동하여 업무를 자동화합니다.
+LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇과 내부 업무 관리를 위한 LINE WORKS 봇 통합 시스템입니다. MCP(Model Context Protocol)를 통해 Claude와 연동되며, Notion 데이터베이스와 연동하여 업무를 자동화합니다.
 
 ## 🚨 Claude AI를 위한 핵심 정보
 
@@ -11,7 +11,7 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - **구분선**: `━━━━` (4개)로 통일
 - **LED 해상도**: 모듈당 168x168px 기준
 
-### 현재 상태 (2025-08-08)
+### 현재 상태 (2025-08-11)
 - **ES Module** 전환 완료
 - **모든 import에 .js 확장자** 추가 완료
 - **Railway 배포** 정상 작동 중
@@ -23,6 +23,8 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - **메시지 톤 개선**: 이모지 최소화, 간결한 문구 ✨
 - **UI 개선**: 진행 상황 표시 ([현재/전체]) ✨
 - **견적 계산 개선**: 멤버쉽/렌탈 계산 로직 수정 ✨
+- **LINE WORKS 봇**: 구현 완료, 인증 성공 🆕
+- **카카오 엔티티 문제**: 해결 완료 (엔티티 삭제) 🆕
 
 ## 🚀 주요 기능
 
@@ -35,13 +37,20 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - **진행 상황 표시** ([3/10] 형식) ✨
 - **단축어 지원**: "처음", "이전" ✨
 
-### 2. Notion 연동
+### 2. LINE WORKS 봇 🆕
+- **프로젝트 현황 조회**: "강남LED 현황"
+- **일정 관리**: "오늘 일정", "이번주 일정"
+- **재고 확인**: "재고 현황"
+- **OAuth 2.0 인증**: Service Account + JWT
+- **실시간 메시지 응답**: 업무 정보 즉시 제공
+
+### 3. Notion 연동
 - 견적 데이터 자동 저장
 - 실시간 상태 관리
 - 파일 업로드 처리
 - **운반비 구간별 계산** (200개 이하/201-400개/401개 이상) ✨
 
-### 3. 자동화 시스템
+### 4. 자동화 시스템
 - **폴링 (10분마다)**: 상태 변경 감지, 파일 업로드 감지
 - **스케줄러 (1시간마다)**: 날짜 기반 자동 상태 변경
 - **담당자 자동 멘션**: 서비스별 적절한 담당자 알림
@@ -67,65 +76,24 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - 201-400개: 500,000원  
 - 401개 이상: 700,000원
 
-## 🤖 Notion 자동화 상세
+## 🤖 봇 통합 시스템
 
-### 서비스별 프로세스
+### Kakao 챗봇 엔드포인트
+- URL: `/kakao/skill`
+- 메서드: POST
+- 모든 발화를 스킬 서버에서 처리 (엔티티 제거)
 
-#### 설치 서비스
-1. 견적 요청 → 견적 검토 (자동)
-2. 견적 검토 → 견적 승인 (수동)
-3. 견적 승인 → 설치 중 (행사 전날 자동)
-4. 설치 중 → 완료 (수동)
+### LINE WORKS 봇 엔드포인트
+- URL: `/lineworks/callback`
+- 메서드: POST
+- Webhook 서명 검증 포함
 
-#### 렌탈 서비스
-1. 견적 요청 → 견적 검토 (자동)
-2. 견적 검토 → 견적 승인 (파일 업로드 시 자동)
-3. 견적 승인 → 배차 완료 (수동)
-4. 배차 완료 → 구인 완료 (수동)
-5. 구인 완료 → 설치 중 (행사 전날 자동)
-6. 설치 중 → 운영 중 (행사 시작일 자동)
-7. 운영 중 → 철거 중 (행사 종료일 자동)
-8. 철거 중 → 완료 (수동)
-
-#### 멤버쉽 서비스
-- 렌탈과 동일한 프로세스
-- VIP 회원 전용 특별 가격 적용
-
-### Notion 멘션 메시지 형식
-
-#### 설치 서비스
-```
-📊 새로운 설치 프로젝트 견적 요청
-
-✅ 프로젝트 정보:
-- 프로젝트명: [프로젝트명]
-- 고객사: [고객사]
-- 고객: [담당자명] [직급]
-- 연락처: [전화번호]
-- 구축 예정지: [지역]
-- 설치 공간: [공간] ([환경])
-- 설치 기간: [기간]
-- 설치 예산: [예산]
-- 문의 목적: [목적]
-- 문의사항: [추가요청]
-```
-
-#### 렌탈/멤버쉽 서비스
-```
-📊 새로운 렌탈 행사 견적 요청
-
-✅ 행사 정보:
-- 행사명: [행사명]
-- 행사장: [행사장] ([환경])
-- 고객사: [고객사]
-- 고객: [담당자명] [직급]
-- 연락처: [전화번호]
-- 행사 기간: [기간]
-- 문의사항: [추가요청]
-
-🖥️ LED 사양:
-1. [크기] (무대높이: [높이]mm, 오퍼레이터 [일수]일, 프롬프터/중계카메라)
-```
+### 상태 확인 엔드포인트
+| 엔드포인트 | 메서드 | 설명 |
+|------------|--------|------|
+| `/polling/status` | GET | Notion 폴링 상태 확인 |
+| `/scheduler/status` | GET | 날짜 기반 스케줄러 상태 |
+| `/lineworks/send-test` | POST | LINE WORKS 메시지 테스트 |
 
 ## 📊 Notion 데이터베이스 스키마
 
@@ -205,6 +173,8 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - **주요 라이브러리**:
   - `@modelcontextprotocol/sdk`: ^1.16.0
   - `@notionhq/client`: ^2.2.15
+  - `jsonwebtoken`: ^9.0.2 (LINE WORKS)
+  - `axios`: ^1.11.0
   - `xlsx`: ^0.18.5
 
 ## 🔧 설치 및 실행
@@ -214,6 +184,7 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇 서버입니다. MCP(Mo
 - npm 9.0.0 이상
 - Notion API 키
 - Kakao 개발자 계정
+- LINE WORKS 개발자 계정
 
 ### 환경 설정
 
@@ -236,6 +207,15 @@ NOTION_DATABASE_ID=your_database_id
 
 # 담당자 설정 (한 줄로 작성)
 MANAGERS_CONFIG={"managers":[{"name":"유준수","notionId":"225d872b-594c-8157-b968-0002e2380097","department":"구축팀","isActive":true},{"name":"최수삼","notionId":"237d872b-594c-8174-9ab2-00024813e3a9","department":"렌탈팀","isActive":true}]}
+
+# LINE WORKS Bot
+LINEWORKS_BOT_ID=your_bot_id
+LINEWORKS_BOT_SECRET=your_bot_secret
+LINEWORKS_CLIENT_ID=your_client_id
+LINEWORKS_CLIENT_SECRET=your_client_secret
+LINEWORKS_DOMAIN_ID=your_domain_id
+LINEWORKS_SERVICE_ACCOUNT_ID=your_service_account_id
+LINEWORKS_PRIVATE_KEY=your_private_key_with_newlines_as_\n
 
 # 기본 주소지
 STORAGE_ADDRESS=경기 고양시 덕양구 향동동 396, 현대테라타워DMC 337호
@@ -260,6 +240,12 @@ npm run build
 npm start
 ```
 
+### 테스트
+```bash
+# LINE WORKS 인증 테스트
+npm run test:lineworks
+```
+
 ## 🌐 배포 (Railway)
 
 이 프로젝트는 Railway에 최적화되어 있습니다:
@@ -270,25 +256,45 @@ npm start
 
 배포 URL: `https://[your-app-name].railway.app`
 
-## 📱 Kakao 개발자 콘솔 설정
+### Railway 환경 변수 설정
 
-스킬 서버 URL 등록:
+Railway 대시보드에서 모든 환경 변수를 설정해야 합니다:
+- Notion API 관련
+- LINE WORKS 관련 (Private Key는 한 줄로)
+- 담당자 설정
+
+## 📱 카카오 개발자 콘솔 설정
+
+### 스킬 서버 URL 등록
 - URL: `https://[your-app-name].railway.app/kakao/skill`
 - 메서드: POST
 - Content-Type: application/json
 
-## 📊 API 엔드포인트
+### 엔티티 설정 주의사항
+- @SERVICE_TYPE 엔티티 삭제 또는 비활성화
+- 모든 발화를 스킬 서버에서 처리하도록 설정
 
-| 엔드포인트 | 메서드 | 설명 |
-|------------|--------|------|
-| `/kakao/skill` | POST | Kakao 챗봇 웹훅 |
-| `/polling/status` | GET | Notion 폴링 상태 확인 |
-| `/scheduler/status` | GET | 날짜 기반 스케줄러 상태 |
-| `/polling/trigger` | POST | 수동 상태 변경 트리거 |
+## 💬 LINE WORKS 설정
+
+### Developers Console 설정
+1. Bot 생성 및 활성화
+2. OAuth Scopes 설정: `bot`, `bot.message`, `user.read`
+3. Service Account 생성
+4. Private Key 다운로드
+5. Callback URL 설정: `https://[your-app-name].railway.app/lineworks/callback`
+
+### 사용 방법
+1. LINE WORKS 앱에서 봇 검색
+2. 대화 시작
+3. 명령어:
+   - "안녕" - 사용법 안내
+   - "[프로젝트명] 현황" - 프로젝트 조회
+   - "오늘 일정" / "이번주 일정" - 일정 확인
+   - "재고 현황" - LED 재고 확인
 
 ## 💬 사용자 인터페이스
 
-### 대화 기능
+### 카카오 챗봇 대화 기능
 - **처음으로**: "처음", "처음부터", "처음으로", "초기화", "리셋" 입력 시 처음부터 다시 시작
 - **이전 단계**: "이전", "뒤로", "돌아가" 입력 시 이전 단계로 돌아가기
 - **Quick Reply**: 각 단계별 빠른 선택 버튼 제공
@@ -319,6 +325,11 @@ npm start
 - 환경 변수 설정 확인
 - 빌드 로그 확인
 
+### LINE WORKS 인증 오류
+- Private Key 환경 변수 형식 확인 (줄바꿈을 \n으로)
+- Service Account ID 확인
+- OAuth Scopes 설정 확인
+
 ### Notion 자동화 오류
 - MANAGERS_CONFIG는 한 줄 JSON으로 작성
 - Notion API 키와 데이터베이스 ID 확인
@@ -327,6 +338,10 @@ npm start
 ### Circular Dependency 오류
 - process-config.ts와 messages.ts 순환 참조 주의
 - QUICK_REPLIES_CONFIG 분리로 해결
+
+### 카카오 챗봇 FAQ 문제
+- 엔티티(@SERVICE_TYPE) 삭제 또는 비활성화
+- 모든 발화를 스킬 서버에서 처리하도록 설정
 
 ## 📝 메시지 변경 방법
 
@@ -340,47 +355,13 @@ npm start
 - **렌탈 서비스**: 최수삼 렌탈팀장
 - **멤버쉽 서비스**: 최수삼 렌탈팀장
 
-## 💬 고객 상담 챗봇 (카카오톡) 🆕
-
-### 개요
-카카오 i 오픈빌더의 학습 기능을 활용한 24/7 고객 상담 서비스입니다.
-
-### 주요 기능
-- **FAQ 자동 응답**: 제품 사양, 가격, 설치 관련 문의
-- **견적 상담**: 기본 견적 안내 및 상세 상담 연결
-- **카카오 학습 활용**: 지속적인 응답 품질 개선
-
-### 구현 방식
-- 1차: 카카오 i 오픈빌더 학습 (30-50개 FAQ)
-- 2차: Notion FAQ DB 연동 (확장 답변)
-- 3차: 복잡한 문의는 담당자 연결
-
----
-
-## 💼 업무 관리 봇 (LINE WORKS) 🆕
-
-### 개요
-내부 직원용 업무 현황 조회 및 관리 도구입니다.
-
-### 주요 기능
-- **프로젝트 관리**: 진행 현황, 담당자, 일정 조회
-- **리소스 현황**: LED 재고, 가용 인력 확인
-- **업무 보고서**: 자동 집계 및 보고서 생성
-- **팀 협업**: 팀원 일정, 업무 분담 관리
-
-### 기술 특징
-- Notion DB 직접 쿼리
-- 업무 특화 자연어 처리
-- LINE WORKS UI 컴포넌트 활용
-- 실시간 현황 대시보드
-
-### 예상 효과
-- 정보 접근성 90% 향상
-- 보고서 작성 시간 70% 감소
-- 의사결정 속도 향상
-
-
 ## 🔄 최근 업데이트
+
+### 2025-08-11 🆕
+- ✅ LINE WORKS 봇 구현 완료
+- ✅ OAuth 2.0 인증 (Service Account + JWT)
+- ✅ 프로젝트 현황, 일정, 재고 조회 기능
+- ✅ 카카오 엔티티 문제 해결 (엔티티 삭제)
 
 ### 2025-08-08
 - ✅ UI 개선: 진행 상황 표시 ([현재/전체])
