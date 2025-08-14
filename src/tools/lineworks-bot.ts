@@ -1,7 +1,8 @@
-// src/tools/lineworks-bot.ts
+// src/tools/lineworks-bot.ts (캘린더 기능 추가 버전)
 import express, { Request, Response } from 'express';
 import { Client } from '@notionhq/client';
 import axios from 'axios';
+import { lineWorksCalendar } from './services/lineworks-calendar-service.js';
 
 const router = express.Router();
 
@@ -144,19 +145,52 @@ router.post('/callback', async (req: Request, res: Response) => {
     // 텍스트 메시지 처리
     if (message.content?.type === 'text' && message.content.text) {
       const userId = message.source.userId;
-      const text = message.content.text.toLowerCase();
+      const text = message.content.text;
+      const lowerText = text.toLowerCase();
       
       let responseText = '';
       
       // 간단한 의도 분석
-      if (text.includes('안녕') || text.includes('하이')) {
+      if (lowerText.includes('안녕') || lowerText.includes('하이')) {
         responseText = '안녕하세요! LED 렌탈 업무봇입니다.\n\n' +
-                      '다음과 같은 정보를 조회할 수 있습니다:\n' +
-                      '• 프로젝트 현황 (예: "강남LED 현황")\n' +
-                      '• 일정 조회 (예: "오늘 일정", "이번주 일정")\n' +
-                      '• LED 재고 현황 (예: "재고 현황")';
+                      '다음과 같은 기능을 사용할 수 있습니다:\n' +
+                      '📊 프로젝트 조회: "강남LED 현황"\n' +
+                      '📅 일정 조회: "오늘 일정", "이번주 일정"\n' +
+                      '📦 재고 확인: "재고 현황"\n' +
+                      '➕ 일정 등록: "내일 오후 2시 고객 미팅 30분전 알림"\n' +
+                      '📋 내 캘린더: "내 일정"';
       }
-      else if (text.includes('현황') && !text.includes('재고')) {
+      // 캘린더 일정 등록 - 자연어 패턴 감지
+      else if (
+        (text.includes('일정') && (text.includes('등록') || text.includes('추가'))) ||
+        (text.includes('시') && (text.includes('오늘') || text.includes('내일') || text.includes('모레'))) ||
+        (text.includes('요일') && text.includes('시')) ||
+        /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text) // 날짜 형식 포함
+      ) {
+        const result = await lineWorksCalendar.createEventFromNaturalLanguage(userId, text);
+        responseText = result.message;
+      }
+      // 내 캘린더 조회
+      else if (text.includes('내 일정') || text.includes('내일정')) {
+        const events = await lineWorksCalendar.getEvents(userId, 'week');
+        
+        if (events.length === 0) {
+          responseText = '이번 주 등록된 일정이 없습니다.';
+        } else {
+          responseText = '📅 이번 주 일정:\n\n';
+          events.forEach((event: any) => {
+            const start = new Date(event.start.dateTime);
+            const dateStr = start.toLocaleDateString('ko-KR');
+            const timeStr = start.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+            responseText += `• ${dateStr} ${timeStr} - ${event.summary}\n`;
+            if (event.location) {
+              responseText += `  📍 ${event.location}\n`;
+            }
+          });
+        }
+      }
+      // 기존 기능들
+      else if (lowerText.includes('현황') && !lowerText.includes('재고')) {
         // 프로젝트명 추출
         const projectName = text.replace(/현황|프로젝트|조회/g, '').trim();
         if (projectName) {
@@ -165,16 +199,16 @@ router.post('/callback', async (req: Request, res: Response) => {
           responseText = '프로젝트명을 입력해주세요. (예: "강남LED 현황")';
         }
       }
-      else if (text.includes('일정')) {
-        if (text.includes('오늘')) {
+      else if (lowerText.includes('일정') && !text.includes('내 일정')) {
+        if (lowerText.includes('오늘')) {
           responseText = await getSchedule('오늘');
-        } else if (text.includes('이번주')) {
+        } else if (lowerText.includes('이번주')) {
           responseText = await getSchedule('이번주');
         } else {
           responseText = '일정 조회 기간을 지정해주세요. (예: "오늘 일정", "이번주 일정")';
         }
       }
-      else if (text.includes('재고')) {
+      else if (lowerText.includes('재고')) {
         responseText = '📦 LED 재고 현황:\n\n' +
                       '• P2.5: 320개 (재고 충분)\n' +
                       '• P3.0: 150개 (재고 보통)\n' +
@@ -182,11 +216,11 @@ router.post('/callback', async (req: Request, res: Response) => {
                       '• P5.0: 200개 (재고 충분)';
       }
       else {
-        responseText = '죄송합니다. 이해하지 못했습니다.\n\n' +
-                      '다음과 같이 말씀해주세요:\n' +
-                      '• "강남LED 현황"\n' +
-                      '• "오늘 일정"\n' +
-                      '• "재고 현황"';
+        responseText = '이해하지 못했습니다. 다음과 같이 말씀해주세요:\n\n' +
+                      '• 프로젝트 조회: "강남LED 현황"\n' +
+                      '• 일정 조회: "오늘 일정"\n' +
+                      '• 재고 확인: "재고 현황"\n' +
+                      '• 일정 등록: "내일 오후 2시 고객 미팅"';
       }
       
       // 응답 전송

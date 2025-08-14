@@ -7,7 +7,7 @@ import {
   handleFinalConfirmation,
   handleResetRequest,
   checkResetRequest,
-  checkPreviousRequest  // 추가
+  checkPreviousRequest
 } from './common-handlers.js';
 
 export const commonHandlers = {
@@ -23,5 +23,5 @@ export const commonHandlers = {
 export { 
   handleResetRequest, 
   checkResetRequest,
-  checkPreviousRequest  // 추가
+  checkPreviousRequest
 };

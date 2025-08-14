@@ -21,7 +21,8 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:lineworks": "tsx src/test-lineworks-auth.ts"
+    "test:lineworks": "tsx src/test-lineworks-auth.ts",
+    "test:lineworks-notify": "tsx src/test-lineworks-notification.ts"
   },
   "keywords": [
     "mcp",

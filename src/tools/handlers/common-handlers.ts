@@ -1,5 +1,3 @@
-// src/tools/handlers/common-handlers.ts
-
 import { UserSession, KakaoResponse, QuoteResult, RentalQuoteResult } from '../../types/index.js';
 import { validatePhoneNumber } from '../validators/index.js';
 import { calculateRentalLEDQuote, calculateMultiLEDQuote } from '../calculate-quote.js';
@@ -23,6 +21,8 @@ import {
 } from '../../utils/handler-utils.js';
 import { EMOJI, DIVIDER } from '../../utils/message-utils.js';
 import { restorePreviousStep, hasPreviousStep } from '../../utils/session-utils.js';
+import { lineWorksNotification } from '../services/lineworks-notification-service.js';
+
 
 // 리셋 요청 체크 함수
 export function checkResetRequest(message: string, session: UserSession): KakaoResponse | null {
@@ -92,10 +92,131 @@ export function handlePreviousRequest(session: UserSession): KakaoResponse {
   return getQuestionForStep(session);
 }
 
+export function handleAdditionalRequests(message: string, session: UserSession): KakaoResponse {
+  if (message.trim() === '없음' || message.trim() === '') {
+    session.data.additionalRequests = '없음';
+  } else {
+    session.data.additionalRequests = message.trim();
+  }
+  
+  session.step = session.serviceType === '멤버쉽' ? 'get_contact_name' : 'get_customer_company';
+  
+  return {
+    text: askWithProgress(
+      session.serviceType === '멤버쉽' ? MESSAGES.INPUT_NAME : MESSAGES.INPUT_COMPANY,
+      session
+    ),
+    quickReplies: []
+  };
+}
+
+export function handleCustomerCompany(message: string, session: UserSession): KakaoResponse {
+  const validation = validateNotEmpty(message, '고객사명');
+  if (!validation.valid) {
+    return {
+      text: validation.error || MESSAGES.INPUT_COMPANY,
+      quickReplies: []
+    };
+  }
+  
+  session.data.customerName = message.trim();
+  session.step = 'get_contact_name';
+  
+  return {
+    text: askWithProgress(MESSAGES.INPUT_NAME, session),
+    quickReplies: []
+  };
+}
+
+export function handleContactName(message: string, session: UserSession): KakaoResponse {
+  // 설치 서비스에서 고객사명이 없는 경우 먼저 처리
+  if (session.serviceType === '설치' && !session.data.customerName) {
+    const validation = validateNotEmpty(message, '고객사명');
+    if (!validation.valid) {
+      return {
+        text: validation.error || MESSAGES.INPUT_COMPANY,
+        quickReplies: []
+      };
+    }
+    
+    session.data.customerName = message.trim();
+    
+    return {
+      text: askWithProgress(MESSAGES.INPUT_NAME, session),
+      quickReplies: []
+    };
+  }
+  
+  const validation = validateNotEmpty(message, '담당자 성함');
+  if (!validation.valid) {
+    return {
+      text: validation.error || MESSAGES.INPUT_NAME,
+      quickReplies: []
+    };
+  }
+  
+  session.data.contactName = message.trim();
+  session.step = 'get_contact_title';
+  
+  return {
+    text: askWithProgress(MESSAGES.INPUT_TITLE, session),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.TITLE_MANAGER, value: '매니저' },
+      { label: BUTTONS.TITLE_SENIOR, value: '책임' },
+      { label: BUTTONS.TITLE_TEAM_LEADER, value: '팀장' },
+      { label: BUTTONS.TITLE_DIRECTOR, value: '이사' }
+    ])
+  };
+}
+
+export function handleContactTitle(message: string, session: UserSession): KakaoResponse {
+  const validation = validateNotEmpty(message, '직급');
+  if (!validation.valid) {
+    return {
+      text: validation.error || MESSAGES.INPUT_TITLE,
+      quickReplies: createQuickReplies([
+        { label: BUTTONS.TITLE_MANAGER, value: '매니저' },
+        { label: BUTTONS.TITLE_SENIOR, value: '책임' },
+        { label: BUTTONS.TITLE_TEAM_LEADER, value: '팀장' },
+        { label: BUTTONS.TITLE_DIRECTOR, value: '이사' }
+      ])
+    };
+  }
+  
+  session.data.contactTitle = message.trim();
+  session.step = 'get_contact_phone';
+  
+  return {
+    text: askWithProgress(MESSAGES.INPUT_PHONE, session),
+    quickReplies: []
+  };
+}
+
+export function handleContactPhone(message: string, session: UserSession): KakaoResponse {
+  const validation = validatePhoneNumber(message);
+  
+  if (!validation.valid || !validation.phone) {
+    return {
+      text: errorMessage(validation.error || VALIDATION_ERRORS.PHONE),
+      quickReplies: []
+    };
+  }
+  
+  session.data.contactPhone = validation.phone;
+  session.step = 'final_confirmation';
+  
+  return {
+    text: createFinalConfirmationMessage(session),
+    quickReplies: createQuickReplies([
+      { label: BUTTONS.CONFIRM, value: '네' },
+      { label: BUTTONS.CANCEL, value: '취소' }
+    ])
+  };
+}
 /**
  * 각 단계별 질문 반환 (이전 단계로 돌아갔을 때 사용)
  */
-function getQuestionForStep(session: UserSession): KakaoResponse {
+export function getQuestionForStep(session: UserSession): KakaoResponse {
   switch (session.step) {
     // 공통 단계
     case 'select_service':
@@ -462,130 +583,6 @@ function getQuestionForStep(session: UserSession): KakaoResponse {
   }
 }
 
-// 나머지 기존 함수들은 그대로 유지
-
-export function handleAdditionalRequests(message: string, session: UserSession): KakaoResponse {
-  if (message.trim() === '없음' || message.trim() === '') {
-    session.data.additionalRequests = '없음';
-  } else {
-    session.data.additionalRequests = message.trim();
-  }
-  
-  session.step = session.serviceType === '멤버쉽' ? 'get_contact_name' : 'get_customer_company';
-  
-  return {
-    text: askWithProgress(
-      session.serviceType === '멤버쉽' ? MESSAGES.INPUT_NAME : MESSAGES.INPUT_COMPANY,
-      session
-    ),
-    quickReplies: []
-  };
-}
-
-export function handleCustomerCompany(message: string, session: UserSession): KakaoResponse {
-  const validation = validateNotEmpty(message, '고객사명');
-  if (!validation.valid) {
-    return {
-      text: validation.error || MESSAGES.INPUT_COMPANY,
-      quickReplies: []
-    };
-  }
-  
-  session.data.customerName = message.trim();
-  session.step = 'get_contact_name';
-  
-  return {
-    text: askWithProgress(MESSAGES.INPUT_NAME, session),
-    quickReplies: []
-  };
-}
-
-export function handleContactName(message: string, session: UserSession): KakaoResponse {
-  // 설치 서비스에서 고객사명이 없는 경우 먼저 처리
-  if (session.serviceType === '설치' && !session.data.customerName) {
-    const validation = validateNotEmpty(message, '고객사명');
-    if (!validation.valid) {
-      return {
-        text: validation.error || MESSAGES.INPUT_COMPANY,
-        quickReplies: []
-      };
-    }
-    
-    session.data.customerName = message.trim();
-    
-    return {
-      text: askWithProgress(MESSAGES.INPUT_NAME, session),
-      quickReplies: []
-    };
-  }
-  
-  const validation = validateNotEmpty(message, '담당자 성함');
-  if (!validation.valid) {
-    return {
-      text: validation.error || MESSAGES.INPUT_NAME,
-      quickReplies: []
-    };
-  }
-  
-  session.data.contactName = message.trim();
-  session.step = 'get_contact_title';
-  
-  return {
-    text: askWithProgress(MESSAGES.INPUT_TITLE, session),
-    quickReplies: createQuickReplies([
-      { label: BUTTONS.TITLE_MANAGER, value: '매니저' },
-      { label: BUTTONS.TITLE_SENIOR, value: '책임' },
-      { label: BUTTONS.TITLE_TEAM_LEADER, value: '팀장' },
-      { label: BUTTONS.TITLE_DIRECTOR, value: '이사' }
-    ])
-  };
-}
-
-export function handleContactTitle(message: string, session: UserSession): KakaoResponse {
-  const validation = validateNotEmpty(message, '직급');
-  if (!validation.valid) {
-    return {
-      text: validation.error || MESSAGES.INPUT_TITLE,
-      quickReplies: createQuickReplies([
-        { label: BUTTONS.TITLE_MANAGER, value: '매니저' },
-        { label: BUTTONS.TITLE_SENIOR, value: '책임' },
-        { label: BUTTONS.TITLE_TEAM_LEADER, value: '팀장' },
-        { label: BUTTONS.TITLE_DIRECTOR, value: '이사' }
-      ])
-    };
-  }
-  
-  session.data.contactTitle = message.trim();
-  session.step = 'get_contact_phone';
-  
-  return {
-    text: askWithProgress(MESSAGES.INPUT_PHONE, session),
-    quickReplies: []
-  };
-}
-
-export function handleContactPhone(message: string, session: UserSession): KakaoResponse {
-  const validation = validatePhoneNumber(message);
-  
-  if (!validation.valid || !validation.phone) {
-    return {
-      text: errorMessage(validation.error || VALIDATION_ERRORS.PHONE),
-      quickReplies: []
-    };
-  }
-  
-  session.data.contactPhone = validation.phone;
-  session.step = 'final_confirmation';
-  
-  return {
-    text: createFinalConfirmationMessage(session),
-    quickReplies: createQuickReplies([
-      { label: BUTTONS.CONFIRM, value: '네' },
-      { label: BUTTONS.CANCEL, value: '취소' }
-    ])
-  };
-}
-
 export async function handleFinalConfirmation(message: string, session: UserSession): Promise<KakaoResponse> {
   if (message.includes('취소')) {
     session.step = 'start';
@@ -617,18 +614,19 @@ export async function handleFinalConfirmation(message: string, session: UserSess
 
       const responseText = getSuccessResponseText(sessionCopy, quote);
 
-      session.step = 'select_service';  // 'start' -> 'select_service' 변경
+      session.step = 'select_service';
       session.data = { ledSpecs: [] };
       session.serviceType = undefined;
       session.ledCount = 0;
       session.currentLED = 1;
       
-      // 비동기 Notion 저장
+      // 비동기 Notion 저장 및 LINE WORKS 알림
       setImmediate(async () => {
         try {
           const notionData = prepareNotionData(sessionCopy, quote, schedules);
           const notionResult = await notionMCPTool.handler(notionData as any);
           
+          // 기존 Notion 멘션 추가
           await addMentionToPage(notionResult.id, {
             serviceType: sessionCopy.serviceType,
             eventName: notionData.eventName,
@@ -640,7 +638,6 @@ export async function handleFinalConfirmation(message: string, session: UserSess
             venue: notionData.venue || notionData.installRegion,
             totalAmount: notionData.totalQuoteAmount,
             ledSpecs: sessionCopy.data.ledSpecs,
-            // 설치 서비스 추가 필드
             installSpace: notionData.installSpace,
             installEnvironment: notionData.installEnvironment,
             installSchedule: notionData.eventSchedule || notionData.installSchedule,
@@ -650,8 +647,39 @@ export async function handleFinalConfirmation(message: string, session: UserSess
           });
           
           console.log('✅ Notion 저장 완료');
+          
+          // LINE WORKS 알림 발송
+          await lineWorksNotification.sendNewRequestNotification({
+            serviceType: sessionCopy.serviceType,
+            eventName: notionData.eventName || '미정',
+            customerName: notionData.customerName || '미정',
+            contactName: notionData.contactName,
+            venue: notionData.venue || notionData.installRegion,
+            eventPeriod: notionData.eventSchedule || notionData.requiredTiming,
+            notionPageId: notionResult.id,
+            notionUrl: notionResult.url,
+            totalAmount: notionData.totalQuoteAmount
+          });
+          
+          console.log('✅ LINE WORKS 알림 발송 완료');
+          
+          // LINE WORKS 알림 발송
+          await lineWorksNotification.sendNewRequestNotification({
+            serviceType: sessionCopy.serviceType,
+            eventName: notionData.eventName || '미정',
+            customerName: notionData.customerName || '미정',
+            contactName: notionData.contactName,
+            venue: notionData.venue || notionData.installRegion,
+            eventPeriod: notionData.eventSchedule || notionData.requiredTiming,
+            notionPageId: notionResult.id,
+            notionUrl: notionResult.url, // Notion API가 URL을 반환하는 경우
+            totalAmount: notionData.totalQuoteAmount
+          });
+          
+          console.log('✅ LINE WORKS 알림 발송 완료');
+          
         } catch (error) {
-          console.error('❌ Notion 저장 실패:', error);
+          console.error('❌ Notion 저장 또는 LINE WORKS 알림 실패:', error);
         }
       });
       
@@ -685,7 +713,7 @@ export async function handleFinalConfirmation(message: string, session: UserSess
 
 // Helper Functions
 
-function createFinalConfirmationMessage(session: UserSession): string {
+export function createFinalConfirmationMessage(session: UserSession): string {
   const header = `${EMOJI.CHECK} 모든 정보가 입력되었습니다!\n${EMOJI.INFO} 최종 확인\n${DIVIDER}`;
   
   let content = '';
@@ -710,7 +738,7 @@ function createFinalConfirmationMessage(session: UserSession): string {
   return `${header}\n${content}${footer}`;
 }
 
-function createInstallConfirmation(session: UserSession): string {
+export function createInstallConfirmation(session: UserSession): string {
   return `🔖 서비스: LED 설치
 ${EMOJI.TOOL} 설치 환경: ${session.data.installEnvironment}
 ${EMOJI.INFO} 설치 지역: ${session.data.installRegion}
@@ -724,7 +752,7 @@ ${EMOJI.PERSON} 고객명: ${session.data.contactName} ${session.data.contactTit
 ${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
-function createRentalIndoorConfirmation(session: UserSession): string {
+export function createRentalIndoorConfirmation(session: UserSession): string {
   const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
     const [w, h] = led.size.split('x').map(Number);
     const widthPixels = Math.round((w / 500) * 168);
@@ -765,7 +793,7 @@ ${EMOJI.PERSON} 고객명: ${session.data.contactName} ${session.data.contactTit
 ${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
-function createRentalOutdoorConfirmation(session: UserSession): string {
+export function createRentalOutdoorConfirmation(session: UserSession): string {
   const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
     let details = `LED${index + 1}: ${led.size}`;
     
@@ -790,7 +818,7 @@ ${EMOJI.PERSON} 고객명: ${session.data.contactName} ${session.data.contactTit
 ${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
-function createMembershipConfirmation(session: UserSession): string {
+export function createMembershipConfirmation(session: UserSession): string {
   const ledSummary = session.data.ledSpecs.map((led: any, index: number) => {
     const [w, h] = led.size.split('x').map(Number);
     const widthPixels = Math.round((w / 500) * 168);
@@ -827,12 +855,12 @@ ${EMOJI.PERSON} 고객명: ${session.data.contactName} ${session.data.contactTit
 ${EMOJI.PHONE} 연락처: ${session.data.contactPhone}`;
 }
 
-function createLEDCompleteMessage(session: UserSession): string {
+export function createLEDCompleteMessage(session: UserSession): string {
   const summary = createLEDSummary(session.data.ledSpecs);
   return `✅ 모든 LED 설정이 완료되었습니다!\n\n📋 설정 요약:\n${summary}`;
 }
 
-function getSuccessResponseText(session: UserSession, quote: QuoteResult | RentalQuoteResult | null): string {
+export function getSuccessResponseText(session: UserSession, quote: QuoteResult | RentalQuoteResult | null): string {
   if (session.serviceType === '설치') {
     return MESSAGES.INSTALL_SUCCESS_TEMPLATE(
       session.data.customerName || '',
@@ -869,7 +897,7 @@ function getSuccessResponseText(session: UserSession, quote: QuoteResult | Renta
   }
 }
 
-function calculateLEDPower(size: string): string {
+export function calculateLEDPower(size: string): string {
   if (!size) return '';
   const [width, height] = size.split('x').map(Number);
   const moduleCount = (width / 500) * (height / 500);

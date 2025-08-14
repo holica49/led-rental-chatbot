@@ -1,5 +1,7 @@
 import { UserSession, QuoteResult, RentalQuoteResult } from '../../types/index.js';
 import { calculateLEDInfo } from '../calculate-quote.js';
+import axios from 'axios';
+import { LineWorksAuth } from '../../config/lineworks-auth.js';
 
 export function prepareNotionData(
   session: UserSession, 
