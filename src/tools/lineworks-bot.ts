@@ -1,8 +1,9 @@
-// src/tools/lineworks-bot.ts (캘린더 기능 추가 버전)
+// src/tools/lineworks-bot.ts (MCP 연동 버전)
 import express, { Request, Response } from 'express';
 import { Client } from '@notionhq/client';
-import axios from 'axios';
-import { lineWorksCalendar } from './services/lineworks-calendar-service.js';
+import { parseCalendarText } from '../utils/nlp-calendar-parser.js';
+import { spawn } from 'child_process';
+import path from 'path';
 
 const router = express.Router();
 
@@ -24,9 +25,6 @@ const notion = new Client({
 
 const databaseId = process.env.NOTION_DATABASE_ID!;
 
-// 추가 import
-import { parseCalendarText } from '../utils/nlp-calendar-parser.js';
-
 // Webhook 메시지 타입
 interface LineWorksMessage {
   type: string;
@@ -40,6 +38,79 @@ interface LineWorksMessage {
     text?: string;
     postback?: string;
   };
+}
+
+// MCP 호출 함수
+async function callMCP(toolName: string, args: Record<string, unknown>): Promise<any> {
+  return new Promise((resolve, reject) => {
+    console.log('📞 MCP 호출:', toolName, args);
+    
+    // MCP 서버 실행
+    const mcpProcess = spawn('node', ['dist/index.js'], {
+      cwd: path.resolve(__dirname, '../..'),
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    let response = '';
+    let error = '';
+
+    // MCP 요청 전송
+    const request = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'tools/call',
+      params: {
+        name: toolName,
+        arguments: args
+      }
+    };
+
+    mcpProcess.stdin.write(JSON.stringify(request) + '\n');
+    mcpProcess.stdin.end();
+
+    // 응답 수신
+    mcpProcess.stdout.on('data', (data) => {
+      response += data.toString();
+    });
+
+    mcpProcess.stderr.on('data', (data) => {
+      error += data.toString();
+    });
+
+    mcpProcess.on('close', (code) => {
+      if (code === 0) {
+        try {
+          // JSON 응답 파싱
+          const lines = response.trim().split('\n');
+          const jsonResponse = lines.find(line => line.startsWith('{'));
+          
+          if (jsonResponse) {
+            const parsed = JSON.parse(jsonResponse);
+            if (parsed.result && parsed.result.content) {
+              const content = parsed.result.content[0].text;
+              resolve(JSON.parse(content));
+            } else {
+              resolve({ success: false, message: 'Invalid MCP response' });
+            }
+          } else {
+            resolve({ success: false, message: 'No JSON response from MCP' });
+          }
+        } catch (parseError) {
+          console.error('MCP 응답 파싱 오류:', parseError);
+          resolve({ success: false, message: 'Failed to parse MCP response' });
+        }
+      } else {
+        console.error('MCP 프로세스 오류:', error);
+        reject(new Error(`MCP process failed with code ${code}: ${error}`));
+      }
+    });
+
+    // 타임아웃 설정 (10초)
+    setTimeout(() => {
+      mcpProcess.kill();
+      reject(new Error('MCP call timeout'));
+    }, 10000);
+  });
 }
 
 // 메시지 전송 헬퍼
@@ -164,105 +235,111 @@ router.post('/callback', async (req: Request, res: Response) => {
                       '다음과 같은 기능을 사용할 수 있습니다:\n' +
                       '📊 프로젝트 조회: "강남LED 현황"\n' +
                       '📅 일정 조회: "오늘 일정", "이번주 일정"\n' +
-                      '📦 재고 확인: "재고 현황"';
+                      '📦 재고 확인: "재고 현황"\n' +
+                      '📝 일정 등록: "내일 오후 2시 회의"';
       }
-      // 캘린더 일정 등록 - 자연어 패턴 감지
+      // 일정 등록 - MCP 호출
       else if (
         (text.includes('일정') && (text.includes('등록') || text.includes('추가'))) ||
         (text.includes('시') && (text.includes('오늘') || text.includes('내일') || text.includes('모레'))) ||
         (text.includes('요일') && text.includes('시')) ||
         /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text) // 날짜 형식 포함
       ) {
-        // 1. 자연어 파싱
-        const parsed = parseCalendarText(text);
-        
-        if (!parsed) {
-          responseText = '일정을 이해할 수 없습니다. 예시: "내일 오후 2시 고객 미팅"';
-        } else {
+        try {
+          console.log('📅 MCP를 통한 캘린더 일정 등록 시작');
+          
+          // 1. Notion에 저장
           let notionSuccess = false;
-          let calendarSuccess = false;
+          const parsed = parseCalendarText(text);
           
-          // 2. Notion에 저장
-          try {
-            const notionResponse = await notion.pages.create({
-              parent: { database_id: databaseId },
-              properties: {
-                '행사명': {
-                  title: [{
-                    text: { content: `[일정] ${parsed.title}` }
-                  }]
-                },
-                '행사 일정': {
-                  rich_text: [{
-                    text: { content: `${parsed.date} ${parsed.time}` }
-                  }]
-                },
-                '서비스 유형': {
-                  select: { name: '일정' }
-                },
-                '행사 상태': {
-                  status: { name: '예정' }
-                },
-                '문의요청 사항': {
-                  rich_text: [{
-                    text: { content: `LINE WORKS에서 등록: ${text}` }
-                  }]
+          if (parsed) {
+            try {
+              await notion.pages.create({
+                parent: { database_id: databaseId },
+                properties: {
+                  '행사명': {
+                    title: [{
+                      text: { content: `[일정] ${parsed.title}` }
+                    }]
+                  },
+                  '행사 일정': {
+                    rich_text: [{
+                      text: { content: `${parsed.date} ${parsed.time}` }
+                    }]
+                  },
+                  '서비스 유형': {
+                    select: { name: '일정' }
+                  },
+                  '행사 상태': {
+                    status: { name: '예정' }
+                  },
+                  '문의요청 사항': {
+                    rich_text: [{
+                      text: { content: `LINE WORKS에서 등록: ${text}` }
+                    }]
+                  }
                 }
-              }
-            });
-            notionSuccess = true;
-            console.log('✅ Notion 일정 저장 성공');
-          } catch (error) {
-            console.error('❌ Notion 일정 저장 실패:', error);
-          }
-          
-          // 3. LINE WORKS 캘린더에 저장 (실패해도 계속 진행)
-          try {
-            const calendarResult = await lineWorksCalendar.createEventFromNaturalLanguage(userId, text);
-            if (calendarResult.needAuth) {
-              // 인증이 필요한 경우
-              responseText = calendarResult.message;
-              calendarSuccess = false;
-            } else {
-              calendarSuccess = calendarResult.success;
+              });
+              notionSuccess = true;
+              console.log('✅ Notion 저장 성공');
+            } catch (error) {
+              console.error('❌ Notion 저장 실패:', error);
             }
-          } catch (error) {
-            console.error('❌ LINE WORKS 캘린더 저장 실패:', error);
           }
           
-          // 4. 결과 메시지 (인증이 필요한 경우가 아닐 때만)
-          if (!responseText) {
-            responseText = `✅ 일정이 등록되었습니다!\n\n` +
-                          `📅 날짜: ${parsed.date}\n` +
-                          `⏰ 시간: ${parsed.time}\n` +
-                          `📌 제목: ${parsed.title}\n\n` +
-                          `저장 위치:\n` +
+          // 2. MCP로 LINE WORKS 캘린더에 저장
+          const mcpResult = await callMCP('lineworks_calendar', {
+            action: 'create',
+            userId: userId,
+            text: text
+          });
+          
+          console.log('📅 MCP 캘린더 결과:', mcpResult);
+          
+          // 3. 결과 메시지 생성
+          if (mcpResult.success) {
+            responseText = mcpResult.message + 
+                          `\n\n저장 위치:\n` +
                           `• Notion: ${notionSuccess ? '✅ 성공' : '❌ 실패'}\n` +
-                          `• LINE WORKS 캘린더: ${calendarSuccess ? '✅ 성공' : '❌ 실패'}`;
-            
-            if (parsed.reminder) {
-              responseText += `\n🔔 알림: ${parsed.reminder}분 전`;
-            }
+                          `• LINE WORKS 캘린더: ✅ 성공`;
+          } else {
+            responseText = `일정 등록 결과:\n\n` +
+                          `• Notion: ${notionSuccess ? '✅ 성공' : '❌ 실패'}\n` +
+                          `• LINE WORKS 캘린더: ❌ 실패\n\n` +
+                          `오류: ${mcpResult.message}`;
           }
+          
+        } catch (error) {
+          console.error('❌ 일정 등록 전체 오류:', error);
+          responseText = '일정 등록 중 오류가 발생했습니다. 다시 시도해주세요.';
         }
       }
-      // 내 캘린더 조회
+      // 내 캘린더 조회 - MCP 호출
       else if (text.includes('내 일정') || text.includes('내일정')) {
-        const events = await lineWorksCalendar.getEvents(userId, 'week');
-        
-        if (events.length === 0) {
-          responseText = '이번 주 등록된 일정이 없습니다.';
-        } else {
-          responseText = '📅 이번 주 일정:\n\n';
-          events.forEach((event: any) => {
-            const start = new Date(event.start.dateTime);
-            const dateStr = start.toLocaleDateString('ko-KR');
-            const timeStr = start.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-            responseText += `• ${dateStr} ${timeStr} - ${event.summary}\n`;
-            if (event.location) {
-              responseText += `  📍 ${event.location}\n`;
-            }
+        try {
+          const mcpResult = await callMCP('lineworks_calendar', {
+            action: 'get',
+            userId: userId,
+            range: 'week'
           });
+          
+          if (mcpResult.success && mcpResult.events.length > 0) {
+            responseText = '📅 이번 주 일정:\n\n';
+            mcpResult.events.forEach((event: any) => {
+              const start = new Date(event.startDateTime);
+              const dateStr = start.toLocaleDateString('ko-KR');
+              const timeStr = start.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+              responseText += `• ${dateStr} ${timeStr} - ${event.summary}\n`;
+              if (event.location) {
+                responseText += `  📍 ${event.location}\n`;
+              }
+            });
+          } else {
+            responseText = '이번 주 등록된 일정이 없습니다.';
+          }
+        } catch (error) {
+          console.error('❌ 캘린더 조회 오류:', error);
+          responseText = '캘린더 조회 중 오류가 발생했습니다.';
         }
       }
       // 기존 기능들
@@ -275,7 +352,7 @@ router.post('/callback', async (req: Request, res: Response) => {
           responseText = '프로젝트명을 입력해주세요. (예: "강남LED 현황")';
         }
       }
-      else if (lowerText.includes('일정') && !text.includes('내 일정')) {
+      else if (lowerText.includes('일정') && !text.includes('등록') && !text.includes('내')) {
         if (lowerText.includes('오늘')) {
           responseText = await getSchedule('오늘');
         } else if (lowerText.includes('이번주')) {
@@ -296,7 +373,8 @@ router.post('/callback', async (req: Request, res: Response) => {
                       '• 프로젝트 조회: "강남LED 현황"\n' +
                       '• 일정 조회: "오늘 일정"\n' +
                       '• 재고 확인: "재고 현황"\n' +
-                      '• 일정 등록: "내일 오후 2시 고객 미팅"';
+                      '• 일정 등록: "내일 오후 2시 고객 미팅"\n' +
+                      '• 내 캘린더: "내 일정"';
       }
       
       // 응답 전송

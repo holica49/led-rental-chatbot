@@ -1,3 +1,4 @@
+// src/index.ts (캘린더 도구 추가)
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -12,9 +13,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // 도구 임포트
-import { kakaoChatbotTool } from './tools/kakao-chatbot';
-import { notionMCPTool } from './tools/notion-mcp';
-import { enhancedExcelTool } from './tools/enhanced-excel';
+import { kakaoChatbotTool } from './tools/kakao-chatbot.js';
+import { notionMCPTool } from './tools/notion-mcp.js';
+import { enhancedExcelTool } from './tools/enhanced-excel.js';
+import { lineWorksCalendarTool } from './tools/lineworks-calendar-mcp.js'; // 새로 추가
 import { ToolDefinition } from './types/index.js';
 
 // 도구 타입 정의
@@ -32,12 +34,29 @@ function validateEnvironment(): void {
     'NOTION_DATABASE_ID'
   ];
 
+  const optionalEnvVars = [
+    'LINEWORKS_BOT_ID',
+    'LINEWORKS_BOT_SECRET', 
+    'LINEWORKS_CLIENT_ID',
+    'LINEWORKS_CLIENT_SECRET',
+    'LINEWORKS_DOMAIN_ID',
+    'LINEWORKS_SERVICE_ACCOUNT_ID',
+    'LINEWORKS_PRIVATE_KEY'
+  ];
+
   const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
   
   if (missingVars.length > 0) {
     console.error('Missing required environment variables:', missingVars.join(', '));
     console.error('Please create a .env file with the required variables.');
     process.exit(1);
+  }
+
+  // LINE WORKS 환경 변수 확인 (경고만)
+  const missingLineWorksVars = optionalEnvVars.filter(varName => !process.env[varName]);
+  if (missingLineWorksVars.length > 0) {
+    console.warn('Missing LINE WORKS environment variables:', missingLineWorksVars.join(', '));
+    console.warn('LINE WORKS 캘린더 기능이 제한될 수 있습니다.');
   }
 }
 
@@ -50,7 +69,7 @@ class LEDRentalMCPServer {
     this.server = new Server(
       {
         name: 'led-rental-mcp',
-        version: '1.0.0',
+        version: '1.1.0', // 버전 업데이트
       },
       {
         capabilities: {
@@ -64,6 +83,7 @@ class LEDRentalMCPServer {
     this.tools.set('kakao_chatbot', kakaoChatbotTool as Tool);
     this.tools.set('create_notion_estimate', notionMCPTool as unknown as Tool);
     this.tools.set('generate_excel', enhancedExcelTool as Tool);
+    this.tools.set('lineworks_calendar', lineWorksCalendarTool as unknown as Tool); // 새로 추가
 
     this.setupHandlers();
   }
@@ -91,6 +111,8 @@ class LEDRentalMCPServer {
 
       try {
         console.error(`Executing tool: ${request.params.name}`);
+        console.error(`Arguments:`, JSON.stringify(request.params.arguments, null, 2));
+        
         const result = await tool.handler(request.params.arguments || {});
         
         return {
