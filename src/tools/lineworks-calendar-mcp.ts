@@ -107,9 +107,10 @@ class LineWorksCalendarMCP {
       }
 
       // LINE WORKS Calendar API v1 정확한 엔드포인트
-      const calendarId = 'primary'; // 기본 캘린더
+      const calendarId = '7a7c9e7c-6ce7-4757-8241-84413c32a245'; // 실제 캘린더 ID
       const endpoint = `https://apis.worksmobile.com/r/${API_ID}/calendar/v1/${userEmail}/calendars/${calendarId}/events`;
       console.log('- API Endpoint:', endpoint);
+      console.log('- 캘린더 ID:', calendarId);
 
       // LINE WORKS Calendar API 공식 JSON 형식
       const eventData = {
