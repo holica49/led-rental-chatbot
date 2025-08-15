@@ -1,4 +1,4 @@
-// src/config/lineworks-auth.ts (기존 코드 + 캘린더 권한 추가)
+// src/config/lineworks-auth.ts (수정된 버전)
 import jwt from 'jsonwebtoken';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -18,6 +18,8 @@ export class LineWorksAuth {
   private config: LineWorksConfig;
   private accessToken: string | null = null;
   private tokenExpiry: Date | null = null;
+  private calendarToken: string | null = null;
+  private calendarTokenExpiry: Date | null = null;
 
   constructor() {
     // 환경 변수 디버깅
@@ -39,9 +41,6 @@ export class LineWorksAuth {
     
     if (!this.config.botId || !this.config.botSecret || !this.config.domainId) {
       console.error('필수 환경 변수가 누락되었습니다.');
-      console.error('botId:', this.config.botId);
-      console.error('botSecret:', this.config.botSecret ? '설정됨' : '없음');
-      console.error('domainId:', this.config.domainId);
       throw new Error('LINE WORKS 환경 변수가 설정되지 않았습니다.');
     }
   }
@@ -77,7 +76,7 @@ export class LineWorksAuth {
     const privateKey = this.getPrivateKey();
     
     // Service Account ID가 있으면 사용, 없으면 Client ID 사용
-    const serviceAccountId = this.config.serviceAccount || `${this.config.clientId}.${this.config.domainId}`;
+    const serviceAccountId = this.config.serviceAccount || `${this.config.clientId}.serviceaccount@${this.config.domainId}`;
     
     console.log('JWT 생성 중...');
     console.log('Service Account ID:', serviceAccountId);
@@ -95,13 +94,13 @@ export class LineWorksAuth {
   }
 
   /**
-   * JWT 토큰 생성 (캘린더 권한 포함) - 새로 추가
+   * JWT 토큰 생성 (캘린더 권한 포함)
    */
   private generateCalendarJWT(): string {
     const currentTime = Math.floor(Date.now() / 1000);
     const privateKey = this.getPrivateKey();
     
-    const serviceAccountId = this.config.serviceAccount || `${this.config.clientId}.${this.config.domainId}`;
+    const serviceAccountId = this.config.serviceAccount || `${this.config.clientId}.serviceaccount@${this.config.domainId}`;
     
     console.log('캘린더 JWT 생성 중...');
     console.log('Service Account ID:', serviceAccountId);
@@ -176,9 +175,14 @@ export class LineWorksAuth {
   }
 
   /**
-   * Access Token 발급 (캘린더 권한 포함) - 새로 추가
+   * Access Token 발급 (캘린더 권한 포함) - 수정된 버전
    */
   async getAccessTokenWithCalendarScope(): Promise<string> {
+    // 캐시된 토큰이 있고 유효하면 반환
+    if (this.calendarToken && this.calendarTokenExpiry && this.calendarTokenExpiry > new Date()) {
+      return this.calendarToken;
+    }
+
     console.log('LINE WORKS 캘린더 Access Token 발급 중...');
     
     try {
@@ -189,7 +193,7 @@ export class LineWorksAuth {
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         client_id: this.config.clientId,
         client_secret: this.config.clientSecret,
-        scope: 'bot bot.message user.read calendar calendar.read'  // calendar.write 제거
+        scope: 'bot bot.message user.read calendar calendar.read'
       });
       
       const response = await axios.post(
@@ -202,8 +206,16 @@ export class LineWorksAuth {
         }
       );
 
+      this.calendarToken = response.data.access_token;
+      this.calendarTokenExpiry = new Date(Date.now() + (response.data.expires_in - 300) * 1000);
+
       console.log('✅ LINE WORKS 캘린더 Access Token 발급 성공');
-      return response.data.access_token;
+      
+      if (!this.calendarToken) {
+        throw new Error('캘린더 Access token이 비어있습니다');
+      }
+      
+      return this.calendarToken;
       
     } catch (error: any) {
       console.error('❌ 캘린더 Access token 발급 실패:', error.response?.data || error.message);

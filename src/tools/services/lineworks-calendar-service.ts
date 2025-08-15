@@ -1,4 +1,4 @@
-// src/tools/services/lineworks-calendar-service.ts (완전 교체용)
+// src/tools/services/lineworks-calendar-service.ts (수정된 버전)
 import axios from 'axios';
 import { LineWorksAuth } from '../../config/lineworks-auth.js';
 import { parseCalendarText } from '../../utils/nlp-calendar-parser.js';
@@ -31,7 +31,7 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * 자연어로 일정 생성 (MCP 전용 - 올바른 LINE WORKS API 사용)
+   * 자연어로 일정 생성 (올바른 LINE WORKS API 사용)
    */
   async createCalendarEvent(args: CalendarEventRequest): Promise<{ success: boolean; message: string; eventId?: string; needAuth?: boolean }> {
     try {
@@ -50,20 +50,12 @@ export class LineWorksCalendarService {
         };
       }
 
-      // 2. 사용자 이메일 결정
-      let targetEmail = args.userEmail;
-      if (!targetEmail) {
-        targetEmail = await this.getUserEmailFromUserId(args.userId);
-      }
-
-      console.log('- 대상 이메일:', targetEmail);
-
-      // 3. 캘린더 이벤트 생성
+      // 2. 캘린더 이벤트 생성
       const calendarEvent = this.convertToCalendarEvent(parsedEvent);
       console.log('- 캘린더 이벤트:', JSON.stringify(calendarEvent, null, 2));
 
-      // 4. LINE WORKS Calendar API 호출 (올바른 형식)
-      const result = await this.createEventWithCorrectAPI(targetEmail, calendarEvent);
+      // 3. LINE WORKS Calendar API 호출 (올바른 형식)
+      const result = await this.createEventWithCorrectAPI(args.userId, calendarEvent);
       console.log('- API 결과:', result);
 
       if (result.success) {
@@ -89,33 +81,22 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * 올바른 LINE WORKS Calendar API로 이벤트 생성
+   * 올바른 LINE WORKS Calendar API로 이벤트 생성 (문서 기준)
    */
-  private async createEventWithCorrectAPI(userEmail: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
+  private async createEventWithCorrectAPI(userId: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
     try {
       console.log('📅 올바른 LINE WORKS Calendar API 호출');
 
       // Service Account 토큰 획득 (calendar scope 포함)
       const accessToken = await this.auth.getAccessTokenWithCalendarScope();
-      console.log('- 캘린더 토큰 획득 완료');
+      console.log('✅ LINE WORKS 캘린더 Access Token 발급 성공');
 
-      // 필수 정보 확인
-      const API_ID = process.env.LINEWORKS_API_ID || process.env.LINEWORKS_CLIENT_ID;
-      if (!API_ID) {
-        console.error('❌ LINEWORKS_API_ID가 설정되지 않았습니다.');
-        return { success: false, error: 'LINEWORKS_API_ID 필요' };
-      }
-
-      // 실제 캘린더 ID (제공해주신 링크에서 추출)
-      const calendarId = '7a7c9e7c-6ce7-4757-8241-84413c32a245';
-      
-      // LINE WORKS Calendar API v1 올바른 엔드포인트
-      const endpoint = `https://apis.worksmobile.com/r/${API_ID}/calendar/v1/${userEmail}/calendars/${calendarId}/events`;
+      // 기본 캘린더 사용 (문서 기준)
+      const endpoint = `https://www.worksapis.com/v1.0/users/${userId}/calendar/events`;
       console.log('- 올바른 API Endpoint:', endpoint);
-      console.log('- 캘린더 ID:', calendarId);
-      console.log('- API_ID:', API_ID);
+      console.log('- User ID:', userId);
 
-      // LINE WORKS Calendar API 공식 JSON 형식 (날짜 형식 수정)
+      // LINE WORKS Calendar API 문서 기준 JSON 형식
       const eventData = {
         eventComponents: [
           {
@@ -124,43 +105,33 @@ export class LineWorksCalendarService {
             description: event.description || 'Claude MCP에서 등록된 일정',
             location: event.location,
             start: {
-              dateTime: event.startDateTime.replace('Z', '').replace('.000', ''), // .000 제거
+              dateTime: event.startDateTime,
               timeZone: 'Asia/Seoul'
             },
             end: {
-              dateTime: event.endDateTime.replace('Z', '').replace('.000', ''), // .000 제거
+              dateTime: event.endDateTime,
               timeZone: 'Asia/Seoul'
             },
             transparency: 'OPAQUE',
-            visibility: event.visibility?.toUpperCase() || 'PRIVATE',
-            sequence: 1,
-            reminders: event.reminder ? [
-              {
-                method: 'DISPLAY',
-                trigger: `-PT${event.reminder.remindBefore}M`
-              }
-            ] : [],
-            priority: 0
+            visibility: event.visibility?.toUpperCase() || 'PRIVATE'
           }
-        ],
-        sendNotification: false
+        ]
       };
 
       console.log('- 요청 데이터:', JSON.stringify(eventData, null, 2));
 
-      // API 호출
+      // API 호출 (문서 기준 헤더)
       const response = await axios.post(endpoint, eventData, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'consumerKey': process.env.LINEWORKS_CONSUMER_KEY || API_ID
+          'Content-Type': 'application/json'
         }
       });
 
       console.log('✅ LINE WORKS 캘린더 API 성공:', response.data);
       return {
         success: true,
-        eventId: response.data.eventComponents?.[0]?.eventId || response.data.returnValue || 'success'
+        eventId: response.data.eventComponents?.[0]?.eventId || 'success'
       };
 
     } catch (error: any) {
@@ -176,9 +147,9 @@ export class LineWorksCalendarService {
         console.log('❌ 권한 부족: calendar scope 또는 API 권한을 확인하세요.');
         console.log('💡 LINE WORKS Console > API 2.0 > Service Account에서 calendar scope 추가 필요');
       } else if (error.response?.status === 404) {
-        console.log('❌ API 엔드포인트를 찾을 수 없습니다. API_ID를 확인하세요.');
+        console.log('❌ API 엔드포인트를 찾을 수 없습니다. userId를 확인하세요.');
       } else if (error.response?.status === 401) {
-        console.log('❌ 인증 실패: Access Token 또는 Consumer Key를 확인하세요.');
+        console.log('❌ 인증 실패: Access Token을 확인하세요.');
       } else if (error.response?.status === 400) {
         console.log('❌ 요청 형식 오류: 날짜 형식이나 필수 필드를 확인하세요.');
       }
@@ -191,38 +162,16 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * userId에서 사용자 이메일 추출
-   */
-  private async getUserEmailFromUserId(userId: string): Promise<string> {
-    try {
-      // Service Account로 사용자 정보 조회
-      const accessToken = await this.auth.getAccessToken();
-      
-      const response = await axios.get(`https://www.worksapis.com/v1.0/users/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-
-      return response.data.email;
-    } catch (error) {
-      console.error('사용자 이메일 조회 실패:', error);
-      // 실패 시 기본값 반환
-      return `${userId}@anyractive.co.kr`;
-    }
-  }
-
-  /**
-   * 파싱된 이벤트를 LINE WORKS 캘린더 형식으로 변환 (날짜 형식 개선)
+   * 파싱된 이벤트를 LINE WORKS 캘린더 형식으로 변환 (간단한 형식)
    */
   private convertToCalendarEvent(parsed: any): CalendarEvent {
-    // LINE WORKS 표준 날짜 형식으로 변환 (밀리초 제거)
+    // LINE WORKS 표준 날짜 형식으로 변환
     const startDate = new Date(`${parsed.date}T${parsed.time}:00+09:00`);
     const endDate = new Date(startDate.getTime() + (parsed.duration || 60) * 60000);
     
-    // YYYY-MM-DDTHH:mm:ss 형식 (밀리초와 Z 없이)
+    // YYYY-MM-DDTHH:mm:ss 형식
     const formatDateTime = (date: Date) => {
-      return date.toISOString().split('.')[0]; // .000Z 제거
+      return date.toISOString().slice(0, 19); // 2025-08-16T14:00:00
     };
 
     const event: CalendarEvent = {
@@ -241,13 +190,6 @@ export class LineWorksCalendarService {
       event.location = parsed.location;
     }
 
-    // 알림 설정
-    if (parsed.reminder) {
-      event.reminder = {
-        remindBefore: parsed.reminder
-      };
-    }
-
     return event;
   }
 
@@ -264,25 +206,16 @@ export class LineWorksCalendarService {
       message += `\n📍 장소: ${parsed.location}`;
     }
     
-    if (parsed.reminder) {
-      message += `\n🔔 알림: ${parsed.reminder}분 전`;
-    }
-    
     return message;
   }
 
   /**
-   * 일정 조회 (MCP 전용)
+   * 일정 조회 (기본 캘린더 사용)
    */
   async getEvents(args: { userId: string; userEmail?: string; range: 'today' | 'week' }): Promise<any> {
     try {
       const accessToken = await this.auth.getAccessTokenWithCalendarScope();
       
-      let targetEmail = args.userEmail;
-      if (!targetEmail) {
-        targetEmail = await this.getUserEmailFromUserId(args.userId);
-      }
-
       const timeMin = new Date();
       const timeMax = new Date();
       
@@ -292,15 +225,12 @@ export class LineWorksCalendarService {
         timeMax.setDate(timeMax.getDate() + 7);
       }
 
-      // 올바른 LINE WORKS Calendar API로 조회
-      const API_ID = process.env.LINEWORKS_API_ID || process.env.LINEWORKS_CLIENT_ID;
-      const calendarId = '7a7c9e7c-6ce7-4757-8241-84413c32a245';
-      const endpoint = `https://apis.worksmobile.com/r/${API_ID}/calendar/v1/${targetEmail}/calendars/${calendarId}/events`;
+      // 기본 캘린더 조회 (문서 기준)
+      const endpoint = `https://www.worksapis.com/v1.0/users/${args.userId}/calendar/events`;
       
       const response = await axios.get(endpoint, {
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'consumerKey': process.env.LINEWORKS_CONSUMER_KEY || API_ID
+          'Authorization': `Bearer ${accessToken}`
         },
         params: {
           timeMin: timeMin.toISOString(),
