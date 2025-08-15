@@ -42,8 +42,13 @@ export class LineWorksCalendarService {
    */
   async createEventFromNaturalLanguage(userId: string, text: string): Promise<{ success: boolean; message: string; eventId?: string }> {
     try {
+      console.log('📅 캘린더 일정 등록 시작');
+      console.log('- userId:', userId);
+      console.log('- text:', text);
+      
       // 1. 자연어 파싱
       const parsedEvent = parseCalendarText(text);
+      console.log('- 파싱 결과:', parsedEvent);
       
       if (!parsedEvent) {
         return {
@@ -54,9 +59,11 @@ export class LineWorksCalendarService {
 
       // 2. LINE WORKS 캘린더 이벤트 형식으로 변환
       const calendarEvent = this.convertToCalendarEvent(parsedEvent);
+      console.log('- 캘린더 이벤트:', JSON.stringify(calendarEvent, null, 2));
 
       // 3. 캘린더 API 호출
       const result = await this.createCalendarEvent(userId, calendarEvent);
+      console.log('- API 결과:', result);
 
       if (result.success) {
         return {
@@ -72,7 +79,7 @@ export class LineWorksCalendarService {
       }
 
     } catch (error) {
-      console.error('자연어 일정 생성 오류:', error);
+      console.error('❌ 자연어 일정 생성 오류:', error);
       return {
         success: false,
         message: '일정 처리 중 오류가 발생했습니다.'
@@ -121,12 +128,16 @@ export class LineWorksCalendarService {
   /**
    * 캘린더 이벤트 생성 API 호출
    */
-  private async createCalendarEvent(userId: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string }> {
+  private async createCalendarEvent(userId: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
     try {
+      console.log('📅 캘린더 API 호출 시작');
       const accessToken = await this.auth.getAccessToken();
+      console.log('- Access Token 획득:', accessToken ? '성공' : '실패');
       
       // LINE WORKS Calendar API endpoint
       const endpoint = `https://www.worksapis.com/v1.0/users/${userId}/calendar/events`;
+      console.log('- API Endpoint:', endpoint);
+      console.log('- Request Body:', JSON.stringify(event, null, 2));
 
       const response = await axios.post(endpoint, event, {
         headers: {
@@ -135,15 +146,22 @@ export class LineWorksCalendarService {
         }
       });
 
+      console.log('✅ 캘린더 API 성공:', response.data);
       return {
         success: true,
         eventId: response.data.eventId
       };
 
-    } catch (error) {
-      console.error('캘린더 API 오류:', error);
+    } catch (error: any) {
+      console.error('❌ 캘린더 API 오류:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        headers: error.response?.headers
+      });
       return {
-        success: false
+        success: false,
+        error: error.response?.data || error.message
       };
     }
   }
