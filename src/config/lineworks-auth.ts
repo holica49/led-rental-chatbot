@@ -189,7 +189,7 @@ export class LineWorksAuth {
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         client_id: this.config.clientId,
         client_secret: this.config.clientSecret,
-        scope: 'bot bot.message user.read calendar calendar.read calendar.write'
+        scope: 'bot bot.message user.read calendar calendar.read'  // calendar.write 제거
       });
       
       const response = await axios.post(

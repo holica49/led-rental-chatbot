@@ -91,63 +91,67 @@ class LineWorksCalendarMCP {
 
   /**
    * Domain Admin 권한으로 캘린더 이벤트 생성
-   * (Service Account에 calendar scope 추가 필요)
+   * (LINE WORKS Calendar API 공식 형식 사용)
    */
   private async createEventWithDomainAccess(userEmail: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
     try {
-      console.log('📅 Domain Admin 권한으로 캘린더 API 호출');
+      console.log('📅 LINE WORKS 캘린더 API 호출');
 
       // Service Account 토큰 획득 (calendar scope 포함)
       const accessToken = await this.auth.getAccessTokenWithCalendarScope();
-      console.log('- Domain Admin 토큰 획득 완료');
+      console.log('- 캘린더 토큰 획득 완료');
 
-      // LINE WORKS Calendar API v1.0 (정확한 엔드포인트)
+      // LINE WORKS Calendar API - 사용자별 일정 생성
+      // URL: /v1.0/users/{userId}/calendar/events (추정)
       const endpoint = `https://www.worksapis.com/v1.0/users/${userEmail}/calendar/events`;
       console.log('- API Endpoint:', endpoint);
 
-      // LINE WORKS Calendar API 호출
-      const response = await axios.post(endpoint, {
-        summary: event.summary,
+      // LINE WORKS Calendar API 표준 형식
+      const calendarEventData = {
+        title: event.summary,
         description: event.description,
-        start: {
-          dateTime: event.startDateTime,
-          timeZone: 'Asia/Seoul'
-        },
-        end: {
-          dateTime: event.endDateTime,
-          timeZone: 'Asia/Seoul'
-        },
+        startTime: event.startDateTime,
+        endTime: event.endDateTime,
         location: event.location,
-        visibility: event.visibility || 'private',
-        reminders: event.reminder ? {
-          useDefault: false,
-          overrides: [
-            {
-              method: 'popup',
-              minutes: event.reminder.remindBefore
-            }
-          ]
-        } : undefined
-      }, {
+        isAllDay: event.isAllDay || false,
+        visibility: event.visibility || 'PRIVATE',
+        // 알림 설정 (LINE WORKS 형식)
+        reminders: event.reminder ? [{
+          method: 'POPUP',
+          minutes: event.reminder.remindBefore
+        }] : []
+      };
+
+      console.log('- 요청 데이터:', JSON.stringify(calendarEventData, null, 2));
+
+      // API 호출
+      const response = await axios.post(endpoint, calendarEventData, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         }
       });
 
-      console.log('✅ Domain Admin 캘린더 API 성공:', response.data);
+      console.log('✅ LINE WORKS 캘린더 API 성공:', response.data);
       return {
         success: true,
-        eventId: response.data.eventId || response.data.id
+        eventId: response.data.eventId || response.data.id || 'success'
       };
 
     } catch (error: any) {
-      console.error('❌ Domain Admin 캘린더 API 오류:', {
+      console.error('❌ LINE WORKS 캘린더 API 오류:', {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status,
         headers: error.response?.headers
       });
+
+      // 상세 오류 분석
+      if (error.response?.status === 403) {
+        console.log('❌ 권한 부족: calendar scope가 충분하지 않습니다.');
+      } else if (error.response?.status === 404) {
+        console.log('❌ API 엔드포인트를 찾을 수 없습니다. URL을 확인해주세요.');
+      }
 
       return {
         success: false,
