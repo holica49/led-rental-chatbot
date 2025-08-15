@@ -1,4 +1,4 @@
-// src/tools/lineworks-calendar-mcp.ts (고도화된 파서 통합 버전)
+// src/tools/lineworks-calendar-mcp.ts (고도화된 파서 통합 버전 - 수정)
 import axios from 'axios';
 import { LineWorksAuth } from '../config/lineworks-auth.js';
 import { AdvancedCalendarParser } from '../utils/nlp-calendar-parser.js';
@@ -133,14 +133,14 @@ class LineWorksCalendarMCP {
       // 고도화된 제목 생성
       const enhancedSummary = this.generateEnhancedSummary(event);
 
-      // LINE WORKS API 요청 데이터
+      // LINE WORKS API 요청 데이터 (문서 기준 풀 버전)
       const eventData = {
         eventComponents: [
           {
             eventId: `claude-enhanced-${Date.now()}-${Math.random().toString(36).substring(7)}`,
             summary: enhancedSummary,
             description: enhancedDescription,
-            location: event.location,
+            location: event.location, // 장소 정보
             start: {
               dateTime: event.startDateTime,
               timeZone: 'Asia/Seoul'
@@ -150,18 +150,16 @@ class LineWorksCalendarMCP {
               timeZone: 'Asia/Seoul'
             },
             transparency: 'OPAQUE',
-            visibility: this.determineVisibility(event.priority, event.meetingType),
+            visibility: this.determineVisibility(event.priority, event.meetingType), // 공개/비공개
             sequence: 1,
-            reminders: event.reminder ? [
-              {
-                method: 'DISPLAY',
-                trigger: `-PT${event.reminder.remindBefore}M`
-              }
-            ] : [],
-            priority: this.getPriorityLevel(event.priority)
+            priority: this.getPriorityLevel(event.priority), // 중요도 0-9
+            // 참석자 정보
+            attendees: this.formatAttendeesForAPI(event.attendees),
+            // 알림 정보
+            reminders: this.formatRemindersForAPI(event.reminder)
           }
         ],
-        sendNotification: true // 고도화된 일정은 알림 활성화
+        sendNotification: event.priority === 'high' || event.meetingType === 'client' // 중요한 일정이나 고객 미팅은 알림
       };
 
       console.log('- 요청 데이터:', JSON.stringify(eventData, null, 2));
@@ -244,6 +242,83 @@ class LineWorksCalendarMCP {
   }
 
   /**
+   * 우선순위에 따른 가시성 결정
+   */
+  private determineVisibility(priority?: string, meetingType?: string): 'PUBLIC' | 'PRIVATE' {
+    // 높은 우선순위나 고객 미팅은 공개
+    if (priority === 'high' || meetingType === 'client') {
+      return 'PUBLIC';
+    }
+    return 'PRIVATE';
+  }
+
+  /**
+   * 우선순위 레벨 변환 (LINE WORKS API 형식: 0-9)
+   */
+  private getPriorityLevel(priority?: string): number {
+    switch (priority) {
+      case 'high': return 1; // 가장 중요
+      case 'medium': return 5; // 보통  
+      case 'low': return 8; // 낮음
+      default: return 0; // 정의되지 않음
+    }
+  }
+
+  /**
+   * 참석자 정보를 LINE WORKS API 형식으로 변환
+   */
+  private formatAttendeesForAPI(attendees?: string[]): any[] {
+    if (!attendees || attendees.length === 0) return [];
+
+    return attendees.map(attendee => {
+      // 이메일 주소 생성 (실제로는 사용자 DB 조회 필요)
+      const email = this.generateAttendeeEmail(attendee);
+      
+      return {
+        email: email,
+        displayName: attendee,
+        partstat: 'NEEDS-ACTION', // 응답 대기
+        isOptional: false, // 필수 참석
+        isResource: false // 사용자 (설비 아님)
+      };
+    });
+  }
+
+  /**
+   * 알림 정보를 LINE WORKS API 형식으로 변환
+   */
+  private formatRemindersForAPI(reminder?: { remindBefore: number }): any[] {
+    if (!reminder) {
+      // 기본 알림: 15분 전
+      return [
+        {
+          method: 'DISPLAY',
+          trigger: '-PT15M'
+        }
+      ];
+    }
+
+    return [
+      {
+        method: 'DISPLAY', // 푸시/서비스 알림
+        trigger: `-PT${reminder.remindBefore}M` // 예: -PT30M = 30분 전
+      }
+    ];
+  }
+
+  /**
+   * 참석자 이름에서 이메일 생성
+   */
+  private generateAttendeeEmail(name: string): string {
+    // 직급 제거
+    const cleanName = name.replace(/[팀장|과장|차장|부장|대리|사원|님|씨]/g, '');
+    
+    // 실제 환경에서는 사용자 데이터베이스에서 이메일 조회
+    // 임시로 회사 도메인 사용
+    return `${cleanName}@anyractive.co.kr`;
+  }
+
+  /**
    * 고도화된 제목 생성 (아이콘 포함)
    */
   private generateEnhancedSummary(event: EnhancedCalendarEvent): string {
@@ -284,10 +359,15 @@ class LineWorksCalendarMCP {
   }
 
   /**
-   * 상세한 설명 생성
+   * 상세한 설명 생성 (장소 정보 포함)
    */
   private generateDetailedDescription(event: EnhancedCalendarEvent): string {
     let description = '🤖 Claude MCP 고도화된 일정 등록\n\n';
+
+    // 장소 정보 (description에 포함)
+    if (event.location) {
+      description += `📍 장소: ${event.location}\n\n`;
+    }
 
     // 회의 정보
     if (event.meetingType) {
@@ -342,6 +422,11 @@ class LineWorksCalendarMCP {
       description += `🔄 반복: ${recurringNames[event.recurringPattern as keyof typeof recurringNames] || event.recurringPattern}\n\n`;
     }
 
+    // 알림 정보
+    if (event.reminder) {
+      description += `🔔 알림: ${event.reminder.remindBefore}분 전\n\n`;
+    }
+
     // 분석 정보
     if (event.confidence) {
       description += `📊 AI 분석 신뢰도: ${Math.round(event.confidence * 100)}%\n`;
@@ -357,28 +442,6 @@ class LineWorksCalendarMCP {
     description += `\n⏰ 등록 시간: ${new Date().toLocaleString('ko-KR')}`;
 
     return description;
-  }
-
-  /**
-   * 우선순위에 따른 가시성 결정
-   */
-  private determineVisibility(priority?: string, meetingType?: string): 'PUBLIC' | 'PRIVATE' {
-    // 높은 우선순위나 고객 미팅은 공개
-    if (priority === 'high' || meetingType === 'client') {
-      return 'PUBLIC';
-    }
-    return 'PRIVATE';
-  }
-
-  /**
-   * 우선순위 레벨 변환
-   */
-  private getPriorityLevel(priority?: string): number {
-    switch (priority) {
-      case 'high': return 1;
-      case 'low': return 9;
-      default: return 5;
-    }
   }
 
   /**

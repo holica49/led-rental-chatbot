@@ -125,14 +125,14 @@ export class LineWorksCalendarService {
       // 고도화된 설명 생성
       const enhancedDescription = this.generateEnhancedDescription(event);
 
-      // LINE WORKS Calendar API 요청 데이터
+      // LINE WORKS Calendar API 요청 데이터 (문서 기준 풀 버전)
       const eventData = {
         eventComponents: [
           {
             eventId: `claude-${Date.now()}-${Math.random().toString(36).substring(7)}`,
             summary: event.summary,
             description: enhancedDescription,
-            location: event.location,
+            location: event.location, // 장소 지원됨
             start: {
               dateTime: event.startDateTime,
               timeZone: 'Asia/Seoul'
@@ -142,14 +142,16 @@ export class LineWorksCalendarService {
               timeZone: 'Asia/Seoul'
             },
             transparency: 'OPAQUE',
-            visibility: this.getVisibilityFromPriority(event.priority),
-            // 참석자 정보 (향후 확장 가능)
-            organizer: {
-              email: `${userId}@anyractive.co.kr`,
-              displayName: 'Claude MCP'
-            }
+            visibility: this.getVisibilityFromPriority(event.priority), // 공개/비공개 지원됨
+            sequence: 1, // 시퀀스 번호
+            priority: this.getPriorityLevel(event.priority), // 중요도 0-9 지원됨
+            // 참석자 정보 추가
+            attendees: this.formatAttendees(event.attendees),
+            // 알림 정보 추가
+            reminders: this.formatReminders(event.reminder)
           }
-        ]
+        ],
+        sendNotification: event.priority === 'high' // 중요한 일정만 알림
       };
 
       console.log('- 요청 데이터:', JSON.stringify(eventData, null, 2));
@@ -275,41 +277,111 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * 고도화된 설명 생성
+   * 우선순위 레벨 변환 (0-9)
+   */
+  private getPriorityLevel(priority?: string): number {
+    switch (priority) {
+      case 'high': return 1; // 가장 중요
+      case 'medium': return 5; // 보통
+      case 'low': return 8; // 낮음
+      default: return 0; // 정의되지 않음
+    }
+  }
+
+  /**
+   * 참석자 정보 포맷팅
+   */
+  private formatAttendees(attendees?: string[]): any[] {
+    if (!attendees || attendees.length === 0) return [];
+
+    return attendees.map(attendee => {
+      // 이메일 주소 생성 (실제 환경에서는 사용자 DB에서 조회)
+      const email = this.generateEmailFromName(attendee);
+      
+      return {
+        email: email,
+        displayName: attendee,
+        partstat: 'NEEDS-ACTION', // 응답 안 함
+        isOptional: false // 필수 참석
+      };
+    });
+  }
+
+  /**
+   * 이름에서 이메일 생성 (임시 로직)
+   */
+  private generateEmailFromName(name: string): string {
+    // 실제로는 사용자 데이터베이스에서 조회해야 함
+    // 임시로 anyractive.co.kr 도메인 사용
+    const cleanName = name.replace(/[팀장|과장|대리|님|씨]/g, '');
+    return `${cleanName}@anyractive.co.kr`;
+  }
+
+  /**
+   * 알림 정보 포맷팅
+   */
+  private formatReminders(reminder?: { remindBefore: number }): any[] {
+    if (!reminder) return [];
+
+    return [
+      {
+        method: 'DISPLAY', // 푸시/서비스 알림
+        trigger: `-PT${reminder.remindBefore}M` // PT15M = 15분 전
+      }
+    ];
+  }
+
+  /**
+   * 고도화된 설명 생성 (장소 정보 포함)
    */
   private generateEnhancedDescription(event: EnhancedCalendarEvent): string {
-    let description = 'Claude MCP에서 등록된 일정\n\n';
+    let description = '🤖 Claude MCP 고도화된 일정 등록\n\n';
 
-    // 기본 정보
+    // 장소 정보 (description에 포함)
+    if (event.location) {
+      description += `📍 장소: ${event.location}\n`;
+    }
+
+    // 회의 정보
     if (event.meetingType) {
       const typeNames = {
-        internal: '내부 회의',
-        client: '고객 미팅',
-        presentation: '프레젠테이션',
-        training: '교육/훈련',
-        interview: '면접',
-        general: '일반 회의'
+        internal: '🏢 내부 회의',
+        client: '🤝 고객 미팅',
+        presentation: '📊 프레젠테이션',
+        training: '📚 교육/훈련',
+        interview: '💼 면접',
+        general: '📋 일반 회의'
       };
-      description += `📋 회의 유형: ${typeNames[event.meetingType]}\n`;
+      description += `${typeNames[event.meetingType]}\n`;
     }
 
     if (event.priority) {
       const priorityNames = {
-        high: '높음 🔴',
-        medium: '보통 🟡',
-        low: '낮음 🟢'
+        high: '🔴 높은 우선순위',
+        medium: '🟡 보통 우선순위',
+        low: '🟢 낮은 우선순위'
       };
-      description += `⚡ 우선순위: ${priorityNames[event.priority]}\n`;
+      description += `${priorityNames[event.priority]}\n`;
     }
+
+    description += '\n';
 
     // 참석자 정보
     if (event.attendees && event.attendees.length > 0) {
-      description += `👥 참석자: ${event.attendees.join(', ')}\n`;
+      description += `👥 참석자:\n`;
+      event.attendees.forEach(attendee => {
+        description += `  • ${attendee}\n`;
+      });
+      description += '\n';
     }
 
     // 준비물
     if (event.preparation && event.preparation.length > 0) {
-      description += `📝 준비물: ${event.preparation.join(', ')}\n`;
+      description += `📝 준비물:\n`;
+      event.preparation.forEach(item => {
+        description += `  • ${item}\n`;
+      });
+      description += '\n';
     }
 
     // 반복 일정
@@ -320,18 +392,27 @@ export class LineWorksCalendarService {
         monthly: '매월',
         yearly: '매년'
       };
-      description += `🔄 반복: ${recurringNames[event.recurringPattern as keyof typeof recurringNames] || event.recurringPattern}\n`;
+      description += `🔄 반복: ${recurringNames[event.recurringPattern as keyof typeof recurringNames] || event.recurringPattern}\n\n`;
     }
 
-    // 파싱 정보 (디버깅용)
-    if (event.extractedInfo && event.extractedInfo.length > 0) {
-      description += `\n🔍 추출된 정보:\n${event.extractedInfo.map(info => `• ${info}`).join('\n')}`;
+    // 알림 정보
+    if (event.reminder) {
+      description += `🔔 알림: ${event.reminder.remindBefore}분 전\n\n`;
     }
 
-    // 신뢰도 표시
+    // 분석 정보
     if (event.confidence) {
-      description += `\n\n📊 파싱 신뢰도: ${Math.round(event.confidence * 100)}%`;
+      description += `📊 AI 분석 신뢰도: ${Math.round(event.confidence * 100)}%\n`;
     }
+
+    if (event.extractedInfo && event.extractedInfo.length > 0) {
+      description += `\n🔍 인식된 정보:\n`;
+      event.extractedInfo.forEach(info => {
+        description += `  • ${info}\n`;
+      });
+    }
+
+    description += `\n⏰ 등록 시간: ${new Date().toLocaleString('ko-KR')}`;
 
     return description;
   }
