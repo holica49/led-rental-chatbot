@@ -1,6 +1,6 @@
-# LED Rental MCP - Kakao Chatbot & LINE WORKS Bot Integration
+# LED Rental MCP - Kakao Chatbot & Advanced LINE WORKS Bot Integration
 
-LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇과 내부 업무 관리를 위한 LINE WORKS 봇 통합 시스템입니다. MCP(Model Context Protocol)를 통해 Claude와 연동되며, Notion 데이터베이스와 연동하여 업무를 자동화합니다.
+LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇과 **고도화된 AI 파싱 기능**을 갖춘 LINE WORKS 봇 통합 시스템입니다. MCP(Model Context Protocol)를 통해 Claude와 연동되며, **자연어 처리**로 복잡한 일정 정보를 자동으로 추출하여 Notion 데이터베이스와 LINE WORKS 캘린더에 저장합니다.
 
 ## 🚨 Claude AI를 위한 핵심 정보
 
@@ -11,7 +11,7 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇과 내부 업무 관리
 - **구분선**: `━━━━` (4개)로 통일
 - **LED 해상도**: 모듈당 168x168px 기준
 
-### 현재 상태 (2025-08-15)
+### 현재 상태 (2025-08-16)
 - **ES Module** 전환 완료
 - **모든 import에 .js 확장자** 추가 완료
 - **Railway 배포** 정상 작동 중
@@ -23,9 +23,9 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇과 내부 업무 관리
 - **메시지 톤 개선**: 이모지 최소화, 간결한 문구 ✨
 - **UI 개선**: 진행 상황 표시 ([현재/전체]) ✨
 - **견적 계산 개선**: 멤버쉽/렌탈 계산 로직 수정 ✨
-- **LINE WORKS 봇**: 구현 완료, 인증 성공 🆕
-- **카카오 엔티티 문제**: 해결 완료 (엔티티 삭제) 🆕
-- **MCP 캘린더 연동**: 구현 완료 (Notion + LINE WORKS) 🆕
+- **LINE WORKS 봇**: 구현 완료, 인증 성공 ✨
+- **카카오 엔티티 문제**: 해결 완료 (엔티티 삭제) ✨
+- **🆕 고도화된 MCP 캘린더 연동**: 자연어 파싱으로 스마트 일정 관리 ✨
 
 ## 🚀 주요 기능
 
@@ -38,19 +38,44 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇과 내부 업무 관리
 - **진행 상황 표시** ([3/10] 형식) ✨
 - **단축어 지원**: "처음", "이전" ✨
 
-### 2. LINE WORKS 봇 🆕
+### 2. 🆕 고도화된 LINE WORKS 봇 
 - **프로젝트 현황 조회**: "강남LED 현황"
 - **일정 관리**: "오늘 일정", "이번주 일정"
 - **재고 확인**: "재고 현황"
-- **일정 등록**: "내일 오후 2시 회의" (MCP 연동)
+- **🤖 AI 스마트 일정 등록**: 복잡한 자연어 처리
 - **OAuth 2.0 인증**: Service Account + JWT
 - **실시간 메시지 응답**: 업무 정보 즉시 제공
 
-### 3. MCP 캘린더 연동 🆕
+### 3. 🆕 고도화된 MCP 캘린더 연동
 - **Claude가 직접 캘린더 관리**: MCP를 통한 LINE WORKS 캘린더 API 호출
-- **자연어 일정 파싱**: "내일 오후 2시 회의" → 캘린더 이벤트 생성
+- **🧠 AI 자연어 파싱**: 복잡한 일정 정보 자동 추출
 - **이중 저장**: Notion + LINE WORKS 캘린더 동시 저장
 - **Service Account 권한**: Bot 제한 우회, 강력한 캘린더 관리
+- **스마트 기능**: 참석자, 회의유형, 우선순위, 준비물 자동 인식
+
+#### 🧠 AI 자연어 파싱 기능
+```
+입력: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림, PPT 준비"
+
+AI 자동 추출:
+✅ 날짜: 2025-08-26 (정확한 날짜 계산)
+⏰ 시간: 15:00
+📌 제목: 프로젝트 회의
+📍 장소: 강남 스타벅스
+👥 참석자: 김대리 (김대리@anyractive.co.kr)
+📋 유형: 내부 회의
+⚡ 우선순위: 높음 🔴
+🔔 알림: 30분 전
+📝 준비물: PPT
+📊 AI 신뢰도: 85%
+```
+
+#### 🎯 캘린더 이벤트 고도화
+- **아이콘 제목**: `🔴 🏢 프로젝트 회의 (1명)`
+- **참석자 자동 이메일 생성**: `김대리@anyractive.co.kr`
+- **우선순위 기반 설정**: 중요도 1-9, 공개/비공개 자동 결정
+- **스마트 알림**: 중요한 일정만 자동 알림 발송
+- **회의 유형 분류**: 내부회의, 고객미팅, 프레젠테이션 등
 
 ### 4. Notion 연동
 - 견적 데이터 자동 저장
@@ -96,11 +121,12 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇과 내부 업무 관리
 - 메서드: POST
 - Webhook 서명 검증 포함
 
-### MCP 캘린더 연동
+### 🆕 고도화된 MCP 캘린더 연동
 - **도구명**: `lineworks_calendar`
 - **액션**: `create` (일정 생성), `get` (일정 조회)
-- **API**: `https://www.worksapis.com/v1.0/users/{userId}/calendars/{calendarId}/events`
-- **캘린더 ID**: `7a7c9e7c-6ce7-4757-8241-84413c32a245`
+- **API**: `https://www.worksapis.com/v1.0/users/{userId}/calendar/events`
+- **자연어 파싱**: `AdvancedCalendarParser` 클래스 사용
+- **AI 신뢰도**: 30% 이상일 때 등록, 70% 이상 권장
 
 ### 상태 확인 엔드포인트
 | 엔드포인트 | 메서드 | 설명 |
@@ -124,7 +150,7 @@ LED 렌탈/설치 견적을 자동화하는 Kakao 챗봇과 내부 업무 관리
 ### 서비스 관련 필드
 | 필드명 | 타입 | 설명 | 사용 서비스 |
 |--------|------|------|------------|
-| 서비스 유형 | select | 설치/렌탈/멤버쉽 | 전체 |
+| 서비스 유형 | select | 설치/렌탈/멤버쉽/일정 | 전체 |
 | 행사 상태 | status | 진행 상태 | 전체 |
 | 멤버 코드 | rich_text | 멤버쉽 코드 | 멤버쉽 |
 | 설치 환경 | select | 실내/실외 | 설치, 렌탈 |
@@ -222,7 +248,7 @@ NOTION_DATABASE_ID=your_database_id
 # 담당자 설정 (한 줄로 작성)
 MANAGERS_CONFIG={"managers":[{"name":"유준수","notionId":"225d872b-594c-8157-b968-0002e2380097","department":"구축팀","isActive":true},{"name":"최수삼","notionId":"237d872b-594c-8174-9ab2-00024813e3a9","department":"렌탈팀","isActive":true}]}
 
-# LINE WORKS Bot
+# LINE WORKS Bot (고도화된 캘린더 기능)
 LINEWORKS_BOT_ID=your_bot_id
 LINEWORKS_BOT_SECRET=your_bot_secret
 LINEWORKS_CLIENT_ID=your_client_id
@@ -297,10 +323,11 @@ Railway 대시보드에서 모든 환경 변수를 설정해야 합니다:
 4. Private Key 다운로드
 5. Callback URL 설정: `https://[your-app-name].railway.app/lineworks/callback`
 
-### MCP 캘린더 설정 🆕
-- **API 엔드포인트**: `https://www.worksapis.com/v1.0/users/{userId}/calendars/{calendarId}/events`
-- **캘린더 ID**: `7a7c9e7c-6ce7-4757-8241-84413c32a245`
+### 🆕 고도화된 MCP 캘린더 설정
+- **API 엔드포인트**: `https://www.worksapis.com/v1.0/users/{userId}/calendar/events`
 - **필요 권한**: `calendar`, `calendar.read`
+- **자연어 파싱**: AI가 복잡한 문장에서 정보 자동 추출
+- **스마트 기능**: 참석자 이메일 자동 생성, 우선순위 기반 설정
 
 ### 사용 방법
 1. LINE WORKS 앱에서 봇 검색
@@ -310,11 +337,11 @@ Railway 대시보드에서 모든 환경 변수를 설정해야 합니다:
    - "[프로젝트명] 현황" - 프로젝트 조회
    - "오늘 일정" / "이번주 일정" - 일정 확인
    - "재고 현황" - LED 재고 확인
-   - **"내일 오후 2시 회의" - 캘린더 일정 등록** 🆕
+   - **🆕 "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림, PPT 준비"** - AI 스마트 일정 등록
 
 ## 💬 사용자 인터페이스
 
-### 카카오 챗봇 대화 기능
+### Kakao 챗봇 대화 기능
 - **처음으로**: "처음", "처음부터", "처음으로", "초기화", "리셋" 입력 시 처음부터 다시 시작
 - **이전 단계**: "이전", "뒤로", "돌아가" 입력 시 이전 단계로 돌아가기
 - **Quick Reply**: 각 단계별 빠른 선택 버튼 제공
@@ -333,18 +360,36 @@ Railway 대시보드에서 모든 환경 변수를 설정해야 합니다:
 - **최종 확인 (렌탈)**: `LED1: 6000x3000mm (2016x1008px, 무대높이 : 600mm)`
 - **최종 확인 (멤버쉽)**: `LED1: 6000x3000mm (2016x1008px, 14.4kW, 오퍼레이터 2일)`
 
-### MCP 캘린더 일정 등록 🆕
+### 🆕 고도화된 MCP 캘린더 일정 등록
 ```
-사용자: "내일 오후 2시 회의"
+사용자: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림, PPT 준비"
 
 봇 응답:
-✅ 일정이 등록되었습니다!
+✅ 고도화된 AI로 LINE WORKS 캘린더에 일정을 등록했습니다!
 
-📅 날짜: 2025-08-16
-⏰ 시간: 14:00
-📌 제목: 회의
+📅 날짜: 2025-08-26
+⏰ 시간: 15:00
+📌 제목: 프로젝트 회의
+📍 장소: 강남 스타벅스
+👥 참석자: 김대리
+📋 유형: 내부 회의
+⚡ 우선순위: 높음 🔴
+🔔 알림: 30분 전
+📝 준비물: PPT
 
-저장 위치:
+🤖 AI 분석 결과:
+📊 신뢰도: 85%
+🔍 인식된 정보:
+  • 날짜: 2025-08-26
+  • 시간: 15:00
+  • 제목: 프로젝트 회의
+  • 장소: 강남 스타벅스
+  • 참석자: 김대리
+  • 회의 유형: internal
+  • 우선순위: high
+  • 알림: 30분 전
+
+💾 저장 위치:
 • Notion: ✅ 성공
 • LINE WORKS 캘린더: ✅ 성공
 ```
@@ -366,10 +411,12 @@ Railway 대시보드에서 모든 환경 변수를 설정해야 합니다:
 - Service Account ID 확인
 - OAuth Scopes 설정 확인: `bot`, `bot.message`, `user.read`, `calendar`, `calendar.read`
 
-### MCP 캘린더 연동 오류 🆕
+### 🆕 고도화된 MCP 캘린더 연동 오류
 - **403 Forbidden**: calendar scope 권한 확인
-- **404 Not Found**: API 엔드포인트 확인 (`https://www.worksapis.com/v1.0/users/{userId}/calendars/{calendarId}/events`)
-- **캘린더 ID 확인**: `7a7c9e7c-6ce7-4757-8241-84413c32a245`
+- **404 Not Found**: API 엔드포인트 확인 (`https://www.worksapis.com/v1.0/users/{userId}/calendar/events`)
+- **400 Bad Request**: `INVALID_CALENDAR_PROPERTY` → 지원되지 않는 속성 제거
+- **AI 파싱 실패**: 신뢰도 30% 미만 시 더 구체적인 입력 요청
+- **참석자 이메일 오류**: 이름 → 이메일 변환 로직 확인
 
 ### Notion 자동화 오류
 - MANAGERS_CONFIG는 한 줄 JSON으로 작성
@@ -389,6 +436,7 @@ Railway 대시보드에서 모든 환경 변수를 설정해야 합니다:
 1. **카카오 챗봇 메시지**: `src/constants/messages.ts` 파일 수정
 2. **Notion 내부 메시지**: `src/constants/notion-messages.ts` 파일 수정
 3. **프로세스 변경**: `src/config/process-config.ts` 파일 수정
+4. **🆕 자연어 파싱 설정**: `src/utils/nlp-calendar-parser.ts` 파일 수정
 
 ## 📞 담당자 정보
 
@@ -398,14 +446,21 @@ Railway 대시보드에서 모든 환경 변수를 설정해야 합니다:
 
 ## 🔄 최근 업데이트
 
+### 2025-08-16 🆕
+- ✅ **고도화된 자연어 파싱** 완료
+- ✅ **AI 기반 일정 정보 추출**: 참석자, 회의유형, 우선순위, 준비물 자동 인식
+- ✅ **LINE WORKS 캘린더 API 완전 통합**: 장소, 참석자, 알림, 우선순위 모든 기능 지원
+- ✅ **스마트 캘린더 이벤트**: 아이콘 제목, 자동 이메일 생성, 신뢰도 기반 검증
+- ✅ **복잡한 자연어 처리**: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의" 완벽 파싱
+
 ### 2025-08-15 🆕
 - ✅ MCP 캘린더 연동 완료
-- ✅ LINE WORKS Calendar API 통합 (`https://www.worksapis.com/v1.0/users/{userId}/calendars/{calendarId}/events`)
+- ✅ LINE WORKS Calendar API 통합 (`https://www.worksapis.com/v1.0/users/{userId}/calendar/events`)
 - ✅ 자연어 일정 파싱 ("내일 오후 2시 회의" → 캘린더 이벤트)
 - ✅ Claude가 직접 캘린더 관리 (MCP를 통한 Service Account 권한 활용)
 - ✅ Notion + LINE WORKS 캘린더 동시 저장
 
-### 2025-08-11 🆕
+### 2025-08-11 ✨
 - ✅ LINE WORKS 봇 구현 완료
 - ✅ OAuth 2.0 인증 (Service Account + JWT)
 - ✅ 프로젝트 현황, 일정, 재고 조회 기능
