@@ -166,19 +166,77 @@ router.post('/callback', async (req: Request, res: Response) => {
                       '📅 일정 조회: "오늘 일정", "이번주 일정"\n' +
                       '📦 재고 확인: "재고 현황"';
       }
-      // 캘린더 일정 등록 - 임시 비활성화
+      // 캘린더 일정 등록 - 자연어 패턴 감지
       else if (
         (text.includes('일정') && (text.includes('등록') || text.includes('추가'))) ||
         (text.includes('시') && (text.includes('오늘') || text.includes('내일') || text.includes('모레'))) ||
         (text.includes('요일') && text.includes('시')) ||
-        /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text)
+        /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text) // 날짜 형식 포함
       ) {
-        // 캘린더 기능 임시 비활성화
-        responseText = '죄송합니다. 캘린더 일정 등록 기능은 준비 중입니다.\n\n' +
-                      '현재 사용 가능한 기능:\n' +
-                      '• 프로젝트 현황 조회\n' +
-                      '• 일정 조회 (Notion 기반)\n' +
-                      '• 재고 현황 확인';
+        // 1. 자연어 파싱
+        const parsed = parseCalendarText(text);
+        
+        if (!parsed) {
+          responseText = '일정을 이해할 수 없습니다. 예시: "내일 오후 2시 고객 미팅"';
+        } else {
+          let notionSuccess = false;
+          let calendarSuccess = false;
+          
+          // 2. Notion에 저장
+          try {
+            const notionResponse = await notion.pages.create({
+              parent: { database_id: databaseId },
+              properties: {
+                '행사명': {
+                  title: [{
+                    text: { content: `[일정] ${parsed.title}` }
+                  }]
+                },
+                '행사 일정': {
+                  rich_text: [{
+                    text: { content: `${parsed.date} ${parsed.time}` }
+                  }]
+                },
+                '서비스 유형': {
+                  select: { name: '일정' }
+                },
+                '행사 상태': {
+                  status: { name: '예정' }
+                },
+                '문의요청 사항': {
+                  rich_text: [{
+                    text: { content: `LINE WORKS에서 등록: ${text}` }
+                  }]
+                }
+              }
+            });
+            notionSuccess = true;
+            console.log('✅ Notion 일정 저장 성공');
+          } catch (error) {
+            console.error('❌ Notion 일정 저장 실패:', error);
+          }
+          
+          // 3. LINE WORKS 캘린더에 저장 (실패해도 계속 진행)
+          try {
+            const calendarResult = await lineWorksCalendar.createEventFromNaturalLanguage(userId, text);
+            calendarSuccess = calendarResult.success;
+          } catch (error) {
+            console.error('❌ LINE WORKS 캘린더 저장 실패:', error);
+          }
+          
+          // 4. 결과 메시지
+          responseText = `✅ 일정이 등록되었습니다!\n\n` +
+                        `📅 날짜: ${parsed.date}\n` +
+                        `⏰ 시간: ${parsed.time}\n` +
+                        `📌 제목: ${parsed.title}\n\n` +
+                        `저장 위치:\n` +
+                        `• Notion: ${notionSuccess ? '✅ 성공' : '❌ 실패'}\n` +
+                        `• LINE WORKS 캘린더: ${calendarSuccess ? '✅ 성공' : '❌ 실패'}`;
+          
+          if (parsed.reminder) {
+            responseText += `\n🔔 알림: ${parsed.reminder}분 전`;
+          }
+        }
       }
       // 내 캘린더 조회
       else if (text.includes('내 일정') || text.includes('내일정')) {
