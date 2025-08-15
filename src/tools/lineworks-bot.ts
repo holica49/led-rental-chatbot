@@ -201,11 +201,19 @@ router.post('/callback', async (req: Request, res: Response) => {
                   select: { name: '일정' }
                 },
                 '행사 상태': {
-                  status: { name: '예정' }
+                  status: { name: '견적 요청' }  // "예정" → "견적 요청"으로 변경
                 },
                 '문의요청 사항': {
                   rich_text: [{
                     text: { content: `LINE WORKS에서 등록: ${text}` }
+                  }]
+                },
+                '고객사': {
+                  select: { name: '내부일정' }
+                },
+                '고객명': {
+                  rich_text: [{
+                    text: { content: 'LINE WORKS 사용자' }
                   }]
                 }
               }
