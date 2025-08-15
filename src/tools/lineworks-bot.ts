@@ -3,7 +3,6 @@ import express, { Request, Response } from 'express';
 import { Client } from '@notionhq/client';
 import { parseCalendarText } from '../utils/nlp-calendar-parser.js';
 import { spawn } from 'child_process';
-import path from 'path';
 
 const router = express.Router();
 
@@ -45,9 +44,13 @@ async function callMCP(toolName: string, args: Record<string, unknown>): Promise
   return new Promise((resolve, reject) => {
     console.log('📞 MCP 호출:', toolName, args);
     
+    // ES Module에서 __dirname 대신 import.meta.url 사용
+    const currentUrl = new URL(import.meta.url);
+    const projectRoot = currentUrl.pathname.split('/src/')[0];
+    
     // MCP 서버 실행
     const mcpProcess = spawn('node', ['dist/index.js'], {
-      cwd: path.resolve(__dirname, '../..'),
+      cwd: projectRoot,
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
@@ -271,7 +274,7 @@ router.post('/callback', async (req: Request, res: Response) => {
                     select: { name: '일정' }
                   },
                   '행사 상태': {
-                    status: { name: '예정' }
+                    status: { name: '견적 요청' }  // "예정" 대신 "견적 요청" 사용
                   },
                   '문의요청 사항': {
                     rich_text: [{
