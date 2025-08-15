@@ -1,4 +1,4 @@
-// src/config/lineworks-auth.ts
+// src/config/lineworks-auth.ts (기존 코드 + 캘린더 권한 추가)
 import jwt from 'jsonwebtoken';
 import axios from 'axios';
 import * as crypto from 'crypto';
@@ -70,7 +70,7 @@ export class LineWorksAuth {
   }
 
   /**
-   * JWT 토큰 생성 (Service Account 인증용)
+   * JWT 토큰 생성 (Service Account 인증용) - 기본 봇 권한
    */
   private generateJWT(): string {
     const currentTime = Math.floor(Date.now() / 1000);
@@ -95,7 +95,31 @@ export class LineWorksAuth {
   }
 
   /**
-   * Access Token 발급
+   * JWT 토큰 생성 (캘린더 권한 포함) - 새로 추가
+   */
+  private generateCalendarJWT(): string {
+    const currentTime = Math.floor(Date.now() / 1000);
+    const privateKey = this.getPrivateKey();
+    
+    const serviceAccountId = this.config.serviceAccount || `${this.config.clientId}.${this.config.domainId}`;
+    
+    console.log('캘린더 JWT 생성 중...');
+    console.log('Service Account ID:', serviceAccountId);
+    
+    const payload = {
+      iss: this.config.clientId,
+      sub: serviceAccountId,
+      iat: currentTime,
+      exp: currentTime + 3600
+    };
+
+    return jwt.sign(payload, privateKey, { 
+      algorithm: 'RS256'
+    });
+  }
+
+  /**
+   * Access Token 발급 (기본 봇 권한)
    */
   async getAccessToken(forceRefresh = false): Promise<string> {
     if (!forceRefresh && this.accessToken && this.tokenExpiry && this.tokenExpiry > new Date()) {
@@ -148,6 +172,49 @@ export class LineWorksAuth {
       }
       
       throw new Error(`Access token 발급 실패: ${error.response?.data?.error_description || error.message}`);
+    }
+  }
+
+  /**
+   * Access Token 발급 (캘린더 권한 포함) - 새로 추가
+   */
+  async getAccessTokenWithCalendarScope(): Promise<string> {
+    console.log('LINE WORKS 캘린더 Access Token 발급 중...');
+    
+    try {
+      const jwtToken = this.generateCalendarJWT();
+      
+      const params = new URLSearchParams({
+        assertion: jwtToken,
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        client_id: this.config.clientId,
+        client_secret: this.config.clientSecret,
+        scope: 'bot bot.message user.read calendar calendar.read calendar.write'
+      });
+      
+      const response = await axios.post(
+        'https://auth.worksmobile.com/oauth2/v2.0/token',
+        params.toString(),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        }
+      );
+
+      console.log('✅ LINE WORKS 캘린더 Access Token 발급 성공');
+      return response.data.access_token;
+      
+    } catch (error: any) {
+      console.error('❌ 캘린더 Access token 발급 실패:', error.response?.data || error.message);
+      
+      // 캘린더 권한이 없으면 기본 토큰 반환
+      if (error.response?.data?.error === 'invalid_scope') {
+        console.log('⚠️ 캘린더 권한이 없습니다. 기본 토큰을 사용합니다.');
+        return this.getAccessToken();
+      }
+      
+      throw error;
     }
   }
 

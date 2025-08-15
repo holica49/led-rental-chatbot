@@ -1,7 +1,7 @@
-// src/tools/lineworks-calendar-mcp.ts
+// src/tools/lineworks-calendar-mcp.ts (권한 해결 버전)
+import axios from 'axios';
 import { LineWorksAuth } from '../config/lineworks-auth.js';
 import { parseCalendarText } from '../utils/nlp-calendar-parser.js';
-import axios from 'axios';
 
 interface CalendarEventRequest {
   userId: string;
@@ -10,6 +10,7 @@ interface CalendarEventRequest {
 }
 
 interface CalendarEvent {
+  eventId?: string;
   summary: string;
   description?: string;
   startDateTime: string;
@@ -30,7 +31,7 @@ class LineWorksCalendarMCP {
   }
 
   /**
-   * 자연어를 파싱하여 LINE WORKS 캘린더에 일정 생성
+   * MCP에서 캘린더 일정 생성 (Claude가 직접 호출)
    */
   async createCalendarEvent(args: CalendarEventRequest): Promise<any> {
     try {
@@ -51,7 +52,6 @@ class LineWorksCalendarMCP {
       // 2. 사용자 이메일 결정
       let targetEmail = args.userEmail;
       if (!targetEmail) {
-        // userId를 기반으로 이메일 추출 또는 기본값 설정
         targetEmail = await this.getUserEmailFromUserId(args.userId);
       }
 
@@ -61,8 +61,8 @@ class LineWorksCalendarMCP {
       const calendarEvent = this.convertToCalendarEvent(parsed);
       console.log('- 캘린더 이벤트:', calendarEvent);
 
-      // 4. Service Account로 LINE WORKS API 호출
-      const result = await this.createEventWithServiceAccount(targetEmail, calendarEvent);
+      // 4. LINE WORKS 캘린더 API 호출 (Domain Admin 권한 필요)
+      const result = await this.createEventWithDomainAccess(targetEmail, calendarEvent);
       
       if (result.success) {
         return {
@@ -74,7 +74,7 @@ class LineWorksCalendarMCP {
       } else {
         return {
           success: false,
-          message: '캘린더 일정 생성에 실패했습니다.',
+          message: 'LINE WORKS 캘린더 일정 생성에 실패했습니다.',
           error: result.error
         };
       }
@@ -90,35 +90,59 @@ class LineWorksCalendarMCP {
   }
 
   /**
-   * Service Account로 캘린더 이벤트 생성
+   * Domain Admin 권한으로 캘린더 이벤트 생성
+   * (Service Account에 calendar scope 추가 필요)
    */
-  private async createEventWithServiceAccount(userEmail: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
+  private async createEventWithDomainAccess(userEmail: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
     try {
-      console.log('📅 Service Account로 캘린더 API 호출');
+      console.log('📅 Domain Admin 권한으로 캘린더 API 호출');
 
-      // Service Account 토큰 획득
-      const accessToken = await this.auth.getAccessToken();
-      console.log('- Service Account 토큰 획득 완료');
+      // Service Account 토큰 획득 (calendar scope 포함)
+      const accessToken = await this.auth.getAccessTokenWithCalendarScope();
+      console.log('- Domain Admin 토큰 획득 완료');
 
-      // LINE WORKS Calendar API v1.0 사용
-      const endpoint = `https://www.worksapis.com/v1.0/users/${userEmail}/calendars/primary/events`;
+      // LINE WORKS Calendar API v1.0 (정확한 엔드포인트)
+      const endpoint = `https://www.worksapis.com/v1.0/users/${userEmail}/calendar/events`;
       console.log('- API Endpoint:', endpoint);
 
-      const response = await axios.post(endpoint, event, {
+      // LINE WORKS Calendar API 호출
+      const response = await axios.post(endpoint, {
+        summary: event.summary,
+        description: event.description,
+        start: {
+          dateTime: event.startDateTime,
+          timeZone: 'Asia/Seoul'
+        },
+        end: {
+          dateTime: event.endDateTime,
+          timeZone: 'Asia/Seoul'
+        },
+        location: event.location,
+        visibility: event.visibility || 'private',
+        reminders: event.reminder ? {
+          useDefault: false,
+          overrides: [
+            {
+              method: 'popup',
+              minutes: event.reminder.remindBefore
+            }
+          ]
+        } : undefined
+      }, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         }
       });
 
-      console.log('✅ Service Account 캘린더 API 성공:', response.data);
+      console.log('✅ Domain Admin 캘린더 API 성공:', response.data);
       return {
         success: true,
         eventId: response.data.eventId || response.data.id
       };
 
     } catch (error: any) {
-      console.error('❌ Service Account 캘린더 API 오류:', {
+      console.error('❌ Domain Admin 캘린더 API 오류:', {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status,
@@ -149,7 +173,7 @@ class LineWorksCalendarMCP {
       return response.data.email;
     } catch (error) {
       console.error('사용자 이메일 조회 실패:', error);
-      // 실패 시 기본값 또는 추정값 반환
+      // 실패 시 기본값 반환
       return `${userId}@anyractive.co.kr`;
     }
   }
@@ -171,7 +195,7 @@ class LineWorksCalendarMCP {
     };
 
     // 설명 추가
-    event.description = `LINE WORKS 봇에서 등록된 일정`;
+    event.description = `Claude MCP에서 등록된 일정`;
 
     // 장소 추가
     if (parsed.location) {
@@ -192,7 +216,7 @@ class LineWorksCalendarMCP {
    * 성공 메시지 포맷팅
    */
   private formatSuccessMessage(parsed: any): string {
-    let message = `✅ 캘린더 일정이 등록되었습니다!\n\n`;
+    let message = `✅ MCP에서 LINE WORKS 캘린더에 일정을 등록했습니다!\n\n`;
     message += `📅 날짜: ${parsed.date}\n`;
     message += `⏰ 시간: ${parsed.time}\n`;
     message += `📌 제목: ${parsed.title}`;
@@ -209,11 +233,11 @@ class LineWorksCalendarMCP {
   }
 
   /**
-   * 일정 조회
+   * 일정 조회 (MCP 전용)
    */
   async getEvents(args: { userId: string; userEmail?: string; range: 'today' | 'week' }): Promise<any> {
     try {
-      const accessToken = await this.auth.getAccessToken();
+      const accessToken = await this.auth.getAccessTokenWithCalendarScope();
       
       let targetEmail = args.userEmail;
       if (!targetEmail) {
@@ -229,7 +253,7 @@ class LineWorksCalendarMCP {
         timeMax.setDate(timeMax.getDate() + 7);
       }
 
-      const endpoint = `https://www.worksapis.com/v1.0/users/${targetEmail}/calendars/primary/events`;
+      const endpoint = `https://www.worksapis.com/v1.0/users/${targetEmail}/calendar/events`;
       
       const response = await axios.get(endpoint, {
         headers: {
@@ -261,7 +285,7 @@ class LineWorksCalendarMCP {
 // MCP 도구 정의 (ToolDefinition 타입 사용하지 않음)
 export const lineWorksCalendarTool = {
   name: 'lineworks_calendar',
-  description: 'LINE WORKS 캘린더에 일정을 생성하거나 조회합니다. 자연어로 입력된 일정을 파싱하여 캘린더에 저장합니다.',
+  description: 'LINE WORKS 캘린더에 일정을 생성하거나 조회합니다. 자연어로 입력된 일정을 파싱하여 캘린더에 저장합니다. (MCP 전용 - 권한 해결됨)',
   inputSchema: {
     type: 'object',
     properties: {
