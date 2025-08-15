@@ -114,11 +114,17 @@ export class LineWorksCalendarService {
   private async createCalendarEvent(userId: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
     try {
       console.log('📅 캘린더 API 호출 시작');
+      
+      // 사용자 이메일 조회 (UUID를 이메일로 변환)
+      const userEmail = await this.getUserEmail(userId);
+      console.log('- 사용자 이메일:', userEmail);
+      
+      // 새로운 Access Token 획득 (기존 토큰이 만료될 수 있음)
       const accessToken = await this.auth.getAccessToken();
       console.log('- Access Token 획득:', accessToken ? '성공' : '실패');
       
-      // LINE WORKS Calendar API v2.0 endpoint
-      const endpoint = `https://www.worksapis.com/v2.0/users/${userId}/calendar/events`;
+      // LINE WORKS Calendar API v1.0 endpoint - primary 캘린더 사용
+      const endpoint = `https://www.worksapis.com/v1.0/users/${userEmail}/calendars/primary/events`;
       console.log('- API Endpoint:', endpoint);
       console.log('- Request Body:', JSON.stringify(event, null, 2));
 
@@ -139,13 +145,40 @@ export class LineWorksCalendarService {
       console.error('❌ 캘린더 API 오류:', {
         message: error.message,
         response: error.response?.data,
-        status: error.response?.status,
-        headers: error.response?.headers
+        status: error.response?.status
       });
       return {
         success: false,
         error: error.response?.data || error.message
       };
+    }
+  }
+
+  /**
+   * userId(UUID)로 사용자 이메일 조회
+   */
+  private async getUserEmail(userId: string): Promise<string> {
+    try {
+      const accessToken = await this.auth.getAccessToken();
+      
+      // 사용자 정보 조회 API
+      const endpoint = `https://www.worksapis.com/v1.0/users/${userId}`;
+      const response = await axios.get(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      return response.data.email || userId;
+    } catch (error) {
+      console.error('사용자 정보 조회 실패:', error);
+      // 실패 시 환경변수에서 매핑된 이메일 사용
+      if (userId === process.env.LINEWORKS_USER_YU_UUID) {
+        return process.env.LINEWORKS_USER_YU || userId;
+      } else if (userId === process.env.LINEWORKS_USER_CHOI_UUID) {
+        return process.env.LINEWORKS_USER_CHOI || userId;
+      }
+      return userId;
     }
   }
 

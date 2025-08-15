@@ -24,6 +24,9 @@ const notion = new Client({
 
 const databaseId = process.env.NOTION_DATABASE_ID!;
 
+// 추가 import
+import { parseCalendarText } from '../utils/nlp-calendar-parser.js';
+
 // Webhook 메시지 타입
 interface LineWorksMessage {
   type: string;
@@ -41,11 +44,16 @@ interface LineWorksMessage {
 
 // 메시지 전송 헬퍼
 async function sendTextMessage(userId: string, text: string) {
-  const authInstance = await getAuth();
-  await authInstance.sendMessage(userId, {
-    type: 'text',
-    text: text
-  });
+  try {
+    const authInstance = await getAuth();
+    await authInstance.sendMessage(userId, {
+      type: 'text',
+      text: text
+    });
+  } catch (error) {
+    console.error('메시지 전송 실패:', error);
+    // 메시지 전송 실패해도 프로세스는 계속 진행
+  }
 }
 
 // 프로젝트 현황 조회
@@ -156,22 +164,21 @@ router.post('/callback', async (req: Request, res: Response) => {
                       '다음과 같은 기능을 사용할 수 있습니다:\n' +
                       '📊 프로젝트 조회: "강남LED 현황"\n' +
                       '📅 일정 조회: "오늘 일정", "이번주 일정"\n' +
-                      '📦 재고 확인: "재고 현황"\n' +
-                      '➕ 일정 등록: "내일 오후 2시 고객 미팅 30분전 알림"\n' +
-                      '📋 내 캘린더: "내 일정"\n\n' +
-                      `디버그 정보:\n` +
-                      `- userId(UUID): ${userId}\n` +
-                      `- domainId: ${message.source.domainId}`;
+                      '📦 재고 확인: "재고 현황"';
       }
-      // 캘린더 일정 등록 - 자연어 패턴 감지
+      // 캘린더 일정 등록 - 임시 비활성화
       else if (
         (text.includes('일정') && (text.includes('등록') || text.includes('추가'))) ||
         (text.includes('시') && (text.includes('오늘') || text.includes('내일') || text.includes('모레'))) ||
         (text.includes('요일') && text.includes('시')) ||
-        /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text) // 날짜 형식 포함
+        /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text)
       ) {
-        const result = await lineWorksCalendar.createEventFromNaturalLanguage(userId, text);
-        responseText = result.message;
+        // 캘린더 기능 임시 비활성화
+        responseText = '죄송합니다. 캘린더 일정 등록 기능은 준비 중입니다.\n\n' +
+                      '현재 사용 가능한 기능:\n' +
+                      '• 프로젝트 현황 조회\n' +
+                      '• 일정 조회 (Notion 기반)\n' +
+                      '• 재고 현황 확인';
       }
       // 내 캘린더 조회
       else if (text.includes('내 일정') || text.includes('내일정')) {
