@@ -4,6 +4,8 @@ import { handleKakaoWebhook } from './tools/kakao-chatbot.js';
 import { startPollingService, getPollingService } from './tools/notion-polling.js';
 import { startSchedulerService, getSchedulerService } from './tools/notion-scheduler.js';
 import lineWorksRouter from './tools/lineworks-bot.js';
+import oauthRoutes from './tools/oauth-routes.js';
+import { getUserToken, isUserAuthenticated } from './tools/oauth-routes.js';
 
 // 환경 변수 로드
 dotenv.config();
@@ -108,6 +110,9 @@ app.post('/test', (req: Request, res: Response) => {
 
 // Kakao 스킬 웹훅 엔드포인트
 app.post('/kakao/skill', handleKakaoWebhook);
+
+// 라인웍스 서버 OAuth 라우트
+app.use('/', oauthRoutes);
 
 // 404 핸들러
 app.use((_req: Request, res: Response) => {

@@ -29,10 +29,22 @@ interface NotificationData {
 }
 
 export class LineWorksNotificationService {
-  private auth: LineWorksAuth;
+  private auth: LineWorksAuth | null = null;
+  private lastAuthTime: number = 0;
+  private AUTH_CACHE_DURATION = 30 * 60 * 1000; // 30분
 
   constructor() {
-    this.auth = new LineWorksAuth();
+    // 생성자에서 초기화하지 않음
+  }
+
+  private getAuth(): LineWorksAuth {
+    const now = Date.now();
+    // 30분마다 새로운 인스턴스 생성 (토큰 갱신)
+    if (!this.auth || (now - this.lastAuthTime) > this.AUTH_CACHE_DURATION) {
+      this.auth = new LineWorksAuth();
+      this.lastAuthTime = now;
+    }
+    return this.auth;
   }
 
   /**
@@ -53,7 +65,7 @@ export class LineWorksNotificationService {
       const message = this.createNewRequestMessage(data);
 
       // LINE WORKS 메시지 발송
-      await this.auth.sendMessage(recipientId, {
+      await this.getAuth().sendMessage(recipientId, {
         type: 'text',
         text: message
       });
@@ -123,7 +135,7 @@ export class LineWorksNotificationService {
    */
   private async sendButtonMessage(userId: string, data: NotificationData): Promise<void> {
     try {
-      const accessToken = await this.auth.getAccessToken();
+      const accessToken = await this.getAuth().getAccessToken();
       const botId = process.env.LINEWORKS_BOT_ID;
 
       const buttonMessage = {
@@ -175,7 +187,7 @@ export class LineWorksNotificationService {
                      `${oldStatus} → ${newStatus}\n\n` +
                      `Notion에서 확인해주세요.`;
       
-      await this.auth.sendMessage(recipientId, {
+      await this.getAuth().sendMessage(recipientId, {
         type: 'text',
         text: message
       });
