@@ -201,19 +201,11 @@ router.post('/callback', async (req: Request, res: Response) => {
                   select: { name: '일정' }
                 },
                 '행사 상태': {
-                  status: { name: '견적 요청' }  // "예정" → "견적 요청"으로 변경
+                  status: { name: '예정' }
                 },
                 '문의요청 사항': {
                   rich_text: [{
                     text: { content: `LINE WORKS에서 등록: ${text}` }
-                  }]
-                },
-                '고객사': {
-                  select: { name: '내부일정' }
-                },
-                '고객명': {
-                  rich_text: [{
-                    text: { content: 'LINE WORKS 사용자' }
                   }]
                 }
               }
@@ -227,22 +219,30 @@ router.post('/callback', async (req: Request, res: Response) => {
           // 3. LINE WORKS 캘린더에 저장 (실패해도 계속 진행)
           try {
             const calendarResult = await lineWorksCalendar.createEventFromNaturalLanguage(userId, text);
-            calendarSuccess = calendarResult.success;
+            if (calendarResult.needAuth) {
+              // 인증이 필요한 경우
+              responseText = calendarResult.message;
+              calendarSuccess = false;
+            } else {
+              calendarSuccess = calendarResult.success;
+            }
           } catch (error) {
             console.error('❌ LINE WORKS 캘린더 저장 실패:', error);
           }
           
-          // 4. 결과 메시지
-          responseText = `✅ 일정이 등록되었습니다!\n\n` +
-                        `📅 날짜: ${parsed.date}\n` +
-                        `⏰ 시간: ${parsed.time}\n` +
-                        `📌 제목: ${parsed.title}\n\n` +
-                        `저장 위치:\n` +
-                        `• Notion: ${notionSuccess ? '✅ 성공' : '❌ 실패'}\n` +
-                        `• LINE WORKS 캘린더: ${calendarSuccess ? '✅ 성공' : '❌ 실패'}`;
-          
-          if (parsed.reminder) {
-            responseText += `\n🔔 알림: ${parsed.reminder}분 전`;
+          // 4. 결과 메시지 (인증이 필요한 경우가 아닐 때만)
+          if (!responseText) {
+            responseText = `✅ 일정이 등록되었습니다!\n\n` +
+                          `📅 날짜: ${parsed.date}\n` +
+                          `⏰ 시간: ${parsed.time}\n` +
+                          `📌 제목: ${parsed.title}\n\n` +
+                          `저장 위치:\n` +
+                          `• Notion: ${notionSuccess ? '✅ 성공' : '❌ 실패'}\n` +
+                          `• LINE WORKS 캘린더: ${calendarSuccess ? '✅ 성공' : '❌ 실패'}`;
+            
+            if (parsed.reminder) {
+              responseText += `\n🔔 알림: ${parsed.reminder}분 전`;
+            }
           }
         }
       }

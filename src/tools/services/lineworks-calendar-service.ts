@@ -2,6 +2,7 @@
 import axios from 'axios';
 import { LineWorksAuth } from '../../config/lineworks-auth.js';
 import { parseCalendarText } from '../../utils/nlp-calendar-parser.js';
+import { getUserToken, isUserAuthenticated } from '../oauth-routes.js';
 
 interface CalendarEvent {
   eventId?: string;
@@ -30,11 +31,21 @@ export class LineWorksCalendarService {
   /**
    * 자연어로 일정 생성
    */
-  async createEventFromNaturalLanguage(userId: string, text: string): Promise<{ success: boolean; message: string; eventId?: string }> {
+  async createEventFromNaturalLanguage(userId: string, text: string): Promise<{ success: boolean; message: string; eventId?: string; needAuth?: boolean }> {
     try {
       console.log('📅 캘린더 일정 등록 시작');
       console.log('- userId:', userId);
       console.log('- text:', text);
+      
+      // 사용자 인증 확인
+      if (!isUserAuthenticated(userId)) {
+        const authUrl = `${process.env.APP_URL}/auth/lineworks?userId=${userId}`;
+        return {
+          success: false,
+          needAuth: true,
+          message: `캘린더 사용을 위해 먼저 인증이 필요합니다.\n\n다음 링크를 클릭하여 인증해주세요:\n${authUrl}`
+        };
+      }
       
       // 1. 자연어 파싱
       const parsedEvent = parseCalendarText(text);
@@ -51,8 +62,8 @@ export class LineWorksCalendarService {
       const calendarEvent = this.convertToCalendarEvent(parsedEvent);
       console.log('- 캘린더 이벤트:', JSON.stringify(calendarEvent, null, 2));
 
-      // 3. 캘린더 API 호출
-      const result = await this.createCalendarEvent(userId, calendarEvent);
+      // 3. 캘린더 API 호출 (사용자 토큰 사용)
+      const result = await this.createCalendarEventWithUserToken(userId, calendarEvent);
       console.log('- API 결과:', result);
 
       if (result.success) {
@@ -109,28 +120,29 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * 캘린더 이벤트 생성 API 호출
+   * 사용자 토큰으로 캘린더 이벤트 생성
    */
-  private async createCalendarEvent(userId: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
+  private async createCalendarEventWithUserToken(userId: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
     try {
-      console.log('📅 캘린더 API 호출 시작');
+      console.log('📅 사용자 캘린더 API 호출 시작');
       
-      // 사용자 이메일 조회 (UUID를 이메일로 변환)
-      const userEmail = await this.getUserEmail(userId);
+      // 사용자 토큰 가져오기
+      const userToken = getUserToken(userId);
+      if (!userToken) {
+        throw new Error('사용자 토큰을 찾을 수 없습니다.');
+      }
+      
+      // 사용자 이메일 조회
+      const userEmail = await this.getUserEmailWithUserToken(userToken.accessToken);
       console.log('- 사용자 이메일:', userEmail);
       
-      // 새로운 Access Token 획득 (기존 토큰이 만료될 수 있음)
-      const accessToken = await this.auth.getAccessToken();
-      console.log('- Access Token 획득:', accessToken ? '성공' : '실패');
-      
-      // LINE WORKS Calendar API v1.0 endpoint - primary 캘린더 사용
+      // LINE WORKS Calendar API v1.0 endpoint
       const endpoint = `https://www.worksapis.com/v1.0/users/${userEmail}/calendars/primary/events`;
       console.log('- API Endpoint:', endpoint);
-      console.log('- Request Body:', JSON.stringify(event, null, 2));
 
       const response = await axios.post(endpoint, event, {
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'Authorization': `Bearer ${userToken.accessToken}`,
           'Content-Type': 'application/json'
         }
       });
@@ -155,30 +167,20 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * userId(UUID)로 사용자 이메일 조회
+   * 사용자 토큰으로 이메일 조회
    */
-  private async getUserEmail(userId: string): Promise<string> {
+  private async getUserEmailWithUserToken(accessToken: string): Promise<string> {
     try {
-      const accessToken = await this.auth.getAccessToken();
-      
-      // 사용자 정보 조회 API
-      const endpoint = `https://www.worksapis.com/v1.0/users/${userId}`;
-      const response = await axios.get(endpoint, {
+      const response = await axios.get('https://www.worksapis.com/v1.0/users/me', {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
       });
       
-      return response.data.email || userId;
+      return response.data.email;
     } catch (error) {
       console.error('사용자 정보 조회 실패:', error);
-      // 실패 시 환경변수에서 매핑된 이메일 사용
-      if (userId === process.env.LINEWORKS_USER_YU_UUID) {
-        return process.env.LINEWORKS_USER_YU || userId;
-      } else if (userId === process.env.LINEWORKS_USER_CHOI_UUID) {
-        return process.env.LINEWORKS_USER_CHOI || userId;
-      }
-      return userId;
+      throw error;
     }
   }
 
