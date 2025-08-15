@@ -27,7 +27,7 @@ router.get('/auth/lineworks', (req: Request, res: Response) => {
   const authUrl = new URL('https://auth.worksmobile.com/oauth2/v2.0/authorize');
   authUrl.searchParams.append('client_id', process.env.LINEWORKS_CLIENT_ID!);
   authUrl.searchParams.append('redirect_uri', `${process.env.APP_URL}/oauth/callback`);
-  authUrl.searchParams.append('scope', 'calendar calendar.read calendar.write user.read');
+  authUrl.searchParams.append('scope', 'bot user.read');
   authUrl.searchParams.append('response_type', 'code');
   authUrl.searchParams.append('state', state);
   
