@@ -2,7 +2,6 @@
 import express, { Request, Response } from 'express';
 import { Client } from '@notionhq/client';
 import { parseCalendarText } from '../utils/nlp-calendar-parser.js';
-import { spawn } from 'child_process';
 
 const router = express.Router();
 
@@ -39,81 +38,45 @@ interface LineWorksMessage {
   };
 }
 
-// MCP 호출 함수
-async function callMCP(toolName: string, args: Record<string, unknown>): Promise<any> {
-  return new Promise((resolve, reject) => {
-    console.log('📞 MCP 호출:', toolName, args);
+// MCP 직접 호출 함수 (프로세스 분리 없이)
+async function callMCPDirect(toolName: string, args: Record<string, unknown>): Promise<any> {
+  try {
+    console.log('📞 MCP 직접 호출:', toolName, args);
     
-    // ES Module에서 __dirname 대신 import.meta.url 사용
-    const currentUrl = new URL(import.meta.url);
-    const projectRoot = currentUrl.pathname.split('/src/')[0];
+    // LineWorksCalendarMCP 직접 import하여 사용
+    const { LineWorksCalendarService } = await import('./services/lineworks-calendar-service.js');
+    const calendarService = new LineWorksCalendarService();
     
-    // MCP 서버 실행
-    const mcpProcess = spawn('node', ['dist/index.js'], {
-      cwd: projectRoot,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    let response = '';
-    let error = '';
-
-    // MCP 요청 전송
-    const request = {
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: 'tools/call',
-      params: {
-        name: toolName,
-        arguments: args
-      }
-    };
-
-    mcpProcess.stdin.write(JSON.stringify(request) + '\n');
-    mcpProcess.stdin.end();
-
-    // 응답 수신
-    mcpProcess.stdout.on('data', (data) => {
-      response += data.toString();
-    });
-
-    mcpProcess.stderr.on('data', (data) => {
-      error += data.toString();
-    });
-
-    mcpProcess.on('close', (code) => {
-      if (code === 0) {
-        try {
-          // JSON 응답 파싱
-          const lines = response.trim().split('\n');
-          const jsonResponse = lines.find(line => line.startsWith('{'));
-          
-          if (jsonResponse) {
-            const parsed = JSON.parse(jsonResponse);
-            if (parsed.result && parsed.result.content) {
-              const content = parsed.result.content[0].text;
-              resolve(JSON.parse(content));
-            } else {
-              resolve({ success: false, message: 'Invalid MCP response' });
-            }
-          } else {
-            resolve({ success: false, message: 'No JSON response from MCP' });
-          }
-        } catch (parseError) {
-          console.error('MCP 응답 파싱 오류:', parseError);
-          resolve({ success: false, message: 'Failed to parse MCP response' });
+    if (toolName === 'lineworks_calendar') {
+      if (args.action === 'create') {
+        if (!args.text) {
+          throw new Error('일정 내용(text)이 필요합니다.');
         }
+        return calendarService.createCalendarEvent({
+          userId: args.userId as string,
+          text: args.text as string,
+          userEmail: args.userEmail as string | undefined
+        });
+      } else if (args.action === 'get') {
+        return calendarService.getEvents({
+          userId: args.userId as string,
+          userEmail: args.userEmail as string | undefined,
+          range: (args.range as 'today' | 'week') || 'week'
+        });
       } else {
-        console.error('MCP 프로세스 오류:', error);
-        reject(new Error(`MCP process failed with code ${code}: ${error}`));
+        throw new Error('지원되지 않는 액션입니다.');
       }
-    });
-
-    // 타임아웃 설정 (10초)
-    setTimeout(() => {
-      mcpProcess.kill();
-      reject(new Error('MCP call timeout'));
-    }, 10000);
-  });
+    } else {
+      throw new Error(`지원되지 않는 도구: ${toolName}`);
+    }
+    
+  } catch (error) {
+    console.error('❌ MCP 직접 호출 오류:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
 }
 
 // 메시지 전송 헬퍼
@@ -291,7 +254,7 @@ router.post('/callback', async (req: Request, res: Response) => {
           }
           
           // 2. MCP로 LINE WORKS 캘린더에 저장
-          const mcpResult = await callMCP('lineworks_calendar', {
+          const mcpResult = await callMCPDirect('lineworks_calendar', {
             action: 'create',
             userId: userId,
             text: text
@@ -320,7 +283,7 @@ router.post('/callback', async (req: Request, res: Response) => {
       // 내 캘린더 조회 - MCP 호출
       else if (text.includes('내 일정') || text.includes('내일정')) {
         try {
-          const mcpResult = await callMCP('lineworks_calendar', {
+          const mcpResult = await callMCPDirect('lineworks_calendar', {
             action: 'get',
             userId: userId,
             range: 'week'
