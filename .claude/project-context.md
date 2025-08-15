@@ -9,8 +9,10 @@
 3. **멤버쉽 서비스**: 메쎄이상(001) 전용 특별 가격
 4. **자동화 시스템**: Notion 상태 기반 업무 자동화
 5. **스케줄러**: 날짜 기반 자동 상태 변경
+6. **LINE WORKS 봇**: 내부 업무 관리 및 프로젝트 현황 조회
+7. **MCP 캘린더 연동**: Claude가 직접 LINE WORKS 캘린더 관리
 
-## 기술 스택 (2025-08-08 기준)
+## 기술 스택 (2025-08-15 기준)
 - **Runtime**: Node.js 18+ (ES Modules)
 - **Language**: TypeScript 5.7.2
 - **Module System**: ES Modules (`"type": "module"`)
@@ -20,6 +22,8 @@
 - **Session**: In-memory (Redis 마이그레이션 예정)
 - **Polling**: 10분 간격 상태 감지
 - **Scheduler**: 1시간 간격 날짜 기반 자동화
+- **MCP**: Model Context Protocol (Claude 연동)
+- **Calendar API**: LINE WORKS Calendar API v1.0
 
 ## 프로젝트 구조
 ```
@@ -32,12 +36,14 @@ led-rental-mcp/
 │   │   ├── messages.ts              # 카카오톡 메시지
 │   │   └── notion-messages.ts       # Notion 자동화 메시지
 │   ├── config/                      # 설정 파일
-│   │   └── process-config.ts        # 프로세스 플로우 설정
+│   │   ├── process-config.ts        # 프로세스 플로우 설정
+│   │   └── lineworks-auth.ts        # LINE WORKS 인증 (캘린더 권한 포함)
 │   ├── utils/                       # 유틸리티 함수
 │   │   ├── message-utils.ts         # 메시지 포맷팅
 │   │   ├── handler-utils.ts         # 핸들러 공통 함수
 │   │   ├── session-utils.ts         # 세션 관리
 │   │   ├── date-utils.ts            # 날짜 처리
+│   │   ├── nlp-calendar-parser.ts   # 자연어 일정 파싱 🆕
 │   │   └── notion-message-utils.ts  # Notion 메시지 유틸
 │   └── tools/
 │       ├── handlers/                # 서비스별 핸들러
@@ -49,16 +55,90 @@ led-rental-mcp/
 │       ├── validators/              # 입력 검증
 │       ├── services/                # 외부 서비스 연동
 │       │   ├── notion-service.ts
-│       │   └── mention-service.ts
+│       │   ├── mention-service.ts
+│       │   └── lineworks-calendar-service.ts  🆕
 │       ├── session/                 # 세션 관리
 │       ├── kakao-chatbot.ts         # 메인 챗봇 로직
 │       ├── notion-mcp.ts            # Notion 연동
+│       ├── lineworks-calendar-mcp.ts # MCP 캘린더 도구 🆕
+│       ├── lineworks-bot.ts         # LINE WORKS 봇 (MCP 호출)
 │       ├── notion-polling.ts        # 상태 감지 (10분)
 │       ├── notion-scheduler.ts      # 날짜 기반 자동화 (1시간)
 │       ├── notion-status-automation.ts # 자동화 처리
 │       ├── message-processor.ts     # 메시지 처리
 │       └── calculate-quote.ts       # 견적 계산
 ```
+## MCP 캘린더 연동 아키텍처 🆕
+
+### 기본 구조
+```
+사용자 → LINE WORKS 봇 → MCP Server → LINE WORKS Calendar API
+                       ↘ Notion DB (동시 저장)
+```
+
+### 핵심 컴포넌트
+1. **자연어 파싱**: `nlp-calendar-parser.ts`
+   - "내일 오후 2시 회의" → 구조화된 이벤트 객체
+   - 날짜, 시간, 제목, 알림 추출
+
+2. **MCP 캘린더 도구**: `lineworks-calendar-mcp.ts`
+   - Claude가 직접 호출하는 MCP 도구
+   - Service Account 권한으로 캘린더 API 호출
+   - 타입 안전성 보장
+
+3. **LINE WORKS 인증**: `lineworks-auth.ts`
+   - 기본 봇 권한: `bot`, `bot.message`, `user.read`
+   - 캘린더 권한: `calendar`, `calendar.read`
+   - Service Account + JWT 인증
+
+4. **API 엔드포인트**: 
+   - `https://www.worksapis.com/v1.0/users/{userId}/calendars/{calendarId}/events`
+   - 관리자 기본 캘린더 ID: `7a7c9e7c-6ce7-4757-8241-84413c32a245`
+
+## 주요 업데이트 (2025-08-15)
+
+### MCP 캘린더 연동 구현 완료 🆕
+- **자연어 일정 파싱**: "내일 오후 2시 회의" → 캘린더 이벤트 생성
+- **Claude 직접 관리**: MCP를 통해 Claude가 캘린더 API 호출
+- **이중 저장**: Notion + LINE WORKS 캘린더 동시 저장
+- **Service Account 권한**: Bot 제한 우회, 강력한 캘린더 관리
+
+### LINE WORKS Calendar API 통합
+- **올바른 엔드포인트**: `https://www.worksapis.com/v1.0/users/{userId}/calendars/{calendarId}/events`
+- **JSON 형식**: `eventComponents` 배열 사용
+- **필수 헤더**: `Authorization: Bearer {token}`
+- **캘린더 ID**: 실제 캘린더 ID 사용
+
+### 타입 안전성 개선
+- Promise 리턴 타입과 실제 리턴 객체 일치
+- error 속성 제거 (리턴 타입에 정의되지 않음)
+- 명시적 타입 정의
+
+# 완료된 작업 (2025-08-11)
+
+### LINE WORKS 봇 구현 완료 ✅
+#### 인증 시스템
+- OAuth 2.0 (Service Account + JWT) 구현
+- Private Key 환경 변수 지원
+- Access Token 자동 갱신
+- 캘린더 권한 추가 지원 🆕
+
+#### 주요 기능
+- 프로젝트 현황 조회: "강남LED 현황"
+- 일정 관리: "오늘 일정", "이번주 일정"
+- 재고 확인: "재고 현황"
+- 일정 등록: "내일 오후 2시 회의" (MCP 연동) 🆕
+- 웹훅 메시지 처리
+
+#### 배포 상태
+- Railway 배포 완료
+- Callback URL: https://web-production-fa47.up.railway.app/lineworks/callback
+- 정상 작동 확인
+
+### 카카오 챗봇 개선 완료 ✅
+- 엔티티(@SERVICE_TYPE) 삭제
+- 모든 발화를 스킬 서버에서 처리
+- 멤버십 서비스 FAQ 문제 해결
 
 ## 주요 업데이트 (2025-08-08)
 
@@ -187,6 +267,52 @@ led-rental-mcp/
 8. **이전 단계 키워드: "이전", "뒤로", "돌아가"**
 9. **처음으로 키워드: "처음", "처음부터", "처음으로"**
 10. **LED 해상도 계산: 모듈당 168x168px**
+
+
+## LINE WORKS Calendar API 🆕
+
+### API 엔드포인트
+- **URL**: `https://www.worksapis.com/v1.0/users/{userId}/calendars/{calendarId}/events`
+- **Method**: POST
+- **캘린더 ID**: `7a7c9e7c-6ce7-4757-8241-84413c32a245`
+
+### 필수 권한
+- `bot`: 봇 기본 권한
+- `bot.message`: 메시지 전송
+- `user.read`: 사용자 정보 조회
+- `calendar`: 캘린더 접근
+- `calendar.read`: 캘린더 읽기
+
+### 요청 형식
+```json
+{
+  "eventComponents": [
+    {
+      "eventId": "claude-{timestamp}-{random}",
+      "summary": "회의",
+      "description": "Claude MCP에서 등록된 일정",
+      "start": {
+        "dateTime": "2025-08-16T14:00:00",
+        "timeZone": "Asia/Seoul"
+      },
+      "end": {
+        "dateTime": "2025-08-16T15:00:00",
+        "timeZone": "Asia/Seoul"
+      },
+      "transparency": "OPAQUE",
+      "visibility": "PRIVATE",
+      "reminders": [
+        {
+          "method": "DISPLAY",
+          "trigger": "-PT30M"
+        }
+      ],
+      "priority": 0
+    }
+  ],
+  "sendNotification": false
+}
+```
 
 ## 코드 품질 지표
 
