@@ -7,25 +7,15 @@ interface CalendarEvent {
   eventId?: string;
   summary: string;
   description?: string;
-  start: {
-    dateTime: string;
-    timeZone: string;
-  };
-  end: {
-    dateTime: string;
-    timeZone: string;
-  };
+  startDateTime: string;  // ISO 8601 형식
+  endDateTime: string;    // ISO 8601 형식
   location?: string;
-  attendees?: Array<{
-    email: string;
-    displayName?: string;
-  }>;
-  reminders?: {
-    useDefault: boolean;
-    overrides?: Array<{
-      method: 'email' | 'popup';
-      minutes: number;
-    }>;
+  isAllDay?: boolean;
+  category?: string;
+  visibility?: 'PUBLIC' | 'PRIVATE';
+  recurrence?: any;
+  reminder?: {
+    remindBefore: number;  // 분 단위
   };
 }
 
@@ -91,19 +81,16 @@ export class LineWorksCalendarService {
    * 파싱된 이벤트를 LINE WORKS 캘린더 형식으로 변환
    */
   private convertToCalendarEvent(parsed: any): CalendarEvent {
-    const startDateTime = `${parsed.date}T${parsed.time}:00`;
-    const endDateTime = this.calculateEndTime(startDateTime, parsed.duration || 60);
+    // ISO 8601 형식으로 변환 (Asia/Seoul 타임존)
+    const startDateTime = new Date(`${parsed.date}T${parsed.time}:00+09:00`).toISOString();
+    const endDateTime = new Date(new Date(startDateTime).getTime() + (parsed.duration || 60) * 60000).toISOString();
 
     const event: CalendarEvent = {
       summary: parsed.title,
-      start: {
-        dateTime: startDateTime,
-        timeZone: 'Asia/Seoul'
-      },
-      end: {
-        dateTime: endDateTime,
-        timeZone: 'Asia/Seoul'
-      }
+      startDateTime: startDateTime,
+      endDateTime: endDateTime,
+      isAllDay: false,
+      visibility: 'PRIVATE'
     };
 
     // 장소 추가
@@ -113,12 +100,8 @@ export class LineWorksCalendarService {
 
     // 알림 설정
     if (parsed.reminder) {
-      event.reminders = {
-        useDefault: false,
-        overrides: [{
-          method: 'popup',
-          minutes: parsed.reminder
-        }]
+      event.reminder = {
+        remindBefore: parsed.reminder
       };
     }
 
@@ -134,8 +117,8 @@ export class LineWorksCalendarService {
       const accessToken = await this.auth.getAccessToken();
       console.log('- Access Token 획득:', accessToken ? '성공' : '실패');
       
-      // LINE WORKS Calendar API endpoint
-      const endpoint = `https://www.worksapis.com/v1.0/users/${userId}/calendar/events`;
+      // LINE WORKS Calendar API v2.0 endpoint
+      const endpoint = `https://www.worksapis.com/v2.0/users/${userId}/calendar/events`;
       console.log('- API Endpoint:', endpoint);
       console.log('- Request Body:', JSON.stringify(event, null, 2));
 
