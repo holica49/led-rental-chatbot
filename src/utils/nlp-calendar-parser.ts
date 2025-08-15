@@ -1,317 +1,482 @@
-// src/utils/nlp-calendar-parser.ts
+// src/utils/nlp-calendar-parser.ts (고도화된 버전으로 교체)
 
-interface ParsedCalendarEvent {
+interface ParsedEvent {
+  // 기본 정보
   title: string;
   date: string;
   time: string;
-  duration: number; // 분 단위
-  reminder?: number; // 분 단위
+  duration: number;
+  
+  // 고도화된 정보
   location?: string;
-  participants?: string[];
+  attendees?: string[];
+  meetingType?: 'internal' | 'client' | 'presentation' | 'training' | 'interview' | 'general';
+  priority?: 'high' | 'medium' | 'low';
+  preparation?: string[];
+  reminder?: number;
+  notes?: string;
+  isRecurring?: boolean;
+  recurringPattern?: string;
+  
+  // 메타데이터
+  confidence: number; // 파싱 신뢰도 (0-1)
+  extractedInfo: string[]; // 추출된 정보 목록
 }
 
-export class NLPCalendarParser {
-  // 날짜 패턴
+export class AdvancedCalendarParser {
+  // 날짜 관련 패턴
   private datePatterns = {
-    today: /오늘/,
-    tomorrow: /내일/,
-    dayAfterTomorrow: /모레|내일모레/,
-    nextWeek: /다음\s*주\s*(월|화|수|목|금|토|일)요일/,
-    thisWeek: /이번\s*주\s*(월|화|수|목|금|토|일)요일/,
-    specificDate: /(\d{1,2})월\s*(\d{1,2})일/,
-    fullDate: /(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/
+    relative: {
+      '오늘': 0,
+      '내일': 1,
+      '모레': 2,
+      '글피': 3,
+      '이번주': 0,
+      '다음주': 7,
+      '다다음주': 14
+    } as Record<string, number>,
+    weekdays: {
+      '월요일': 1, '월': 1,
+      '화요일': 2, '화': 2,
+      '수요일': 3, '수': 3,
+      '목요일': 4, '목': 4,
+      '금요일': 5, '금': 5,
+      '토요일': 6, '토': 6,
+      '일요일': 0, '일': 0
+    } as Record<string, number>
   };
 
-  // 시간 패턴
+  // 시간 관련 패턴
   private timePatterns = {
-    ampm: /(오전|오후)\s*(\d{1,2})시\s*(\d{1,2})?분?/,
-    hour24: /(\d{1,2})시\s*(\d{1,2})?분?/,
-    hour24Colon: /(\d{1,2}):(\d{2})/
+    ampm: /(오전|오후|아침|저녁|밤)\s*(\d{1,2})시?\s*(\d{1,2}분?)?/g,
+    hour24: /(\d{1,2}):(\d{2})/g,
+    rough: /(아침|점심|오후|저녁|밤)/g
   };
 
-  // 알림 패턴
-  private reminderPatterns = {
-    minutes: /(\d+)분\s*전/,
-    hours: /(\d+)시간\s*전/,
-    days: /(\d+)일\s*전/
+  // 장소 관련 패턴
+  private locationPatterns = {
+    office: /(회의실|사무실|본사|지사|회사)/,
+    external: /(카페|스타벅스|레스토랑|호텔|빌딩)/,
+    virtual: /(줌|zoom|팀즈|teams|화상|온라인)/i
+  };
+
+  // 참석자 관련 패턴
+  private attendeePatterns = {
+    names: /([가-힣]{2,4})\s*(대리|과장|차장|부장|팀장|이사|사장|님|씨)/g,
+    departments: /(개발팀|마케팅팀|영업팀|기획팀|디자인팀|인사팀)/g,
+    external: /(고객|클라이언트|업체|파트너)/
+  };
+
+  // 회의 유형 패턴
+  private meetingTypePatterns = {
+    internal: /(회의|미팅|논의|브리핑|보고|검토)/,
+    client: /(고객|클라이언트|상담|제안|프레젠테이션)/,
+    presentation: /(발표|프레젠테이션|시연|데모)/,
+    training: /(교육|훈련|세미나|워크샵)/,
+    interview: /(면접|인터뷰)/
+  };
+
+  // 우선순위 패턴
+  private priorityPatterns = {
+    high: /(중요|긴급|urgent|asap|반드시)/i,
+    low: /(가벼운|간단한|짧은)/
+  };
+
+  // 반복 패턴
+  private recurringPatterns = {
+    daily: /(매일|daily)/i,
+    weekly: /(매주|weekly)/i,
+    monthly: /(매월|monthly)/i,
+    yearly: /(매년|yearly)/i
   };
 
   /**
-   * 자연어 텍스트를 파싱하여 캘린더 이벤트 객체로 변환
+   * 고도화된 자연어 파싱
    */
-  parse(text: string): ParsedCalendarEvent | null {
+  public parseCalendarText(text: string): ParsedEvent | undefined {
+    console.log('🔍 고도화된 자연어 파싱 시작:', text);
+
     try {
-      const event: Partial<ParsedCalendarEvent> = {};
+      const extractedInfo: string[] = [];
+      let confidence = 0;
 
-      // 날짜 추출
-      const dateInfo = this.extractDate(text);
-      if (!dateInfo) return null;
-      event.date = dateInfo.date;
+      // 1. 기본 날짜/시간 추출
+      const dateTime = this.extractDateTime(text);
+      if (!dateTime) {
+        console.log('❌ 날짜/시간을 찾을 수 없습니다.');
+        return undefined;
+      }
+      extractedInfo.push(`날짜: ${dateTime.date}`, `시간: ${dateTime.time}`);
+      confidence += 0.4;
 
-      // 시간 추출
-      const timeInfo = this.extractTime(text);
-      if (!timeInfo) return null;
-      event.time = timeInfo.time;
+      // 2. 제목 추출
+      const title = this.extractTitle(text);
+      extractedInfo.push(`제목: ${title}`);
+      confidence += 0.2;
 
-      // 제목 추출
-      const title = this.extractTitle(text, dateInfo.matched, timeInfo.matched);
-      if (!title) return null;
-      event.title = title;
-
-      // 알림 시간 추출 (선택사항)
-      const reminder = this.extractReminder(text);
-      if (reminder) event.reminder = reminder;
-
-      // 장소 추출 (선택사항)
+      // 3. 장소 추출
       const location = this.extractLocation(text);
-      if (location) event.location = location;
+      if (location) {
+        extractedInfo.push(`장소: ${location}`);
+        confidence += 0.1;
+      }
 
-      // 기본 duration 설정 (1시간)
-      event.duration = 60;
+      // 4. 참석자 추출
+      const attendees = this.extractAttendees(text);
+      if (attendees.length > 0) {
+        extractedInfo.push(`참석자: ${attendees.join(', ')}`);
+        confidence += 0.1;
+      }
 
-      return event as ParsedCalendarEvent;
+      // 5. 회의 유형 판단
+      const meetingType = this.determineMeetingType(text);
+      if (meetingType) {
+        extractedInfo.push(`회의 유형: ${meetingType}`);
+        confidence += 0.05;
+      }
+
+      // 6. 우선순위 판단
+      const priority = this.determinePriority(text);
+      if (priority) {
+        extractedInfo.push(`우선순위: ${priority}`);
+        confidence += 0.05;
+      }
+
+      // 7. 알림 시간 추출
+      const reminder = this.extractReminder(text);
+      if (reminder) {
+        extractedInfo.push(`알림: ${reminder}분 전`);
+        confidence += 0.05;
+      }
+
+      // 8. 반복 패턴 추출
+      const recurring = this.extractRecurring(text);
+      if (recurring) {
+        extractedInfo.push(`반복: ${recurring}`);
+        confidence += 0.05;
+      }
+
+      // 9. 준비물 추출
+      const preparation = this.extractPreparation(text);
+      if (preparation.length > 0) {
+        extractedInfo.push(`준비물: ${preparation.join(', ')}`);
+      }
+
+      // 10. 기간 추출
+      const duration = this.extractDuration(text);
+
+      const result: ParsedEvent = {
+        title,
+        date: dateTime.date,
+        time: dateTime.time,
+        duration,
+        location: location || undefined,
+        attendees,
+        meetingType,
+        priority,
+        reminder: reminder || undefined,
+        preparation,
+        isRecurring: !!recurring,
+        recurringPattern: recurring || undefined,
+        notes: this.extractNotes(text) || undefined,
+        confidence: Math.min(confidence, 1.0),
+        extractedInfo
+      };
+
+      console.log('✅ 파싱 완료:', result);
+      return result;
+
     } catch (error) {
-      console.error('자연어 파싱 오류:', error);
-      return null;
+      console.error('❌ 파싱 오류:', error);
+      return undefined;
     }
   }
 
   /**
-   * 날짜 추출
+   * 날짜와 시간 추출
    */
-  private extractDate(text: string): { date: string; matched: string } | null {
+  private extractDateTime(text: string): { date: string; time: string } | undefined {
+    // 절대 날짜 (2024-12-25, 12월 25일)
+    const absoluteDateMatch = text.match(/(\d{4})[-.년]\s*(\d{1,2})[-.월]\s*(\d{1,2})[일]?/);
+    if (absoluteDateMatch) {
+      const [, year, month, day] = absoluteDateMatch;
+      const date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      const time = this.extractTime(text);
+      if (time) return { date, time };
+    }
+
+    // 상대 날짜 + 요일
     const today = new Date();
-    
-    // 오늘
-    if (this.datePatterns.today.test(text)) {
-      return {
-        date: this.formatDate(today),
-        matched: '오늘'
-      };
-    }
+    let targetDate = new Date(today);
 
-    // 내일
-    if (this.datePatterns.tomorrow.test(text)) {
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      return {
-        date: this.formatDate(tomorrow),
-        matched: '내일'
-      };
-    }
-
-    // 모레
-    if (this.datePatterns.dayAfterTomorrow.test(text)) {
-      const dayAfter = new Date(today);
-      dayAfter.setDate(today.getDate() + 2);
-      return {
-        date: this.formatDate(dayAfter),
-        matched: text.match(this.datePatterns.dayAfterTomorrow)![0]
-      };
-    }
-
-    // 다음주/이번주 요일
-    const weekMatch = text.match(this.datePatterns.nextWeek) || text.match(this.datePatterns.thisWeek);
-    if (weekMatch) {
-      const isNext = weekMatch[0].includes('다음');
-      const dayName = weekMatch[1];
-      const targetDate = this.getDateByWeekday(dayName, isNext);
-      return {
-        date: this.formatDate(targetDate),
-        matched: weekMatch[0]
-      };
-    }
-
-    // 특정 날짜 (월/일)
-    const specificMatch = text.match(this.datePatterns.specificDate);
-    if (specificMatch) {
-      const month = parseInt(specificMatch[1]);
-      const day = parseInt(specificMatch[2]);
-      const year = today.getFullYear();
-      const targetDate = new Date(year, month - 1, day);
+    // "다음 주 화요일" 패턴
+    const nextWeekMatch = text.match(/(다음\s*주|담주)\s*([월화수목금토일])[요일]?/);
+    if (nextWeekMatch) {
+      const dayName = nextWeekMatch[2];
+      const targetDay = this.datePatterns.weekdays[dayName + '요일'] ?? this.datePatterns.weekdays[dayName];
       
-      // 과거 날짜인 경우 내년으로 설정
-      if (targetDate < today) {
-        targetDate.setFullYear(year + 1);
+      if (targetDay !== undefined) {
+        // 다음 주로 이동
+        targetDate.setDate(today.getDate() + 7);
+        
+        // 해당 요일로 조정
+        const currentDay = targetDate.getDay();
+        const daysToAdd = (targetDay - currentDay + 7) % 7;
+        targetDate.setDate(targetDate.getDate() + daysToAdd);
       }
-      
-      return {
-        date: this.formatDate(targetDate),
-        matched: specificMatch[0]
-      };
+    }
+    // "내일", "모레" 등 상대 날짜
+    else {
+      for (const [keyword, days] of Object.entries(this.datePatterns.relative)) {
+        if (text.includes(keyword)) {
+          if (keyword.includes('주')) {
+            // 주 단위는 별도 처리
+            targetDate.setDate(today.getDate() + days);
+          } else {
+            targetDate.setDate(today.getDate() + days);
+          }
+          break;
+        }
+      }
     }
 
-    // 완전한 날짜 형식
-    const fullMatch = text.match(this.datePatterns.fullDate);
-    if (fullMatch) {
-      const year = parseInt(fullMatch[1]);
-      const month = parseInt(fullMatch[2]);
-      const day = parseInt(fullMatch[3]);
-      return {
-        date: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
-        matched: fullMatch[0]
-      };
+    const date = targetDate.toISOString().split('T')[0];
+    const time = this.extractTime(text);
+    
+    if (time) {
+      return { date, time };
     }
 
-    return null;
+    return undefined;
   }
 
   /**
    * 시간 추출
    */
-  private extractTime(text: string): { time: string; matched: string } | null {
-    // 오전/오후 형식
-    const ampmMatch = text.match(this.timePatterns.ampm);
+  private extractTime(text: string): string | undefined {
+    // 오전/오후 패턴
+    const ampmMatch = text.match(/(?:오전|오후|아침|저녁)\s*(\d{1,2})시?\s*(?:(\d{1,2})분?)?/);
     if (ampmMatch) {
-      const isPM = ampmMatch[1] === '오후';
-      let hour = parseInt(ampmMatch[2]);
-      const minute = ampmMatch[3] ? parseInt(ampmMatch[3]) : 0;
+      let hour = parseInt(ampmMatch[1]);
+      const minute = ampmMatch[2] ? parseInt(ampmMatch[2]) : 0;
       
-      if (isPM && hour !== 12) hour += 12;
-      if (!isPM && hour === 12) hour = 0;
+      if (text.includes('오후') || text.includes('저녁')) {
+        if (hour !== 12) hour += 12;
+      } else if (text.includes('오전') || text.includes('아침')) {
+        if (hour === 12) hour = 0;
+      }
       
-      return {
-        time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
-        matched: ampmMatch[0]
-      };
+      return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
     }
 
-    // 콜론 형식 (14:30)
-    const colonMatch = text.match(this.timePatterns.hour24Colon);
-    if (colonMatch) {
-      return {
-        time: `${colonMatch[1].padStart(2, '0')}:${colonMatch[2]}`,
-        matched: colonMatch[0]
-      };
-    }
-
-    // 24시간 형식
-    const hour24Match = text.match(this.timePatterns.hour24);
+    // 24시간 패턴
+    const hour24Match = text.match(/(\d{1,2}):(\d{2})/);
     if (hour24Match) {
-      const hour = parseInt(hour24Match[1]);
-      const minute = hour24Match[2] ? parseInt(hour24Match[2]) : 0;
-      
-      return {
-        time: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
-        matched: hour24Match[0]
-      };
+      return `${hour24Match[1].padStart(2, '0')}:${hour24Match[2]}`;
     }
 
-    return null;
+    // 대략적인 시간
+    if (text.includes('아침')) return '09:00';
+    if (text.includes('점심')) return '12:00';
+    if (text.includes('오후')) return '14:00';
+    if (text.includes('저녁')) return '18:00';
+
+    return undefined;
   }
 
   /**
-   * 제목 추출 (날짜/시간 제외한 나머지)
+   * 제목 추출 및 정제
    */
-  private extractTitle(text: string, dateMatched: string, timeMatched: string): string {
-    let title = text;
-    
-    // 날짜, 시간 제거
-    title = title.replace(dateMatched, '').replace(timeMatched, '');
-    
-    // 알림 설정 문구 제거
-    title = title.replace(/\d+[분시간일]\s*전/, '');
-    
-    // 불필요한 키워드 제거
-    title = title.replace(/일정|등록|추가|알림/, '');
-    
-    // 앞뒤 공백 제거
-    title = title.trim();
-    
-    return title || '새 일정';
+  private extractTitle(text: string): string {
+    // 시간/날짜 정보 제거
+    let title = text
+      .replace(/(\d{4})[-.년]\s*(\d{1,2})[-.월]\s*(\d{1,2})[일]?/g, '')
+      .replace(/(오늘|내일|모레|다음주|이번주)/g, '')
+      .replace(/(오전|오후|아침|저녁|밤)\s*\d{1,2}시?\s*\d{0,2}분?/g, '')
+      .replace(/\d{1,2}:\d{2}/g, '')
+      .replace(/(에서|에|과|와|랑|이랑)/g, '')
+      .trim();
+
+    // 불필요한 전치사 제거
+    title = title.replace(/^(에서|에|과|와|랑|이랑)\s*/, '');
+
+    // 기본 제목이 없으면 "회의"로 설정
+    if (!title || title.length < 2) {
+      title = '회의';
+    }
+
+    return title;
   }
 
   /**
-   * 알림 시간 추출 (분 단위로 반환)
+   * 장소 추출
    */
-  private extractReminder(text: string): number | null {
-    // 분 단위
-    const minuteMatch = text.match(this.reminderPatterns.minutes);
-    if (minuteMatch) {
-      return parseInt(minuteMatch[1]);
+  private extractLocation(text: string): string | undefined {
+    // 구체적인 장소명
+    const specificLocation = text.match(/([가-힣\w\s]+(?:카페|스타벅스|회의실|사무실|빌딩|호텔|레스토랑))/);
+    if (specificLocation) {
+      return specificLocation[1].trim();
     }
 
-    // 시간 단위
-    const hourMatch = text.match(this.reminderPatterns.hours);
-    if (hourMatch) {
-      return parseInt(hourMatch[1]) * 60;
-    }
-
-    // 일 단위
-    const dayMatch = text.match(this.reminderPatterns.days);
-    if (dayMatch) {
-      return parseInt(dayMatch[1]) * 24 * 60;
-    }
-
-    return null;
-  }
-
-  /**
-   * 장소 추출 (간단한 구현)
-   */
-  private extractLocation(text: string): string | null {
-    // "~에서" 패턴
-    const locationMatch = text.match(/(.+?)(에서|장소)/);
-    if (locationMatch && locationMatch[1].length < 20) {
+    // "에서" 앞의 장소
+    const locationMatch = text.match(/([가-힣\w\s]+)\s*에서/);
+    if (locationMatch) {
       return locationMatch[1].trim();
     }
 
-    // 주요 장소 키워드
-    const places = ['회의실', '사무실', '카페', '식당', '온라인', 'ZOOM', '강남', '판교'];
-    for (const place of places) {
-      if (text.includes(place)) {
-        return place;
+    // 화상회의 키워드
+    if (this.locationPatterns.virtual.test(text)) {
+      return '화상회의';
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 참석자 추출
+   */
+  private extractAttendees(text: string): string[] {
+    const attendees: string[] = [];
+    
+    // 이름 + 직급 패턴
+    const nameMatches = text.matchAll(this.attendeePatterns.names);
+    for (const match of nameMatches) {
+      attendees.push(`${match[1]}${match[2]}`);
+    }
+
+    // "와", "과", "랑" 등으로 연결된 이름들
+    const conjunctionMatch = text.match(/([가-힣]{2,4})\s*(?:와|과|랑|이랑)\s*([가-힣]{2,4})/);
+    if (conjunctionMatch) {
+      attendees.push(conjunctionMatch[1], conjunctionMatch[2]);
+    }
+
+    return [...new Set(attendees)]; // 중복 제거
+  }
+
+  /**
+   * 회의 유형 판단
+   */
+  private determineMeetingType(text: string): ParsedEvent['meetingType'] {
+    if (this.meetingTypePatterns.client.test(text)) return 'client';
+    if (this.meetingTypePatterns.presentation.test(text)) return 'presentation';
+    if (this.meetingTypePatterns.training.test(text)) return 'training';
+    if (this.meetingTypePatterns.interview.test(text)) return 'interview';
+    if (this.meetingTypePatterns.internal.test(text)) return 'internal';
+    
+    return 'general';
+  }
+
+  /**
+   * 우선순위 판단
+   */
+  private determinePriority(text: string): ParsedEvent['priority'] {
+    if (this.priorityPatterns.high.test(text)) return 'high';
+    if (this.priorityPatterns.low.test(text)) return 'low';
+    return 'medium';
+  }
+
+  /**
+   * 알림 시간 추출
+   */
+  private extractReminder(text: string): number | undefined {
+    const reminderMatch = text.match(/(\d+)\s*분\s*전\s*(?:에\s*)?(?:알림|알려)/);
+    if (reminderMatch) {
+      return parseInt(reminderMatch[1]);
+    }
+
+    if (text.includes('알림') || text.includes('알려')) {
+      return 30; // 기본 30분 전
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 반복 패턴 추출
+   */
+  private extractRecurring(text: string): string | undefined {
+    for (const [pattern, keyword] of Object.entries(this.recurringPatterns)) {
+      if (keyword.test(text)) {
+        return pattern;
       }
     }
-
-    return null;
+    return undefined;
   }
 
   /**
-   * 요일로 날짜 계산
+   * 준비물 추출
    */
-  private getDateByWeekday(dayName: string, isNext: boolean): Date {
-    const days = ['일', '월', '화', '수', '목', '금', '토'];
-    const targetDay = days.indexOf(dayName);
+  private extractPreparation(text: string): string[] {
+    const prep: string[] = [];
     
-    const today = new Date();
-    const currentDay = today.getDay();
-    
-    let daysToAdd = targetDay - currentDay;
-    if (daysToAdd <= 0 || isNext) {
-      daysToAdd += 7;
+    // "준비", "가져올" 등의 키워드 뒤의 내용
+    const prepMatch = text.match(/(?:준비|가져올|필요한)\s*(?:것은|물은|내용은)?\s*([^,.\n]+)/);
+    if (prepMatch) {
+      prep.push(prepMatch[1].trim());
     }
-    
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + daysToAdd);
-    
-    return targetDate;
+
+    // 자료, 문서 등 키워드
+    const docMatches = text.match(/(자료|문서|PPT|프레젠테이션|보고서|계획서)/g);
+    if (docMatches) {
+      prep.push(...docMatches);
+    }
+
+    return [...new Set(prep)];
   }
 
   /**
-   * 날짜 포맷팅
+   * 기간 추출
    */
-  private formatDate(date: Date): string {
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  private extractDuration(text: string): number {
+    const durationMatch = text.match(/(\d+)\s*(?:시간|분)/);
+    if (durationMatch) {
+      const value = parseInt(durationMatch[1]);
+      if (text.includes('시간')) return value * 60;
+      if (text.includes('분')) return value;
+    }
+
+    // 기본값: 1시간
+    return 60;
+  }
+
+  /**
+   * 추가 메모 추출
+   */
+  private extractNotes(text: string): string | undefined {
+    // 메모나 특이사항
+    const notesMatch = text.match(/(?:메모|참고|주의|특이사항):\s*(.+)/);
+    if (notesMatch) {
+      return notesMatch[1].trim();
+    }
+
+    return undefined;
   }
 }
 
-// 사용 예시 함수
-export function parseCalendarText(text: string): ParsedCalendarEvent | null {
-  const parser = new NLPCalendarParser();
-  return parser.parse(text);
+// 기존 함수와의 호환성을 위한 래퍼
+export function parseCalendarText(text: string): any {
+  const parser = new AdvancedCalendarParser();
+  const result = parser.parseCalendarText(text);
+  
+  if (!result) return undefined;
+
+  // 기존 형식으로 변환
+  return {
+    title: result.title,
+    date: result.date,
+    time: result.time,
+    duration: result.duration,
+    location: result.location,
+    reminder: result.reminder,
+    // 고도화된 정보도 포함
+    attendees: result.attendees,
+    meetingType: result.meetingType,
+    priority: result.priority,
+    preparation: result.preparation,
+    isRecurring: result.isRecurring,
+    recurringPattern: result.recurringPattern,
+    notes: result.notes,
+    confidence: result.confidence,
+    extractedInfo: result.extractedInfo
+  };
 }
-
-// 테스트 예시
-const testExamples = [
-  "내일 오후 2시 강남LED 설치 미팅",
-  "다음주 월요일 10시 30분 고객 상담 30분전 알림",
-  "2025-08-20 14:00 프로젝트 킥오프",
-  "오늘 저녁 6시 팀 회식 1시간전 알림"
-];
-
-// default export 추가
-export default NLPCalendarParser;
