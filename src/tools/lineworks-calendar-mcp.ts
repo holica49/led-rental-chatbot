@@ -172,16 +172,23 @@ class LineWorksCalendarMCP {
   }
 
   /**
-   * 파싱된 이벤트를 LINE WORKS 캘린더 형식으로 변환
+   * 파싱된 이벤트를 LINE WORKS 캘린더 형식으로 변환 (시간대 수정)
    */
   private convertToCalendarEvent(parsed: any): CalendarEvent {
-    // ISO 8601 형식으로 변환 (Asia/Seoul 타임존)
-    const startDate = new Date(`${parsed.date}T${parsed.time}:00+09:00`);
+    // 한국 시간으로 Date 객체 생성 (시간대 지정 없이)
+    const startDate = new Date(`${parsed.date}T${parsed.time}:00`);
     const endDate = new Date(startDate.getTime() + (parsed.duration || 60) * 60000);
     
-    // LINE WORKS 표준 날짜 형식
+    // 한국 시간대 기준으로 포맷팅 (로컬 시간 그대로 사용)
     const formatDateTime = (date: Date) => {
-      return date.toISOString().slice(0, 19); // 2025-08-16T14:00:00
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
     };
 
     const event: CalendarEvent = {
