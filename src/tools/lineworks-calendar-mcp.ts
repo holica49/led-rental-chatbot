@@ -90,52 +90,73 @@ class LineWorksCalendarMCP {
   }
 
   /**
-   * Domain Admin 권한으로 캘린더 이벤트 생성
-   * (LINE WORKS Calendar API 공식 형식 사용)
+   * Domain Admin 권한으로 캘린더 이벤트 생성 (올바른 LINE WORKS API 형식)
    */
   private async createEventWithDomainAccess(userEmail: string, event: CalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
     try {
-      console.log('📅 LINE WORKS 캘린더 API 호출');
+      console.log('📅 LINE WORKS 캘린더 API 호출 (공식 JSON 형식)');
 
       // Service Account 토큰 획득 (calendar scope 포함)
       const accessToken = await this.auth.getAccessTokenWithCalendarScope();
       console.log('- 캘린더 토큰 획득 완료');
 
-      // LINE WORKS Calendar API - 사용자별 일정 생성
-      // URL: /v1.0/users/{userId}/calendar/events (추정)
-      const endpoint = `https://www.worksapis.com/v1.0/users/${userEmail}/calendar/events`;
+      // 필수 정보 확인
+      const API_ID = process.env.LINEWORKS_API_ID || process.env.LINEWORKS_CLIENT_ID;
+      if (!API_ID) {
+        throw new Error('LINEWORKS_API_ID가 설정되지 않았습니다.');
+      }
+
+      // LINE WORKS Calendar API v1 정확한 엔드포인트
+      const calendarId = 'primary'; // 기본 캘린더
+      const endpoint = `https://apis.worksmobile.com/r/${API_ID}/calendar/v1/${userEmail}/calendars/${calendarId}/events`;
       console.log('- API Endpoint:', endpoint);
 
-      // LINE WORKS Calendar API 표준 형식
-      const calendarEventData = {
-        title: event.summary,
-        description: event.description,
-        startTime: event.startDateTime,
-        endTime: event.endDateTime,
-        location: event.location,
-        isAllDay: event.isAllDay || false,
-        visibility: event.visibility || 'PRIVATE',
-        // 알림 설정 (LINE WORKS 형식)
-        reminders: event.reminder ? [{
-          method: 'POPUP',
-          minutes: event.reminder.remindBefore
-        }] : []
+      // LINE WORKS Calendar API 공식 JSON 형식
+      const eventData = {
+        eventComponents: [
+          {
+            eventId: `claude-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            summary: event.summary,
+            description: event.description || 'Claude MCP에서 등록된 일정',
+            location: event.location,
+            start: {
+              dateTime: event.startDateTime.replace('Z', ''),
+              timeZone: 'Asia/Seoul'
+            },
+            end: {
+              dateTime: event.endDateTime.replace('Z', ''),
+              timeZone: 'Asia/Seoul'
+            },
+            transparency: 'OPAQUE',
+            visibility: event.visibility?.toUpperCase() || 'PRIVATE',
+            sequence: 1,
+            reminders: event.reminder ? [
+              {
+                method: 'DISPLAY',
+                trigger: `-PT${event.reminder.remindBefore}M`
+              }
+            ] : [],
+            priority: 0
+          }
+        ],
+        sendNotification: false
       };
 
-      console.log('- 요청 데이터:', JSON.stringify(calendarEventData, null, 2));
+      console.log('- 요청 데이터:', JSON.stringify(eventData, null, 2));
 
       // API 호출
-      const response = await axios.post(endpoint, calendarEventData, {
+      const response = await axios.post(endpoint, eventData, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'consumerKey': process.env.LINEWORKS_CONSUMER_KEY || process.env.LINEWORKS_CLIENT_ID
         }
       });
 
       console.log('✅ LINE WORKS 캘린더 API 성공:', response.data);
       return {
         success: true,
-        eventId: response.data.eventId || response.data.id || 'success'
+        eventId: response.data.eventComponents?.[0]?.eventId || response.data.returnValue || 'success'
       };
 
     } catch (error: any) {
@@ -148,9 +169,13 @@ class LineWorksCalendarMCP {
 
       // 상세 오류 분석
       if (error.response?.status === 403) {
-        console.log('❌ 권한 부족: calendar scope가 충분하지 않습니다.');
+        console.log('❌ 권한 부족: calendar scope 또는 API 권한을 확인하세요.');
       } else if (error.response?.status === 404) {
-        console.log('❌ API 엔드포인트를 찾을 수 없습니다. URL을 확인해주세요.');
+        console.log('❌ API 엔드포인트를 찾을 수 없습니다. API_ID를 확인하세요.');
+      } else if (error.response?.status === 401) {
+        console.log('❌ 인증 실패: Access Token 또는 Consumer Key를 확인하세요.');
+      } else if (error.response?.status === 400) {
+        console.log('❌ 요청 형식 오류: 날짜 형식이나 필수 필드를 확인하세요.');
       }
 
       return {
