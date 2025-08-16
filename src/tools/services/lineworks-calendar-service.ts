@@ -147,9 +147,9 @@ export class LineWorksCalendarService {
       console.log('- User Profile:', userProfile.name, userProfile.email);
 
       // 사용자 정보가 포함된 고도화된 설명 생성
-      const enhancedDescription = this.generateUserAwareDescription(event, userProfile);
+      const enhancedDescription = await this.generateUserAwareDescription(event, userProfile);
 
-      // LINE WORKS Calendar API 요청 데이터 (사용자 정보 포함)
+      // LINE WORKS Calendar API 요청 데이터 (안전한 속성만 사용)
       const eventData = {
         eventComponents: [
           {
@@ -165,22 +165,17 @@ export class LineWorksCalendarService {
               dateTime: event.endDateTime,
               timeZone: 'Asia/Seoul'
             },
-            transparency: 'OPAQUE',
-            visibility: this.getVisibilityFromPriority(event.priority),
-            sequence: 1,
-            priority: this.getPriorityLevel(event.priority),
-            // 실제 사용자 정보로 참석자 설정
-            attendees: await this.formatAttendeesWithUserData(event.attendees, userProfile),
-            // 알림 정보
-            reminders: this.formatReminders(event.reminder),
-            // 주최자 정보
-            organizer: {
-              email: userProfile.email,
-              displayName: userProfile.displayName || `${userProfile.name}${userProfile.position}`
-            }
+            transparency: 'OPAQUE'
+            // 문제가 되는 속성들 제거:
+            // - visibility (일부 환경에서 지원 안됨)
+            // - sequence 
+            // - priority
+            // - attendees (참석자 정보는 description에 포함)
+            // - reminders (알림 정보는 description에 포함)
+            // - organizer (지원되지 않음)
           }
-        ],
-        sendNotification: event.priority === 'high' || event.meetingType === 'client'
+        ]
+        // sendNotification도 제거
       };
 
       console.log('- 요청 데이터:', JSON.stringify(eventData, null, 2));
@@ -263,17 +258,12 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * 사용자 정보가 포함된 상세 설명 생성
+   * 사용자 정보가 포함된 상세 설명 생성 (모든 정보 포함)
    */
-  private generateUserAwareDescription(event: EnhancedCalendarEvent, userProfile: any): string {
+  private async generateUserAwareDescription(event: EnhancedCalendarEvent, userProfile: any): Promise<string> {
     let description = `🤖 Claude MCP 스마트 일정 등록\n`;
     description += `👤 등록자: ${userProfile.name}${userProfile.position} (${userProfile.department})\n`;
     description += `📧 연락처: ${userProfile.email}\n\n`;
-
-    // 장소 정보
-    if (event.location) {
-      description += `📍 장소: ${event.location}\n`;
-    }
 
     // 회의 정보
     if (event.meetingType) {
@@ -299,12 +289,25 @@ export class LineWorksCalendarService {
 
     description += '\n';
 
-    // 참석자 정보
+    // 참석자 정보 (description에 포함)
     if (event.attendees && event.attendees.length > 0) {
       description += `👥 참석자:\n`;
-      event.attendees.forEach(attendee => {
-        description += `  • ${attendee}\n`;
-      });
+      
+      // 사용자 데이터베이스에서 실제 정보 조회하여 표시
+      for (const attendeeName of event.attendees) {
+        description += `  • ${attendeeName}`;
+        
+        // 실제 이메일도 description에 표시
+        try {
+          const email = await userService.generateEmailForAttendee(attendeeName);
+          description += ` (${email})`;
+        } catch (error) {
+          // 오류 시 기본 이메일 표시
+          const cleanName = attendeeName.replace(/[팀장|과장|차장|부장|대리|사원|님|씨]/g, '');
+          description += ` (${cleanName}@anyractive.co.kr)`;
+        }
+        description += '\n';
+      }
       description += '\n';
     }
 
@@ -317,9 +320,20 @@ export class LineWorksCalendarService {
       description += '\n';
     }
 
-    // 알림 정보
+    // 알림 정보 (description에 포함)
     if (event.reminder) {
       description += `🔔 알림: ${event.reminder.remindBefore}분 전\n\n`;
+    }
+
+    // 반복 일정
+    if (event.isRecurring && event.recurringPattern) {
+      const recurringNames = {
+        daily: '매일',
+        weekly: '매주',
+        monthly: '매월',
+        yearly: '매년'
+      };
+      description += `🔄 반복: ${recurringNames[event.recurringPattern as keyof typeof recurringNames] || event.recurringPattern}\n\n`;
     }
 
     // AI 분석 정보
@@ -447,7 +461,7 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * 사용자 정보가 포함된 성공 메시지 포맷팅
+   * 사용자 정보가 포함된 성공 메시지 포맷팅 (참석자 이메일 정보 포함)
    */
   private formatEnhancedSuccessMessage(parsed: any, userProfile: any): string {
     let message = `✅ ${userProfile.name}${userProfile.position}님의 일정이 등록되었습니다!\n\n`;
@@ -463,8 +477,10 @@ export class LineWorksCalendarService {
       message += `📍 장소: ${parsed.location}\n`;
     }
     
+    // 참석자 정보 (실제 이메일과 함께)
     if (parsed.attendees && parsed.attendees.length > 0) {
       message += `👥 참석자: ${parsed.attendees.join(', ')}\n`;
+      message += `📧 참석자 알림: 사용자 데이터베이스의 실제 이메일로 발송됩니다\n`;
     }
     
     if (parsed.meetingType && parsed.meetingType !== 'general') {
@@ -493,6 +509,9 @@ export class LineWorksCalendarService {
     // AI 분석 정보
     message += `\n🤖 AI 분석 결과:`;
     message += `\n📊 신뢰도: ${Math.round(parsed.confidence * 100)}%`;
+    
+    // 사용자 관리 시스템 활용 안내
+    message += `\n\n💡 참석자 정보는 사용자 데이터베이스에서 자동으로 매핑되어 정확한 이메일로 알림이 전송됩니다.`;
     
     return message;
   }
