@@ -1,4 +1,4 @@
-// src/tools/lineworks-bot.ts (고도화된 파서 통합 버전)
+// src/tools/lineworks-bot.ts (완전히 수정된 버전)
 import express, { Request, Response } from 'express';
 import { Client } from '@notionhq/client';
 
@@ -179,7 +179,7 @@ async function getSchedule(dateRange: string): Promise<string> {
   }
 }
 
-// Webhook 처리 (고도화된 일정 처리)
+// Webhook 처리 (사용자 정보 갱신 기능 추가)
 router.post('/callback', async (req: Request, res: Response) => {
   try {
     console.log('LINE WORKS Webhook 수신:', JSON.stringify(req.body, null, 2));
@@ -194,28 +194,106 @@ router.post('/callback', async (req: Request, res: Response) => {
       
       let responseText = '';
       
-      // 간단한 의도 분석
-      if (lowerText.includes('안녕') || lowerText.includes('하이')) {
+      // 인사말 및 도움말
+      if (lowerText.includes('안녕') || lowerText.includes('하이') || lowerText.includes('도움말')) {
         responseText = '안녕하세요! LED 렌탈 업무봇입니다.\n\n' +
                       '다음과 같은 기능을 사용할 수 있습니다:\n' +
                       '📊 프로젝트 조회: "강남LED 현황"\n' +
                       '📅 일정 조회: "오늘 일정", "이번주 일정"\n' +
                       '📦 재고 확인: "재고 현황"\n' +
-                      '📝 스마트 일정 등록: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림"';
+                      '📝 스마트 일정 등록: "8월 19일 오후 5시에 강남 코엑스에서 메쎄이상 회의"\n' +
+                      '👤 사용자 정보: "내 정보", "정보 갱신"\n' +
+                      '📋 사용자 목록: "사용자 목록" (관리자용)\n' +
+                      '📱 내 캘린더: "내 일정"';
+      }
+      // 사용자 정보 조회/갱신 🆕
+      else if (lowerText.includes('내 정보') || lowerText.includes('사용자 정보') || lowerText.includes('정보 갱신') || lowerText.includes('프로필')) {
+        try {
+          console.log('👤 사용자 정보 조회/갱신 요청');
+          
+          // 강제로 최신 정보 조회
+          const { userService } = await import('../models/user-model.js');
+          const userProfile = await userService.getUserByLineWorksId(userId, true); // forceRefresh = true
+          
+          if (userProfile && !userProfile.id.startsWith('default-')) {
+            // 등록된 사용자
+            responseText = '👤 사용자 정보 (최신):\n\n' +
+                          `이름: ${userProfile.name}\n` +
+                          `부서: ${userProfile.department}\n` +
+                          `직급: ${userProfile.position}\n` +
+                          `이메일: ${userProfile.email}\n` +
+                          `상태: ${userProfile.isActive ? '✅ 활성' : '❌ 비활성'}\n` +
+                          `등록일: ${userProfile.createdAt}\n\n` +
+                          `💡 정보가 틀렸다면 관리자에게 문의하세요.`;
+          } else {
+            // 미등록 사용자
+            responseText = '❌ 미등록 사용자입니다.\n\n' +
+                          `LINE WORKS ID: ${userId}\n\n` +
+                          `📝 사용자 등록이 필요합니다:\n` +
+                          `1. 관리자에게 사용자 등록 요청\n` +
+                          `2. 또는 직접 등록: ${process.env.APP_URL || 'https://web-production-fa47.up.railway.app'}/api/users/dashboard\n\n` +
+                          `등록 후 "정보 갱신" 명령어로 다시 확인하세요.`;
+          }
+          
+          // 캐시 무효화
+          userService.invalidateUserCache(userId);
+          
+        } catch (error) {
+          console.error('❌ 사용자 정보 조회 오류:', error);
+          responseText = '사용자 정보 조회 중 오류가 발생했습니다.';
+        }
+      }
+      // 사용자 목록 조회 (관리자용) 🆕
+      else if (lowerText.includes('사용자 목록') || lowerText.includes('전체 사용자')) {
+        try {
+          const { userService } = await import('../models/user-model.js');
+          const allUsers = await userService.getAllUsers();
+          
+          if (allUsers.length === 0) {
+            responseText = '📋 등록된 사용자가 없습니다.';
+          } else {
+            responseText = `📋 등록된 사용자 목록 (${allUsers.length}명):\n\n`;
+            
+            // 부서별로 그룹화
+            const usersByDept = allUsers.reduce((acc: any, user) => {
+              if (!acc[user.department]) acc[user.department] = [];
+              acc[user.department].push(user);
+              return acc;
+            }, {});
+            
+            for (const [dept, users] of Object.entries(usersByDept)) {
+              responseText += `【${dept}】\n`;
+              (users as any[]).forEach(user => {
+                responseText += `  • ${user.name}${user.position} (${user.email})\n`;
+              });
+              responseText += '\n';
+            }
+            
+            responseText += `💻 웹 대시보드: ${process.env.APP_URL || 'https://web-production-fa47.up.railway.app'}/api/users/dashboard`;
+          }
+        } catch (error) {
+          console.error('❌ 사용자 목록 조회 오류:', error);
+          responseText = '사용자 목록 조회 중 오류가 발생했습니다.';
+        }
       }
       // 고도화된 일정 등록 - MCP 호출
       else if (
         (text.includes('일정') && (text.includes('등록') || text.includes('추가'))) ||
-        (text.includes('시') && (text.includes('오늘') || text.includes('내일') || text.includes('모레') || text.includes('다음'))) ||
+        (text.includes('시') && (text.includes('오늘') || text.includes('내일') || text.includes('모레') || text.includes('다음') || text.includes('월') && text.includes('일'))) ||
         (text.includes('요일') && text.includes('시')) ||
-        /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text) || // 날짜 형식 포함
+        /\d{1,2}\s*월\s*\d{1,2}\s*일/.test(text) || // 한국어 날짜 형식 추가
+        /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text) || // 숫자 날짜 형식
         text.includes('회의') || text.includes('미팅') || text.includes('만남') ||
         text.includes('약속') || text.includes('면담')
       ) {
         try {
           console.log('📅 고도화된 MCP를 통한 캘린더 일정 등록 시작');
           
-          // 1. Notion에 저장 (기존 로직 유지)
+          // 1. 사용자 정보 우선 조회 (최신 정보)
+          const { userService } = await import('../models/user-model.js');
+          const userProfile = await userService.getUserByLineWorksId(userId, true); // forceRefresh
+          
+          // 2. Notion에 저장 (기존 로직 유지)
           let notionSuccess = false;
           
           // 간단한 파싱으로 Notion 저장
@@ -241,11 +319,11 @@ router.post('/callback', async (req: Request, res: Response) => {
                     select: { name: '일정' }
                   },
                   '행사 상태': {
-                    status: { name: '견적 요청' }  // "예정" 대신 "견적 요청" 사용
+                    status: { name: '견적 요청' }
                   },
                   '문의요청 사항': {
                     rich_text: [{
-                      text: { content: `LINE WORKS에서 등록: ${text}` }
+                      text: { content: `LINE WORKS에서 등록 (${userProfile?.name || userId}): ${text}` }
                     }]
                   }
                 }
@@ -257,7 +335,7 @@ router.post('/callback', async (req: Request, res: Response) => {
             }
           }
           
-          // 2. 고도화된 MCP로 LINE WORKS 캘린더에 저장
+          // 3. 고도화된 MCP로 LINE WORKS 캘린더에 저장
           const mcpResult = await callMCPDirect('lineworks_calendar', {
             action: 'create',
             userId: userId,
@@ -266,12 +344,19 @@ router.post('/callback', async (req: Request, res: Response) => {
           
           console.log('📅 고도화된 MCP 캘린더 결과:', mcpResult);
           
-          // 3. 고도화된 결과 메시지 생성
+          // 4. 사용자 정보 포함한 결과 메시지 생성
           if (mcpResult.success) {
             responseText = mcpResult.message + 
                           `\n\n💾 저장 위치:\n` +
                           `• Notion: ${notionSuccess ? '✅ 성공' : '❌ 실패'}\n` +
                           `• LINE WORKS 캘린더: ✅ 성공`;
+            
+            // 사용자 정보 추가
+            if (userProfile && !userProfile.id.startsWith('default-')) {
+              responseText += `\n\n👤 등록자: ${userProfile.department} ${userProfile.name}${userProfile.position}`;
+            } else {
+              responseText += `\n\n⚠️ 미등록 사용자입니다. "내 정보" 명령어로 사용자 등록을 확인하세요.`;
+            }
             
             // 파싱 신뢰도가 낮은 경우 추가 안내
             if (mcpResult.parsedInfo?.confidence && mcpResult.parsedInfo.confidence < 0.7) {
@@ -282,11 +367,16 @@ router.post('/callback', async (req: Request, res: Response) => {
                           `• Notion: ${notionSuccess ? '✅ 성공' : '❌ 실패'}\n` +
                           `• LINE WORKS 캘린더: ❌ 실패\n\n` +
                           `오류: ${mcpResult.message}`;
+            
+            // 사용자 정보 추가
+            if (userProfile && !userProfile.id.startsWith('default-')) {
+              responseText += `\n\n👤 시도한 사용자: ${userProfile.department} ${userProfile.name}${userProfile.position}`;
+            }
           }
           
         } catch (error) {
           console.error('❌ 고도화된 일정 등록 전체 오류:', error);
-          responseText = '일정 등록 중 오류가 발생했습니다. 다시 시도해주세요.\n\n💡 예시: "내일 오후 2시에 강남역에서 김대리와 프로젝트 회의"';
+          responseText = '일정 등록 중 오류가 발생했습니다. 다시 시도해주세요.\n\n💡 예시: "8월 19일 오후 5시에 강남 코엑스에서 메쎄이상 회의"';
         }
       }
       // 내 캘린더 조회 - 고도화된 MCP 호출
@@ -301,9 +391,9 @@ router.post('/callback', async (req: Request, res: Response) => {
           if (mcpResult.success && mcpResult.events.length > 0) {
             responseText = '📅 이번 주 일정:\n\n';
             
-            // 고도화된 이벤트 정보 표시
-            if (mcpResult.summary) {
-              responseText += `${mcpResult.summary}\n\n`;
+            // 사용자 정보 표시
+            if (mcpResult.user) {
+              responseText += `👤 ${mcpResult.user.department} ${mcpResult.user.name}${mcpResult.user.position}\n\n`;
             }
             
             mcpResult.events.forEach((event: any) => {
@@ -318,15 +408,6 @@ router.post('/callback', async (req: Request, res: Response) => {
               
               if (event.location) {
                 responseText += `  📍 ${event.location}\n`;
-              }
-              
-              // 고도화된 정보 표시
-              if (event.attendees && event.attendees.length > 0) {
-                responseText += `  👥 ${event.attendees.join(', ')}\n`;
-              }
-              
-              if (event.preparation && event.preparation.length > 0) {
-                responseText += `  📝 ${event.preparation.join(', ')}\n`;
               }
               
               responseText += '\n';
@@ -370,8 +451,10 @@ router.post('/callback', async (req: Request, res: Response) => {
                       '• 프로젝트 조회: "강남LED 현황"\n' +
                       '• 일정 조회: "오늘 일정"\n' +
                       '• 재고 확인: "재고 현황"\n' +
-                      '• 스마트 일정 등록: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림"\n' +
-                      '• 내 캘린더: "내 일정"';
+                      '• 스마트 일정 등록: "8월 19일 오후 5시에 강남 코엑스에서 메쎄이상 회의"\n' +
+                      '• 사용자 정보: "내 정보", "정보 갱신"\n' +
+                      '• 내 캘린더: "내 일정"\n\n' +
+                      '💡 "도움말"을 입력하면 전체 기능을 확인할 수 있습니다.';
       }
       
       // 응답 전송

@@ -1,4 +1,4 @@
-// src/tools/services/lineworks-calendar-service.ts (사용자 관리 통합 버전)
+// src/tools/services/lineworks-calendar-service.ts (완전히 수정된 버전)
 import axios from 'axios';
 import { LineWorksAuth } from '../../config/lineworks-auth.js';
 import { AdvancedCalendarParser } from '../../utils/nlp-calendar-parser.js';
@@ -43,7 +43,7 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * 사용자 관리 시스템이 통합된 일정 생성
+   * 사용자 관리 시스템이 통합된 일정 생성 (최신 정보 강제 조회)
    */
   async createCalendarEvent(args: CalendarEventRequest): Promise<{ 
     success: boolean; 
@@ -58,9 +58,9 @@ export class LineWorksCalendarService {
       console.log('- userId:', args.userId);
       console.log('- text:', args.text);
       
-      // 1. 사용자 정보 조회
-      const userProfile = await userService.getUserByLineWorksId(args.userId);
-      console.log('- 사용자 정보:', userProfile);
+      // 1. 사용자 정보 조회 (강제 새로고침)
+      const userProfile = await userService.getUserByLineWorksId(args.userId, true); // forceRefresh = true
+      console.log('- 사용자 정보 (최신):', userProfile);
       
       if (!userProfile) {
         return {
@@ -77,7 +77,7 @@ export class LineWorksCalendarService {
       if (!parsedEvent) {
         return {
           success: false,
-          message: '일정을 이해할 수 없습니다. 예시: "내일 오후 2시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의"'
+          message: '일정을 이해할 수 없습니다. 예시: "8월 19일 오후 5시에 강남 코엑스에서 메쎄이상 회의"'
         };
       }
 
@@ -85,7 +85,7 @@ export class LineWorksCalendarService {
       if (parsedEvent.confidence < 0.3) {
         return {
           success: false,
-          message: `일정 정보가 불명확합니다 (신뢰도: ${Math.round(parsedEvent.confidence * 100)}%). 더 구체적으로 말씀해주세요.\n예시: "내일 오후 2시 김과장과 회의"`
+          message: `일정 정보가 불명확합니다 (신뢰도: ${Math.round(parsedEvent.confidence * 100)}%). 더 구체적으로 말씀해주세요.\n예시: "8월 19일 오후 5시 김과장과 회의"`
         };
       }
 
@@ -107,7 +107,8 @@ export class LineWorksCalendarService {
             name: userProfile.name,
             email: userProfile.email,
             department: userProfile.department,
-            position: userProfile.position
+            position: userProfile.position,
+            isRegistered: !userProfile.id.startsWith('default-')
           }
         };
       } else {
@@ -127,7 +128,7 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * 사용자 정보를 활용한 LINE WORKS Calendar API 호출
+   * 사용자 정보를 활용한 LINE WORKS Calendar API 호출 (안전한 버전)
    */
   private async createEventWithUserManagement(userId: string, event: EnhancedCalendarEvent, userProfile: any): Promise<{ success: boolean; eventId?: string; error?: any }> {
     try {
@@ -137,11 +138,8 @@ export class LineWorksCalendarService {
       const accessToken = await this.auth.getAccessTokenWithCalendarScope();
       console.log('✅ LINE WORKS 캘린더 Access Token 발급 성공');
 
-      // 사용자별 캘린더 엔드포인트 (기본 캘린더 또는 지정된 캘린더)
-      const calendarId = userProfile.calendarId || 'primary'; // 기본 캘린더
-      const endpoint = userProfile.calendarId 
-        ? `https://www.worksapis.com/v1.0/users/${userId}/calendars/${calendarId}/events`
-        : `https://www.worksapis.com/v1.0/users/${userId}/calendar/events`;
+      // 기본 캘린더 엔드포인트
+      const endpoint = `https://www.worksapis.com/v1.0/users/${userId}/calendar/events`;
       
       console.log('- API Endpoint:', endpoint);
       console.log('- User Profile:', userProfile.name, userProfile.email);
@@ -149,7 +147,7 @@ export class LineWorksCalendarService {
       // 사용자 정보가 포함된 고도화된 설명 생성
       const enhancedDescription = await this.generateUserAwareDescription(event, userProfile);
 
-      // LINE WORKS Calendar API 요청 데이터 (안전한 속성만 사용)
+      // LINE WORKS Calendar API 요청 데이터 (검증된 안전한 속성만 사용)
       const eventData = {
         eventComponents: [
           {
@@ -166,13 +164,7 @@ export class LineWorksCalendarService {
               timeZone: 'Asia/Seoul'
             },
             transparency: 'OPAQUE'
-            // 문제가 되는 속성들 제거:
-            // - visibility (일부 환경에서 지원 안됨)
-            // - sequence 
-            // - priority
-            // - attendees (참석자 정보는 description에 포함)
-            // - reminders (알림 정보는 description에 포함)
-            // - organizer (지원되지 않음)
+            // 문제가 되는 속성들은 모두 제거하고 description에 포함
           }
         ]
         // sendNotification도 제거
@@ -262,8 +254,16 @@ export class LineWorksCalendarService {
    */
   private async generateUserAwareDescription(event: EnhancedCalendarEvent, userProfile: any): Promise<string> {
     let description = `🤖 Claude MCP 스마트 일정 등록\n`;
-    description += `👤 등록자: ${userProfile.name}${userProfile.position} (${userProfile.department})\n`;
-    description += `📧 연락처: ${userProfile.email}\n\n`;
+    
+    // 사용자 등록 상태에 따른 표시
+    if (userProfile.id.startsWith('default-')) {
+      description += `👤 등록자: ${userProfile.name} (미등록 사용자)\n`;
+      description += `📧 임시 연락처: ${userProfile.email}\n`;
+      description += `⚠️ 사용자 등록이 필요합니다.\n\n`;
+    } else {
+      description += `👤 등록자: ${userProfile.name}${userProfile.position} (${userProfile.department})\n`;
+      description += `📧 연락처: ${userProfile.email}\n\n`;
+    }
 
     // 회의 정보
     if (event.meetingType) {
@@ -350,45 +350,11 @@ export class LineWorksCalendarService {
 
     description += `\n⏰ 등록 시간: ${new Date().toLocaleString('ko-KR')}`;
     description += `\n🏢 등록 부서: ${userProfile.department}`;
+    
+    // LINE WORKS ID 추가 (디버깅용)
+    description += `\n🆔 LINE WORKS ID: ${userProfile.lineWorksUserId}`;
 
     return description;
-  }
-
-  /**
-   * 사용자 데이터베이스를 활용한 참석자 정보 포맷팅
-   */
-  private async formatAttendeesWithUserData(attendees?: string[], organizer?: any): Promise<any[]> {
-    if (!attendees || attendees.length === 0) return [];
-
-    const formattedAttendees = [];
-
-    for (const attendeeName of attendees) {
-      try {
-        // 사용자 관리 시스템에서 실제 이메일 조회
-        const email = await userService.generateEmailForAttendee(attendeeName);
-        
-        formattedAttendees.push({
-          email: email,
-          displayName: attendeeName,
-          partstat: 'NEEDS-ACTION',
-          isOptional: false,
-          isResource: false
-        });
-      } catch (error) {
-        console.error(`참석자 ${attendeeName} 정보 조회 오류:`, error);
-        // 오류 시 기본 형식 사용
-        const cleanName = attendeeName.replace(/[팀장|과장|차장|부장|대리|사원|님|씨]/g, '');
-        formattedAttendees.push({
-          email: `${cleanName}@anyractive.co.kr`,
-          displayName: attendeeName,
-          partstat: 'NEEDS-ACTION',
-          isOptional: false,
-          isResource: false
-        });
-      }
-    }
-
-    return formattedAttendees;
   }
 
   /**
@@ -432,32 +398,6 @@ export class LineWorksCalendarService {
   private getVisibilityFromPriority(priority?: string): 'PUBLIC' | 'PRIVATE' {
     if (priority === 'high') return 'PUBLIC';
     return 'PRIVATE';
-  }
-
-  /**
-   * 우선순위 레벨 변환 (0-9)
-   */
-  private getPriorityLevel(priority?: string): number {
-    switch (priority) {
-      case 'high': return 1;
-      case 'medium': return 5;
-      case 'low': return 8;
-      default: return 0;
-    }
-  }
-
-  /**
-   * 알림 정보 포맷팅
-   */
-  private formatReminders(reminder?: { remindBefore: number }): any[] {
-    if (!reminder) return [];
-
-    return [
-      {
-        method: 'DISPLAY',
-        trigger: `-PT${reminder.remindBefore}M`
-      }
-    ];
   }
 
   /**
@@ -536,8 +476,8 @@ export class LineWorksCalendarService {
    */
   async getEvents(args: { userId: string; userEmail?: string; range: 'today' | 'week' }): Promise<any> {
     try {
-      // 사용자 정보 조회
-      const userProfile = await userService.getUserByLineWorksId(args.userId);
+      // 사용자 정보 조회 (강제 새로고침)
+      const userProfile = await userService.getUserByLineWorksId(args.userId, true); // forceRefresh = true
       
       const accessToken = await this.auth.getAccessTokenWithCalendarScope();
       
@@ -571,7 +511,8 @@ export class LineWorksCalendarService {
         user: userProfile ? {
           name: userProfile.name,
           department: userProfile.department,
-          position: userProfile.position
+          position: userProfile.position,
+          isRegistered: !userProfile.id.startsWith('default-')
         } : null
       };
 

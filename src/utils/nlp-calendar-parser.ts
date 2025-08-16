@@ -192,95 +192,120 @@ export class AdvancedCalendarParser {
     }
   }
 
-  /**
-   * 날짜와 시간 추출 (수정된 버전)
-   */
-  private extractDateTime(text: string): { date: string; time: string } | undefined {
-    // 절대 날짜 (2024-12-25, 12월 25일)
-    const absoluteDateMatch = text.match(/(\d{4})[-.년]\s*(\d{1,2})[-.월]\s*(\d{1,2})[일]?/);
-    if (absoluteDateMatch) {
-      const [, year, month, day] = absoluteDateMatch;
-      const date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      const time = this.extractTime(text);
-      if (time) return { date, time };
-    }
+// src/utils/nlp-calendar-parser.ts (날짜 파싱 오류 수정)
 
-    // 상대 날짜 + 요일
-    const today = new Date();
-    let targetDate = new Date(today);
+/**
+ * 날짜와 시간 추출 (수정된 버전 - 절대 날짜 우선 처리)
+ */
+private extractDateTime(text: string): { date: string; time: string } | undefined {
+  console.log('🔍 날짜/시간 추출 시작:', text);
 
-    // "이번주 화요일" 패턴 (수정됨)
-    const thisWeekMatch = text.match(/(이번\s*주|이번주)\s*([월화수목금토일])[요일]?/);
-    if (thisWeekMatch) {
-      const dayName = thisWeekMatch[2];
-      const targetDay = this.datePatterns.weekdays[dayName + '요일'] ?? this.datePatterns.weekdays[dayName];
-      
-      if (targetDay !== undefined) {
-        console.log(`🔍 이번주 ${dayName}요일 계산 중...`);
-        console.log(`- 오늘: ${today.getDay()} (${today.toDateString()})`);
-        console.log(`- 목표 요일: ${targetDay}`);
-        
-        // 이번 주의 해당 요일로 계산
-        const currentDay = today.getDay();
-        let daysToAdd = targetDay - currentDay;
-        
-        // 만약 목표 요일이 이미 지났으면 다음 주로
-        if (daysToAdd < 0) {
-          daysToAdd += 7;
-        }
-        
-        targetDate.setDate(today.getDate() + daysToAdd);
-        console.log(`- 계산된 날짜: ${targetDate.toDateString()}`);
-      }
-    }
-    // "다음 주 화요일" 패턴 (기존)
-    else if (text.match(/(다음\s*주|담주)\s*([월화수목금토일])[요일]?/)) {
-      const nextWeekMatch = text.match(/(다음\s*주|담주)\s*([월화수목금토일])[요일]?/);
-      if (nextWeekMatch) {
-        const dayName = nextWeekMatch[2];
-        const targetDay = this.datePatterns.weekdays[dayName + '요일'] ?? this.datePatterns.weekdays[dayName];
-        
-        if (targetDay !== undefined) {
-          console.log(`🔍 다음주 ${dayName}요일 계산 중...`);
-          
-          // 다음 주로 이동 후 해당 요일 계산
-          const nextWeekStart = new Date(today);
-          nextWeekStart.setDate(today.getDate() + (7 - today.getDay())); // 다음 주 일요일
-          
-          targetDate = new Date(nextWeekStart);
-          targetDate.setDate(nextWeekStart.getDate() + targetDay);
-          
-          console.log(`- 계산된 날짜: ${targetDate.toDateString()}`);
-        }
-      }
-    }
-    // "내일", "모레" 등 상대 날짜 (기존)
-    else {
-      for (const [keyword, days] of Object.entries(this.datePatterns.relative)) {
-        if (text.includes(keyword)) {
-          if (keyword.includes('주')) {
-            // 주 단위는 별도 처리
-            targetDate.setDate(today.getDate() + days);
-          } else {
-            targetDate.setDate(today.getDate() + days);
-          }
-          console.log(`🔍 상대 날짜 ${keyword}: ${targetDate.toDateString()}`);
-          break;
-        }
-      }
-    }
-
-    const date = targetDate.toISOString().split('T')[0];
+  // 1. 절대 날짜 우선 처리 (수정됨)
+  // "8월 19일", "12월 25일" 형식
+  const koreanDateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if (koreanDateMatch) {
+    const month = parseInt(koreanDateMatch[1]);
+    const day = parseInt(koreanDateMatch[2]);
+    const currentYear = new Date().getFullYear();
+    
+    // 올해 날짜로 설정
+    const date = `${currentYear}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
     const time = this.extractTime(text);
     
-    console.log(`✅ 최종 파싱 결과: ${date} ${time}`);
+    console.log(`✅ 한국어 절대 날짜 파싱: ${month}월 ${day}일 → ${date} ${time}`);
     
     if (time) {
       return { date, time };
     }
-
-    return undefined;
   }
+
+  // "2024-12-25", "2024.12.25" 형식
+  const absoluteDateMatch = text.match(/(\d{4})[-.년]\s*(\d{1,2})[-.월]\s*(\d{1,2})[일]?/);
+  if (absoluteDateMatch) {
+    const [, year, month, day] = absoluteDateMatch;
+    const date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    const time = this.extractTime(text);
+    
+    console.log(`✅ 숫자 절대 날짜 파싱: ${date} ${time}`);
+    
+    if (time) {
+      return { date, time };
+    }
+  }
+
+  // 2. 상대 날짜 처리 (절대 날짜가 없을 때만)
+  const today = new Date();
+  let targetDate = new Date(today);
+
+  // "이번주 화요일" 패턴
+  const thisWeekMatch = text.match(/(이번\s*주|이번주)\s*([월화수목금토일])[요일]?/);
+  if (thisWeekMatch) {
+    const dayName = thisWeekMatch[2];
+    const targetDay = this.datePatterns.weekdays[dayName + '요일'] ?? this.datePatterns.weekdays[dayName];
+    
+    if (targetDay !== undefined) {
+      console.log(`🔍 이번주 ${dayName}요일 계산 중...`);
+      
+      const currentDay = today.getDay();
+      let daysToAdd = targetDay - currentDay;
+      
+      if (daysToAdd < 0) {
+        daysToAdd += 7;
+      }
+      
+      targetDate.setDate(today.getDate() + daysToAdd);
+      console.log(`- 계산된 날짜: ${targetDate.toDateString()}`);
+    }
+  }
+  // "다음 주 화요일" 패턴
+  else if (text.match(/(다음\s*주|담주)\s*([월화수목금토일])[요일]?/)) {
+    const nextWeekMatch = text.match(/(다음\s*주|담주)\s*([월화수목금토일])[요일]?/);
+    if (nextWeekMatch) {
+      const dayName = nextWeekMatch[2];
+      const targetDay = this.datePatterns.weekdays[dayName + '요일'] ?? this.datePatterns.weekdays[dayName];
+      
+      if (targetDay !== undefined) {
+        console.log(`🔍 다음주 ${dayName}요일 계산 중...`);
+        
+        const nextWeekStart = new Date(today);
+        nextWeekStart.setDate(today.getDate() + (7 - today.getDay()));
+        
+        targetDate = new Date(nextWeekStart);
+        targetDate.setDate(nextWeekStart.getDate() + targetDay);
+        
+        console.log(`- 계산된 날짜: ${targetDate.toDateString()}`);
+      }
+    }
+  }
+  // "내일", "모레" 등 상대 날짜
+  else {
+    let foundRelativeDate = false;
+    for (const [keyword, days] of Object.entries(this.datePatterns.relative)) {
+      if (text.includes(keyword) && !keyword.includes('주')) { // 주 단위는 위에서 처리됨
+        targetDate.setDate(today.getDate() + days);
+        console.log(`🔍 상대 날짜 ${keyword}: ${targetDate.toDateString()}`);
+        foundRelativeDate = true;
+        break;
+      }
+    }
+    
+    // 상대 날짜도 없으면 오늘로 설정
+    if (!foundRelativeDate) {
+      console.log('🔍 기본값: 오늘 날짜 사용');
+    }
+  }
+
+  const date = targetDate.toISOString().split('T')[0];
+  const time = this.extractTime(text);
+  
+  console.log(`✅ 최종 파싱 결과: ${date} ${time}`);
+  
+  if (time) {
+    return { date, time };
+  }
+
+  return undefined;
+}
 
   /**
    * 시간 추출

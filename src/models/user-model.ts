@@ -1,4 +1,4 @@
-// src/models/user-model.ts (사용자 관리 모델)
+// src/models/user-model.ts (완전히 수정된 버전)
 import { Client } from '@notionhq/client';
 
 export interface UserProfile {
@@ -35,30 +35,48 @@ export interface CreateUserRequest {
 export class UserManagementService {
   private notion: Client;
   private userDatabaseId: string;
+  private userCache: Map<string, { user: UserProfile; timestamp: number }> = new Map();
+  private cacheExpiry = 5 * 60 * 1000; // 5분 캐시
 
   constructor() {
     this.notion = new Client({
       auth: process.env.NOTION_API_KEY,
     });
     
-    // 새로운 사용자 관리용 Notion 데이터베이스 ID
     this.userDatabaseId = process.env.NOTION_USER_DATABASE_ID || '';
     
     if (!this.userDatabaseId) {
       console.warn('⚠️ NOTION_USER_DATABASE_ID가 설정되지 않았습니다. 사용자 관리 기능이 제한됩니다.');
+    } else {
+      console.log('✅ 사용자 관리 데이터베이스 연결:', this.userDatabaseId);
     }
   }
 
   /**
-   * LINE WORKS 사용자 ID로 사용자 조회
+   * LINE WORKS 사용자 ID로 사용자 조회 (캐시 무효화 추가)
    */
-  async getUserByLineWorksId(lineWorksUserId: string): Promise<UserProfile | null> {
+  async getUserByLineWorksId(lineWorksUserId: string, forceRefresh = false): Promise<UserProfile | null> {
     try {
+      console.log('🔍 사용자 조회 시작:', lineWorksUserId);
+      
+      // 캐시 확인 (강제 새로고침이 아닌 경우)
+      if (!forceRefresh && this.userCache.has(lineWorksUserId)) {
+        const cached = this.userCache.get(lineWorksUserId)!;
+        if (Date.now() - cached.timestamp < this.cacheExpiry) {
+          console.log('📱 캐시에서 사용자 정보 반환:', cached.user.name);
+          return cached.user;
+        } else {
+          console.log('🕐 캐시 만료, 새로 조회');
+          this.userCache.delete(lineWorksUserId);
+        }
+      }
+
       if (!this.userDatabaseId) {
-        // 데이터베이스가 없으면 기본값 반환
+        console.log('⚠️ 데이터베이스 ID 없음, 기본 사용자 생성');
         return this.createDefaultUser(lineWorksUserId);
       }
 
+      console.log('🔍 Notion 데이터베이스에서 사용자 조회 중...');
       const response = await this.notion.databases.query({
         database_id: this.userDatabaseId,
         filter: {
@@ -69,16 +87,43 @@ export class UserManagementService {
         }
       });
 
+      console.log(`📊 조회 결과: ${response.results.length}개 사용자 발견`);
+
       if (response.results.length === 0) {
-        console.log(`🔍 사용자를 찾을 수 없습니다: ${lineWorksUserId}`);
-        return this.createDefaultUser(lineWorksUserId);
+        console.log(`❌ 사용자를 찾을 수 없습니다: ${lineWorksUserId}`);
+        const defaultUser = this.createDefaultUser(lineWorksUserId);
+        
+        // 기본 사용자도 캐시에 저장 (짧은 시간)
+        this.userCache.set(lineWorksUserId, {
+          user: defaultUser,
+          timestamp: Date.now()
+        });
+        
+        return defaultUser;
       }
 
       const userPage: any = response.results[0];
-      return this.parseUserFromNotion(userPage);
+      const user = this.parseUserFromNotion(userPage);
+      
+      console.log('✅ 등록된 사용자 찾음:', user.name, user.email, user.department);
+      
+      // 캐시에 저장
+      this.userCache.set(lineWorksUserId, {
+        user,
+        timestamp: Date.now()
+      });
+
+      return user;
 
     } catch (error) {
       console.error('❌ 사용자 조회 오류:', error);
+      
+      // 오류 시 캐시된 정보 반환 시도
+      if (this.userCache.has(lineWorksUserId)) {
+        console.log('🔄 오류 발생, 캐시된 정보 반환');
+        return this.userCache.get(lineWorksUserId)!.user;
+      }
+      
       return this.createDefaultUser(lineWorksUserId);
     }
   }
@@ -146,7 +191,7 @@ export class UserManagementService {
   }
 
   /**
-   * 새 사용자 등록
+   * 새 사용자 등록 (캐시 무효화 포함)
    */
   async createUser(userData: CreateUserRequest): Promise<UserProfile | null> {
     try {
@@ -155,6 +200,8 @@ export class UserManagementService {
       }
 
       const now = new Date().toISOString();
+
+      console.log('📝 새 사용자 등록 중:', userData.name, userData.lineWorksUserId);
 
       const response = await this.notion.pages.create({
         parent: { database_id: this.userDatabaseId },
@@ -196,6 +243,10 @@ export class UserManagementService {
       });
 
       console.log('✅ 새 사용자 등록 완료:', userData.name);
+      
+      // 캐시 무효화
+      this.invalidateUserCache(userData.lineWorksUserId);
+      
       return this.parseUserFromNotion(response as any);
 
     } catch (error) {
@@ -205,7 +256,7 @@ export class UserManagementService {
   }
 
   /**
-   * 사용자 정보 업데이트
+   * 사용자 정보 업데이트 (캐시 무효화 포함)
    */
   async updateUser(userId: string, updates: Partial<CreateUserRequest>): Promise<boolean> {
     try {
@@ -238,6 +289,10 @@ export class UserManagementService {
       });
 
       console.log('✅ 사용자 정보 업데이트 완료:', userId);
+      
+      // 전체 캐시 무효화 (LINE WORKS ID를 모르므로)
+      this.invalidateUserCache();
+      
       return true;
 
     } catch (error) {
@@ -321,6 +376,19 @@ export class UserManagementService {
   }
 
   /**
+   * 사용자 정보 캐시 무효화
+   */
+  invalidateUserCache(lineWorksUserId?: string): void {
+    if (lineWorksUserId) {
+      this.userCache.delete(lineWorksUserId);
+      console.log('🗑️ 특정 사용자 캐시 삭제:', lineWorksUserId);
+    } else {
+      this.userCache.clear();
+      console.log('🗑️ 전체 사용자 캐시 삭제');
+    }
+  }
+
+  /**
    * Notion 페이지에서 사용자 정보 파싱
    */
   private parseUserFromNotion(page: any): UserProfile {
@@ -346,12 +414,11 @@ export class UserManagementService {
   }
 
   /**
-   * 기본 사용자 생성 (데이터베이스가 없거나 사용자를 찾을 수 없을 때) - 개선된 버전
+   * 기본 사용자 생성 (개선된 버전)
    */
   private createDefaultUser(lineWorksUserId: string): UserProfile {
     const now = new Date().toISOString();
     
-    // LINE WORKS ID에서 더 나은 기본 이름 생성
     let defaultName = lineWorksUserId;
     
     // UUID 형태면 "미등록 사용자"로 표시
@@ -359,7 +426,16 @@ export class UserManagementService {
       defaultName = '미등록 사용자';
     }
     
-    console.log(`⚠️ 사용자 정보를 찾을 수 없어 기본 사용자 생성: ${lineWorksUserId} → ${defaultName}`);
+    console.log(`⚠️ 기본 사용자 생성: ${lineWorksUserId} → ${defaultName}`);
+    console.log(`💡 사용자 등록을 위해 /api/users/dashboard 에서 등록하거나, 다음 API를 사용하세요:`);
+    console.log(`POST /api/users`);
+    console.log(`{
+      "lineWorksUserId": "${lineWorksUserId}",
+      "email": "${defaultName}@anyractive.co.kr",
+      "name": "${defaultName}",
+      "department": "개발팀",
+      "position": "사원"
+    }`);
     
     return {
       id: `default-${lineWorksUserId}`,
