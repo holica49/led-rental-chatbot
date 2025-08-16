@@ -1,7 +1,7 @@
 # LED 렌탈 MCP 프로젝트 컨텍스트
 
 ## 비즈니스 도메인
-오리온디스플레이의 LED 렌탈/설치 업무를 자동화하는 카카오톡 챗봇 시스템과 **고도화된 AI 자연어 파싱**을 갖춘 LINE WORKS 봇 시스템
+오리온디스플레이의 LED 렌탈/설치 업무를 자동화하는 카카오톡 챗봇 시스템
 
 ## 핵심 기능
 1. **설치 서비스**: 상설 LED 설치 상담 및 견적
@@ -10,21 +10,22 @@
 4. **자동화 시스템**: Notion 상태 기반 업무 자동화
 5. **스케줄러**: 날짜 기반 자동 상태 변경
 6. **LINE WORKS 봇**: 내부 업무 관리 및 프로젝트 현황 조회
-7. **🆕 고도화된 MCP 캘린더 연동**: Claude가 AI 자연어 파싱으로 LINE WORKS 캘린더 직접 관리
+7. **MCP 캘린더 연동**: Claude가 직접 LINE WORKS 캘린더 관리
+8. **사용자 관리 시스템**: Notion 기반 직원 정보 관리 🆕
 
 ## 기술 스택 (2025-08-16 기준)
 - **Runtime**: Node.js 18+ (ES Modules)
 - **Language**: TypeScript 5.7.2
 - **Module System**: ES Modules (`"type": "module"`)
 - **Framework**: Express 4.21.2
-- **Database**: Notion API
+- **Database**: Notion API (프로젝트 + 사용자 관리)
 - **Deployment**: Railway (자동 배포)
 - **Session**: In-memory (Redis 마이그레이션 예정)
 - **Polling**: 10분 간격 상태 감지
 - **Scheduler**: 1시간 간격 날짜 기반 자동화
 - **MCP**: Model Context Protocol (Claude 연동)
 - **Calendar API**: LINE WORKS Calendar API v1.0
-- **🆕 AI NLP**: 고도화된 자연어 처리 (AdvancedCalendarParser)
+- **User Management**: Notion-based User Database 🆕
 
 ## 프로젝트 구조
 ```
@@ -44,8 +45,12 @@ led-rental-mcp/
 │   │   ├── handler-utils.ts         # 핸들러 공통 함수
 │   │   ├── session-utils.ts         # 세션 관리
 │   │   ├── date-utils.ts            # 날짜 처리
-│   │   ├── nlp-calendar-parser.ts   # 🆕 고도화된 자연어 일정 파싱 AI
+│   │   ├── nlp-calendar-parser.ts   # 고도화된 자연어 일정 파싱 🆕
 │   │   └── notion-message-utils.ts  # Notion 메시지 유틸
+│   ├── models/                      # 데이터 모델 🆕
+│   │   └── user-model.ts            # 사용자 관리 모델
+│   ├── routes/                      # API 라우트 🆕  
+│   │   └── user-admin.ts            # 사용자 관리 API
 │   └── tools/
 │       ├── handlers/                # 서비스별 핸들러
 │       │   ├── install.ts
@@ -57,12 +62,12 @@ led-rental-mcp/
 │       ├── services/                # 외부 서비스 연동
 │       │   ├── notion-service.ts
 │       │   ├── mention-service.ts
-│       │   └── lineworks-calendar-service.ts  🆕
+│       │   └── lineworks-calendar-service.ts  # 사용자 관리 통합 🆕
 │       ├── session/                 # 세션 관리
 │       ├── kakao-chatbot.ts         # 메인 챗봇 로직
 │       ├── notion-mcp.ts            # Notion 연동
-│       ├── lineworks-calendar-mcp.ts # 🆕 고도화된 MCP 캘린더 도구
-│       ├── lineworks-bot.ts         # LINE WORKS 봇 (고도화된 MCP 호출)
+│       ├── lineworks-calendar-mcp.ts # MCP 캘린더 도구 🆕
+│       ├── lineworks-bot.ts         # LINE WORKS 봇 (MCP 호출)
 │       ├── notion-polling.ts        # 상태 감지 (10분)
 │       ├── notion-scheduler.ts      # 날짜 기반 자동화 (1시간)
 │       ├── notion-status-automation.ts # 자동화 처리
@@ -70,111 +75,99 @@ led-rental-mcp/
 │       └── calculate-quote.ts       # 견적 계산
 ```
 
-## 🆕 고도화된 MCP 캘린더 연동 아키텍처
+## 사용자 관리 시스템 아키텍처 🆕
 
 ### 기본 구조
 ```
-사용자 → LINE WORKS 봇 → 고도화된 MCP Server → LINE WORKS Calendar API
-                       ↘ Notion DB (동시 저장)
-                       ↘ AI 자연어 파싱 엔진
+LINE WORKS User → User Database → Real Email → Calendar Event
+                ↗ Notion Search  ↗ Email Mapping ↗ Rich Description
 ```
 
 ### 핵심 컴포넌트
-1. **🧠 고도화된 자연어 파싱**: `nlp-calendar-parser.ts`
-   - **복잡한 문장 처리**: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림, PPT 준비"
-   - **정보 자동 추출**: 날짜, 시간, 제목, 참석자, 장소, 회의유형, 우선순위, 준비물, 알림
-   - **신뢰도 측정**: AI 파싱 신뢰도 0-100% (30% 이상 등록, 70% 이상 권장)
-   - **스마트 날짜 계산**: "다음 주 화요일" → 정확한 날짜 (2025-08-26)
+1. **사용자 데이터베이스**: `models/user-model.ts`
+   - Notion 기반 직원 정보 저장
+   - LINE WORKS ID ↔ 실제 사용자 정보 매핑
+   - 부서, 직급, 이메일 등 상세 정보
 
-2. **🎯 고도화된 MCP 캘린더 도구**: `lineworks-calendar-mcp.ts`
+2. **사용자 관리 API**: `routes/user-admin.ts`
+   - RESTful API로 사용자 CRUD 작업
+   - 웹 대시보드 제공
+   - 참석자 이메일 자동 생성
+
+3. **통합 캘린더 서비스**: `services/lineworks-calendar-service.ts`
+   - 사용자 정보 자동 조회
+   - 참석자 실제 이메일 매핑
+   - 사용자 컨텍스트가 포함된 일정 생성
+
+4. **데이터베이스 스키마**: 
+   - 이름 (Title)
+   - LINE WORKS ID (Text)
+   - 이메일 (Email)
+   - 부서/직급 (Select)
+   - 활성상태 (Checkbox)
+
+## MCP 캘린더 연동 아키텍처
+
+### 기본 구조
+```
+사용자 → LINE WORKS 봇 → MCP Server → User DB → LINE WORKS Calendar API
+                       ↘ Notion DB (동시 저장)
+```
+
+### 핵심 컴포넌트
+1. **고도화된 자연어 파싱**: `nlp-calendar-parser.ts`
+   - "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의" → 구조화된 이벤트 객체
+   - 날짜, 시간, 제목, 참석자, 장소, 우선순위, 회의유형 추출
+   - AI 신뢰도 측정 및 검증
+
+2. **MCP 캘린더 도구**: `lineworks-calendar-mcp.ts`
    - Claude가 직접 호출하는 MCP 도구
    - Service Account 권한으로 캘린더 API 호출
-   - 참석자 자동 이메일 생성 (`김대리` → `김대리@anyractive.co.kr`)
-   - 우선순위 기반 가시성 설정 (중요도 1-9, PUBLIC/PRIVATE)
-   - 스마트 알림 (중요한 일정만 자동 알림)
-   - 타입 안전성 보장
+   - 사용자 정보와 통합된 일정 생성
 
-3. **🔐 LINE WORKS 인증**: `lineworks-auth.ts`
+3. **LINE WORKS 인증**: `lineworks-auth.ts`
    - 기본 봇 권한: `bot`, `bot.message`, `user.read`
    - 캘린더 권한: `calendar`, `calendar.read`
    - Service Account + JWT 인증
-   - 토큰 캐싱으로 성능 최적화
 
-4. **📅 API 엔드포인트**: 
+4. **API 엔드포인트**: 
    - `https://www.worksapis.com/v1.0/users/{userId}/calendar/events`
-   - 관리자 기본 캘린더 사용 (별도 캘린더 ID 불필요)
-
-### 🎨 고도화된 캘린더 이벤트 기능
-1. **아이콘 제목**: `🔴 🏢 프로젝트 회의 (1명)`
-2. **참석자 관리**: 자동 이메일 생성 및 초대
-3. **우선순위 시스템**: 
-   - `high` → priority: 1, visibility: PUBLIC, 알림: ON
-   - `medium` → priority: 5, visibility: PRIVATE, 알림: OFF
-   - `low` → priority: 8, visibility: PRIVATE, 알림: OFF
-4. **회의 유형 분류**: 내부회의, 고객미팅, 프레젠테이션, 교육, 면접
-5. **스마트 알림**: 중요도/회의유형 기반 자동 설정
-6. **상세 설명**: AI 분석 정보, 참석자, 준비물 포함
-
-### 🧠 AI 자연어 파싱 능력
-```
-입력: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림, PPT 준비"
-
-AI 추출 결과:
-- 📅 날짜: 2025-08-26 (정확한 계산)
-- ⏰ 시간: 15:00
-- 📌 제목: 프로젝트 회의
-- 📍 장소: 강남 스타벅스
-- 👥 참석자: [김대리]
-- 📋 회의유형: internal
-- ⚡ 우선순위: high
-- 🔔 알림: 30분 전
-- 📝 준비물: [PPT]
-- 📊 신뢰도: 85%
-```
+   - 안전한 속성만 사용 (summary, description, location, start, end, transparency)
 
 ## 주요 업데이트 (2025-08-16)
 
-### 🆕 고도화된 자연어 파싱 시스템 구현 완료
-- **복잡한 문장 처리**: 한 문장에서 모든 일정 정보 추출
-- **참석자 인식**: "김대리와 박과장 미팅" → [김대리, 박과장]
-- **회의 유형 자동 분류**: "고객 프레젠테이션" → client, "내부 브리핑" → internal
-- **우선순위 판단**: "중요한 회의" → high, "간단한 미팅" → low
-- **날짜 계산**: "다음 주 화요일" → 정확한 날짜 계산
-- **신뢰도 기반 검증**: 30% 미만 시 재입력 요청, 70% 이상 권장
+### 사용자 관리 시스템 구축 완료 🆕
+- **Notion 기반 직원 데이터베이스**: 체계적인 사용자 정보 관리
+- **자동 사용자 매핑**: LINE WORKS ID → 실제 사용자 정보
+- **스마트 이메일 생성**: 참석자 이름 → 실제 이메일 자동 변환
+- **웹 대시보드**: `/api/users/dashboard`에서 사용자 관리
+- **RESTful API**: 사용자 CRUD 작업 지원
 
-### 🎯 LINE WORKS Calendar API 완전 통합
-- **올바른 엔드포인트**: `https://www.worksapis.com/v1.0/users/{userId}/calendar/events`
-- **전체 속성 지원**: location, attendees, reminders, priority, visibility
-- **JSON 형식**: `eventComponents` 배열 사용
-- **필수 헤더**: `Authorization: Bearer {token}`
-- **기본 캘린더 사용**: 별도 캘린더 ID 불필요
+### 고도화된 자연어 파싱 개선
+- **복잡한 날짜 처리**: "이번주 화요일" vs "다음주 화요일" 정확한 구분
+- **참석자 인식**: "김대리와 박과장 미팅" → 참석자 자동 추출
+- **회의 유형 판단**: "중요한 프로젝트 회의" → internal + high priority
+- **AI 신뢰도 측정**: 파싱 결과의 정확도 평가 (0-1)
 
-### 🤖 Claude가 직접 캘린더 관리 (MCP 연동)
-- **Service Account 권한**: Bot 제한 우회
-- **실시간 API 호출**: Claude가 직접 LINE WORKS 캘린더 조작
-- **이중 저장**: Notion + LINE WORKS 캘린더 동시 저장
-- **오류 처리**: API 오류 시 상세한 가이드 제공
-
-### 📊 타입 안전성 개선
-- Promise 리턴 타입과 실제 리턴 객체 일치
-- 모든 `null` → `undefined`로 통일
-- 명시적 타입 정의로 컴파일 오류 제거
-- TypeScript strict mode 완전 호환
+### LINE WORKS Calendar API 안정화
+- **안전한 속성만 사용**: organizer, attendees 등 문제 속성 제거
+- **description 활용**: 모든 고급 정보를 설명에 포함
+- **사용자 정보 통합**: 등록자, 참석자 실제 정보 표시
 
 # 완료된 작업 (2025-08-15)
 
-### LINE WORKS 캘린더 연동 구현 완료 ✅
+### LINE WORKS 봇 구현 완료 ✅
 #### 인증 시스템
 - OAuth 2.0 (Service Account + JWT) 구현
 - Private Key 환경 변수 지원
 - Access Token 자동 갱신
-- 캘린더 권한 추가 지원 ✅
+- 캘린더 권한 추가 지원
 
 #### 주요 기능
 - 프로젝트 현황 조회: "강남LED 현황"
 - 일정 관리: "오늘 일정", "이번주 일정"
 - 재고 확인: "재고 현황"
-- **🆕 AI 스마트 일정 등록**: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림, PPT 준비" ✅
+- 고도화된 일정 등록: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림" 🔥
 - 웹훅 메시지 처리
 
 #### 배포 상태
@@ -243,64 +236,25 @@ AI 추출 결과:
 ## Notion 데이터베이스 스키마
 ⚠️ **아래 필드명은 절대 변경 불가**
 
-### 기본 정보
+### 프로젝트 관리 데이터베이스
 - `행사명` (title) - 행사/프로젝트 이름
 - `고객사` (select) - 고객 회사명
 - `고객명` (rich_text) - 고객 담당자 이름
 - `고객 연락처` (phone_number) - 고객 연락처
 - `행사장` (rich_text) - 행사 장소
 - `담당자` (people) - 내부 담당자
+- [나머지 스키마는 README.md 참조]
 
-### 서비스 정보
-- `서비스 유형` (select) - 설치, 렌탈, 멤버쉽, **🆕 일정**
-- `행사 상태` (status) - 견적 요청, 견적 검토, 견적 승인 등
-- `멤버 코드` (rich_text) - 멤버쉽 서비스용 코드
-
-### 환경/상세 정보
-- `설치 환경` (select) - 실내/실외
-- `설치 공간` (select) - 기업/상가/병원/공공/숙박/전시홀/기타
-- `설치 예산` (select) - 예산 범위
-- `문의 목적` (select) - 정보 조사/아이디어 기획/견적/구매/기타
-- `지지구조물 방식` (select) - 목공 설치/단독 설치
-
-### 일정 정보 (⚠️ 주의: 행사 일정은 텍스트 타입)
-- `행사 일정` (rich_text) - "YYYY-MM-DD ~ YYYY-MM-DD" 형식 또는 "YYYY-MM-DD HH:mm" 형식 (일정 등록용)
-- `설치 일정` (date) - 설치일
-- `리허설 일정` (date) - 리허설일
-- `철거 일정` (date) - 철거일
-
-### LED 정보 (1-5개소)
-각 LED별 속성 (n = 1~5):
-- `LED{n} 크기` (rich_text) - 예: "6000x3000"
-- `LED{n} 무대 높이` (number) - mm 단위
-- `LED{n} 오퍼레이터 필요` (checkbox)
-- `LED{n} 오퍼레이터 일수` (number)
-- `LED{n} 프롬프터 연결` (checkbox)
-- `LED{n} 중계카메라 연결` (checkbox)
-- `LED{n} 모듈 수량` (number) - 자동 계산
-- `LED{n} 대각선 인치` (rich_text)
-- `LED{n} 해상도` (rich_text) - 168x168px/모듈 기준
-- `LED{n} 소비전력` (rich_text)
-- `LED{n} 전기설치 방식` (rich_text)
-
-### 비용 정보
-- `견적 금액` (number) - 총 견적 금액 (VAT 포함)
-- `LED 모듈 비용` (number)
-- `지지구조물 비용` (number)
-- `컨트롤러 및 스위치 비용` (number)
-- `파워 비용` (number)
-- `설치철거인력 비용` (number)
-- `오퍼레이터 비용` (number)
-- `운반 비용` (number) - 구간제 적용
-- `기간 할증 비용` (number)
-
-### 파일 관리
-- `견적서` (files) - 견적서 파일
-- `요청서` (files) - 요청서 파일
-
-### 기타
-- `총 LED 모듈 수량` (number) - 전체 모듈 개수
-- `문의요청 사항` (rich_text) - 추가 요청사항 (LINE WORKS 일정 등록 정보 포함)
+### 사용자 관리 데이터베이스 🆕
+- `이름` (title) - 사용자 이름
+- `LINE WORKS ID` (rich_text) - LINE WORKS 사용자 ID
+- `이메일` (email) - 이메일 주소
+- `부서` (select) - 부서명 (개발팀, 마케팅팀, 영업팀 등)
+- `직급` (select) - 직급 (사장, 이사, 부장, 차장, 과장, 대리, 사원)
+- `표시명` (rich_text) - 표시용 이름
+- `활성상태` (checkbox) - 활성/비활성
+- `등록일` (date) - 등록 날짜
+- `수정일` (date) - 마지막 수정 날짜
 
 ## 중요 주의사항
 
@@ -314,14 +268,14 @@ AI 추출 결과:
 8. **이전 단계 키워드: "이전", "뒤로", "돌아가"**
 9. **처음으로 키워드: "처음", "처음부터", "처음으로"**
 10. **LED 해상도 계산: 모듈당 168x168px**
-11. **🆕 AI 파싱 신뢰도: 30% 이상 등록, 70% 이상 권장**
+11. **사용자 관리 데이터베이스 ID 필수 설정** 🆕
+12. **참석자 이메일은 사용자 DB에서 자동 매핑** 🆕
 
-## 🆕 LINE WORKS Calendar API (고도화된 버전)
+## LINE WORKS Calendar API 🆕
 
 ### API 엔드포인트
 - **URL**: `https://www.worksapis.com/v1.0/users/{userId}/calendar/events`
 - **Method**: POST
-- **기본 캘린더 사용**: 별도 캘린더 ID 불필요
 
 ### 필수 권한
 - `bot`: 봇 기본 권한
@@ -330,74 +284,58 @@ AI 추출 결과:
 - `calendar`: 캘린더 접근
 - `calendar.read`: 캘린더 읽기
 
-### 고도화된 요청 형식
+### 안전한 요청 형식 (검증됨)
 ```json
 {
   "eventComponents": [
     {
-      "eventId": "claude-enhanced-{timestamp}-{random}",
-      "summary": "🔴 🏢 프로젝트 회의 (1명)",
-      "description": "🤖 Claude MCP 고도화된 일정 등록\n\n📍 장소: 강남 스타벅스\n🏢 내부 회의\n🔴 높은 우선순위\n\n👥 참석자:\n  • 김대리\n\n📝 준비물:\n  • PPT\n\n🔔 알림: 30분 전\n\n📊 AI 분석 신뢰도: 85%",
+      "eventId": "claude-user-{timestamp}-{random}",
+      "summary": "🔴 🏢 프로젝트 회의",
+      "description": "상세 정보 (사용자 정보, 참석자, 준비물 등)",
       "location": "강남 스타벅스",
       "start": {
-        "dateTime": "2025-08-26T15:00:00",
+        "dateTime": "2025-08-19T15:00:00",
         "timeZone": "Asia/Seoul"
       },
       "end": {
-        "dateTime": "2025-08-26T16:00:00",
+        "dateTime": "2025-08-19T16:00:00", 
         "timeZone": "Asia/Seoul"
       },
-      "transparency": "OPAQUE",
-      "visibility": "PUBLIC",
-      "sequence": 1,
-      "priority": 1,
-      "attendees": [
-        {
-          "email": "김대리@anyractive.co.kr",
-          "displayName": "김대리",
-          "partstat": "NEEDS-ACTION",
-          "isOptional": false,
-          "isResource": false
-        }
-      ],
-      "reminders": [
-        {
-          "method": "DISPLAY",
-          "trigger": "-PT30M"
-        }
-      ]
+      "transparency": "OPAQUE"
     }
-  ],
-  "sendNotification": true
+  ]
 }
 ```
 
-### 🧠 자연어 파싱 패턴
-```typescript
-// 날짜 패턴
-"오늘" → 0일 후
-"내일" → 1일 후  
-"모레" → 2일 후
-"다음 주 화요일" → 정확한 날짜 계산
+### 사용하지 않는 속성 (문제 발생)
+- `organizer` - 주최자 정보
+- `attendees` - 참석자 배열
+- `visibility` - 공개/비공개
+- `sequence` - 시퀀스 번호
+- `reminders` - 알림 설정
+- `priority` - 우선순위
+- `sendNotification` - 알림 발송
 
-// 시간 패턴
-"오후 3시" → 15:00
-"아침 9시" → 09:00
-"저녁 6시" → 18:00
+## 환경 변수 (업데이트됨)
 
-// 참석자 패턴
-"김대리와" → [김대리]
-"박과장, 최팀장과" → [박과장, 최팀장]
+### 필수 환경 변수
+```env
+# Notion API
+NOTION_API_KEY=your_notion_api_key
+NOTION_DATABASE_ID=your_project_database_id
+NOTION_USER_DATABASE_ID=your_user_database_id  # 🆕
 
-// 회의 유형 패턴
-"고객 미팅" → client
-"내부 회의" → internal
-"프레젠테이션" → presentation
+# LINE WORKS
+LINEWORKS_BOT_ID=your_bot_id
+LINEWORKS_BOT_SECRET=your_bot_secret
+LINEWORKS_CLIENT_ID=your_client_id
+LINEWORKS_CLIENT_SECRET=your_client_secret
+LINEWORKS_DOMAIN_ID=your_domain_id
+LINEWORKS_SERVICE_ACCOUNT_ID=your_service_account_id
+LINEWORKS_PRIVATE_KEY=your_private_key_with_newlines_as_\n
 
-// 우선순위 패턴
-"중요한" → high
-"긴급한" → high
-"간단한" → low
+# 담당자 설정 (한 줄 JSON)
+MANAGERS_CONFIG={"managers":[{"name":"유준수","notionId":"...","department":"구축팀","isActive":true},{"name":"최수삼","notionId":"...","department":"렌탈팀","isActive":true}]}
 ```
 
 ## 코드 품질 지표
@@ -409,7 +347,8 @@ AI 추출 결과:
 - 메시지 중앙화: 100%
 - 자동화: 정상 작동 중
 - UI/UX: 대폭 개선됨
-- **🆕 AI 파싱 정확도**: 85% 이상
+- 사용자 관리: 시스템화 완료 🆕
+- 자연어 파싱: AI 기반 고도화 🆕
 - 테스트 커버리지: 0% (개선 필요)
 
 ### 목표
@@ -417,7 +356,6 @@ AI 추출 결과:
 - Strict Mode: 전체 활성화
 - 성능: 모든 응답 < 1초
 - 가용성: 99.9%
-- **🆕 AI 파싱 정확도**: 90% 이상
 
 ## 배포 및 운영
 
@@ -429,6 +367,7 @@ AI 추출 결과:
 ### 모니터링
 - `/polling/status` - 폴링 상태 확인
 - `/scheduler/status` - 스케줄러 상태 확인
+- `/api/users/dashboard` - 사용자 관리 대시보드 🆕
 - Railway 대시보드 - 서버 상태
 - Notion 댓글 - 자동화 실행 이력
 
@@ -438,144 +377,19 @@ AI 추출 결과:
 - 자동화 안됨: Notion 필드명 확인
 - 날짜 파싱 오류: 행사 일정 형식 확인
 - import 오류: .js 확장자 및 circular dependency 확인
-- **🆕 AI 파싱 실패**: 신뢰도 30% 미만 시 더 구체적인 입력 요청
-- **🆕 캘린더 API 오류**: 
-  - 403 Forbidden → calendar scope 권한 확인
-  - 404 Not Found → 엔드포인트 확인
-  - 400 Bad Request → INVALID_CALENDAR_PROPERTY 속성 확인
-- **🆕 참석자 이메일 오류**: 이름 → 이메일 변환 로직 확인
+- 사용자 관리 오류: NOTION_USER_DATABASE_ID 확인 🆕
+- 캘린더 API 오류: 지원되지 않는 속성 사용 확인 🆕
 
-## 현재 개발 완료된 기능 ✅
+## 현재 개발 중인 기능
 
-### 🤖 고도화된 LINE WORKS 업무봇
-- **목적**: 내부 직원용 업무 관리 + AI 스마트 일정 관리
-- **상태**: 완전 구현 완료 ✅
-- **주요 기능**:
-  - 프로젝트 현황 조회 (Notion 연동)
-  - 일정 조회 (Notion + LINE WORKS 캘린더)
-  - 재고 확인
-  - **🧠 AI 스마트 일정 등록**: 복잡한 자연어 → 구조화된 캘린더 이벤트
-- **주요 파일**:
-  - `src/config/lineworks-auth.ts` - OAuth 2.0 인증
-  - `src/tools/lineworks-bot.ts` - 봇 로직 (고도화된 MCP 호출)
-  - `src/tools/lineworks-calendar-mcp.ts` - MCP 캘린더 도구
-  - `src/tools/services/lineworks-calendar-service.ts` - 캘린더 서비스
-  - `src/utils/nlp-calendar-parser.ts` - AI 자연어 파싱 엔진
-- **배포**: Railway 배포 완료
-- **테스트**: 정상 작동 확인 ✅
+### 완료된 기능 ✅
+- **LINE WORKS 업무봇**: 내부 직원용 업무 관리 (프로젝트 현황, 일정, 재고)
+- **MCP 캘린더 연동**: Claude가 직접 캘린더 API 호출
+- **고도화된 자연어 파싱**: AI 기반 복잡한 일정 정보 추출
+- **사용자 관리 시스템**: Notion 기반 직원 정보 관리
 
-### 🧠 AI 자연어 파싱 엔진
-- **클래스**: `AdvancedCalendarParser`
-- **기능**: 복잡한 자연어 문장에서 일정 정보 자동 추출
-- **처리 능력**:
-  - 날짜 계산: "다음 주 화요일" → 정확한 날짜
-  - 참석자 인식: "김대리와 박과장" → [김대리, 박과장]
-  - 회의 유형 분류: "고객 프레젠테이션" → client/presentation
-  - 우선순위 판단: "중요한" → high, "간단한" → low
-  - 장소 추출: "강남 스타벅스에서" → 강남 스타벅스
-  - 알림 설정: "30분 전 알림" → 30분
-  - 준비물 인식: "PPT 준비" → [PPT]
-- **신뢰도 시스템**: 0-100% (30% 이상 등록, 70% 이상 권장)
-
-### 🎯 LINE WORKS 캘린더 완전 통합
-- **API**: `https://www.worksapis.com/v1.0/users/{userId}/calendar/events`
-- **지원 속성**: location, attendees, reminders, priority, visibility
-- **스마트 기능**:
-  - 아이콘 제목: `🔴 🏢 프로젝트 회의 (1명)`
-  - 참석자 자동 이메일: `김대리@anyractive.co.kr`
-  - 우선순위 기반 설정: 중요도 1-9, 공개/비공개
-  - 상세 설명: AI 분석 정보 포함
-- **이중 저장**: Notion + LINE WORKS 캘린더 동시 저장
-
-## 개발 로드맵
-
-### Phase 1: ✅ 완료
-- Kakao 챗봇 견적 시스템
-- Notion 자동화 시스템
-- LINE WORKS 봇 기본 기능
-- **🆕 고도화된 MCP 캘린더 연동**
-- **🆕 AI 자연어 파싱 엔진**
-
-### Phase 2: 계획
-- 테스트 커버리지 80%
-- 성능 최적화 (응답 시간 < 1초)
-- 사용자 피드백 기반 UI 개선
-- **AI 파싱 정확도 90% 달성**
-- **반복 일정 지원 강화**
-
-### Phase 3: 미래
-- Redis 세션 관리
-- 실시간 알림 시스템
-- 고급 분석 대시보드
-- **다국어 지원 (영어/중국어)**
-- **음성 인식 일정 등록**
-
-## 기술 부채 및 개선 사항
-
-### 현재 기술 부채
-1. **테스트 부족**: 0% 커버리지
-2. **세션 관리**: In-memory (Redis 마이그레이션 필요)
-3. **에러 처리**: 일부 케이스 미처리
-4. **로깅**: 구조화된 로그 시스템 필요
-
-### 성능 최적화 포인트
-1. **토큰 캐싱**: LINE WORKS 토큰 메모리 캐싱 완료 ✅
-2. **API 호출 최적화**: 불필요한 중복 호출 제거
-3. **자연어 파싱**: 캐싱으로 반복 파싱 최적화 필요
-4. **데이터베이스**: Notion API 호출 최소화
-
-### 보안 강화 필요
-1. **환경 변수**: 민감한 정보 암호화
-2. **API 인증**: Rate limiting 구현
-3. **입력 검증**: SQL Injection 방지
-4. **로그 필터링**: 민감 정보 마스킹
-
-## 성공 지표 (KPI)
-
-### 사용자 만족도
-- **카카오 챗봇**: 견적 완료율 95% 이상
-- **LINE WORKS 봇**: 일정 등록 성공률 98% 이상
-- **AI 파싱**: 신뢰도 85% 이상 달성 ✅
-
-### 시스템 성능
-- **응답 시간**: 평균 < 2초 (목표: < 1초)
-- **가용성**: 99.5% (목표: 99.9%)
-- **자동화 성공률**: 95% 이상
-
-### 비즈니스 임팩트
-- **견적 처리 시간**: 50% 단축
-- **일정 관리 효율성**: 70% 향상
-- **직원 만족도**: AI 일정 등록으로 업무 편의성 증대
-
-## 팀 및 책임
-
-### 개발팀
-- **Lead Developer**: 허지성
-- **Company**: 오리온디스플레이
-- **AI 자문**: Claude (Anthropic)
-
-### 운영팀
-- **설치 서비스**: 유준수 구축팀장
-- **렌탈/멤버쉽**: 최수삼 렌탈팀장
-- **시스템 관리**: IT팀
-
-## 라이선스 및 규정
-
-- **회사**: 오리온디스플레이 © 2025
-- **라이선스**: 사내 전용
-- **데이터 보호**: GDPR 준수
-- **보안 정책**: 회사 보안 규정 준수
-
----
-
-## 🎯 최종 정리
-
-이 프로젝트는 단순한 챗봇을 넘어서 **AI 기반 업무 자동화 플랫폼**으로 발전했습니다. 특히 **고도화된 자연어 파싱 기능**으로 복잡한 일정 정보를 한 번에 처리할 수 있어, 직원들의 업무 효율성을 크게 향상시켰습니다.
-
-핵심 성과:
-- ✅ **완전 자동화된 견적 시스템**
-- ✅ **AI 기반 스마트 일정 관리**
-- ✅ **실시간 업무 자동화**
-- ✅ **Claude MCP 통합으로 확장성 확보**
-
-앞으로도 지속적인 개선을 통해 더욱 스마트한 업무 환경을 구축해 나갈 예정입니다.
+### 향후 개선 계획
+- **테스트 코드 작성**: 단위 테스트 및 통합 테스트
+- **성능 최적화**: 응답 시간 개선
+- **오류 처리 강화**: 더 나은 오류 메시지 및 복구 로직
+- **사용자 경험 개선**: 더 직관적인 대화 플로우
