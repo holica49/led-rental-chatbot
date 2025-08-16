@@ -461,16 +461,26 @@ export class LineWorksCalendarService {
   }
 
   /**
-   * 사용자 정보가 포함된 성공 메시지 포맷팅 (참석자 이메일 정보 포함)
+   * 사용자 정보가 포함된 성공 메시지 포맷팅 (개선된 버전)
    */
   private formatEnhancedSuccessMessage(parsed: any, userProfile: any): string {
-    let message = `✅ ${userProfile.name}${userProfile.position}님의 일정이 등록되었습니다!\n\n`;
+    // 사용자 이름 표시 개선
+    const userName = userProfile.name === userProfile.lineWorksUserId 
+      ? userProfile.displayName || '미등록 사용자'
+      : userProfile.name;
+    
+    let message = `✅ ${userName}${userProfile.position}님의 일정이 등록되었습니다!\n\n`;
     
     // 기본 정보
     message += `📅 날짜: ${parsed.date}\n`;
     message += `⏰ 시간: ${parsed.time}\n`;
     message += `📌 제목: ${parsed.title}\n`;
-    message += `👤 등록자: ${userProfile.department} ${userProfile.name}${userProfile.position}\n`;
+    message += `👤 등록자: ${userProfile.department} ${userName}${userProfile.position}\n`;
+    
+    // 사용자 등록 상태 안내
+    if (userProfile.id.startsWith('default-')) {
+      message += `⚠️ 미등록 사용자입니다. 관리자에게 사용자 등록을 요청하세요.\n`;
+    }
     
     // 추가 정보
     if (parsed.location) {
@@ -509,6 +519,11 @@ export class LineWorksCalendarService {
     // AI 분석 정보
     message += `\n🤖 AI 분석 결과:`;
     message += `\n📊 신뢰도: ${Math.round(parsed.confidence * 100)}%`;
+    
+    // 파싱 디버그 정보 (개발용)
+    if (parsed.extractedInfo && parsed.extractedInfo.length > 0) {
+      message += `\n🔍 파싱 정보: ${parsed.extractedInfo.join(', ')}`;
+    }
     
     // 사용자 관리 시스템 활용 안내
     message += `\n\n💡 참석자 정보는 사용자 데이터베이스에서 자동으로 매핑되어 정확한 이메일로 알림이 전송됩니다.`;

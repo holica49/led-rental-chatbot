@@ -346,17 +346,27 @@ export class UserManagementService {
   }
 
   /**
-   * 기본 사용자 생성 (데이터베이스가 없거나 사용자를 찾을 수 없을 때)
+   * 기본 사용자 생성 (데이터베이스가 없거나 사용자를 찾을 수 없을 때) - 개선된 버전
    */
   private createDefaultUser(lineWorksUserId: string): UserProfile {
     const now = new Date().toISOString();
     
+    // LINE WORKS ID에서 더 나은 기본 이름 생성
+    let defaultName = lineWorksUserId;
+    
+    // UUID 형태면 "미등록 사용자"로 표시
+    if (lineWorksUserId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+      defaultName = '미등록 사용자';
+    }
+    
+    console.log(`⚠️ 사용자 정보를 찾을 수 없어 기본 사용자 생성: ${lineWorksUserId} → ${defaultName}`);
+    
     return {
       id: `default-${lineWorksUserId}`,
       lineWorksUserId,
-      email: `${lineWorksUserId}@anyractive.co.kr`,
-      name: lineWorksUserId,
-      displayName: lineWorksUserId,
+      email: `${defaultName}@anyractive.co.kr`,
+      name: defaultName,
+      displayName: `${defaultName} (미등록)`,
       department: '미정',
       position: '사원',
       isActive: true,

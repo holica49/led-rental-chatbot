@@ -193,7 +193,7 @@ export class AdvancedCalendarParser {
   }
 
   /**
-   * 날짜와 시간 추출
+   * 날짜와 시간 추출 (수정된 버전)
    */
   private extractDateTime(text: string): { date: string; time: string } | undefined {
     // 절대 날짜 (2024-12-25, 12월 25일)
@@ -209,23 +209,52 @@ export class AdvancedCalendarParser {
     const today = new Date();
     let targetDate = new Date(today);
 
-    // "다음 주 화요일" 패턴
-    const nextWeekMatch = text.match(/(다음\s*주|담주)\s*([월화수목금토일])[요일]?/);
-    if (nextWeekMatch) {
-      const dayName = nextWeekMatch[2];
+    // "이번주 화요일" 패턴 (수정됨)
+    const thisWeekMatch = text.match(/(이번\s*주|이번주)\s*([월화수목금토일])[요일]?/);
+    if (thisWeekMatch) {
+      const dayName = thisWeekMatch[2];
       const targetDay = this.datePatterns.weekdays[dayName + '요일'] ?? this.datePatterns.weekdays[dayName];
       
       if (targetDay !== undefined) {
-        // 다음 주로 이동
-        targetDate.setDate(today.getDate() + 7);
+        console.log(`🔍 이번주 ${dayName}요일 계산 중...`);
+        console.log(`- 오늘: ${today.getDay()} (${today.toDateString()})`);
+        console.log(`- 목표 요일: ${targetDay}`);
         
-        // 해당 요일로 조정
-        const currentDay = targetDate.getDay();
-        const daysToAdd = (targetDay - currentDay + 7) % 7;
-        targetDate.setDate(targetDate.getDate() + daysToAdd);
+        // 이번 주의 해당 요일로 계산
+        const currentDay = today.getDay();
+        let daysToAdd = targetDay - currentDay;
+        
+        // 만약 목표 요일이 이미 지났으면 다음 주로
+        if (daysToAdd < 0) {
+          daysToAdd += 7;
+        }
+        
+        targetDate.setDate(today.getDate() + daysToAdd);
+        console.log(`- 계산된 날짜: ${targetDate.toDateString()}`);
       }
     }
-    // "내일", "모레" 등 상대 날짜
+    // "다음 주 화요일" 패턴 (기존)
+    else if (text.match(/(다음\s*주|담주)\s*([월화수목금토일])[요일]?/)) {
+      const nextWeekMatch = text.match(/(다음\s*주|담주)\s*([월화수목금토일])[요일]?/);
+      if (nextWeekMatch) {
+        const dayName = nextWeekMatch[2];
+        const targetDay = this.datePatterns.weekdays[dayName + '요일'] ?? this.datePatterns.weekdays[dayName];
+        
+        if (targetDay !== undefined) {
+          console.log(`🔍 다음주 ${dayName}요일 계산 중...`);
+          
+          // 다음 주로 이동 후 해당 요일 계산
+          const nextWeekStart = new Date(today);
+          nextWeekStart.setDate(today.getDate() + (7 - today.getDay())); // 다음 주 일요일
+          
+          targetDate = new Date(nextWeekStart);
+          targetDate.setDate(nextWeekStart.getDate() + targetDay);
+          
+          console.log(`- 계산된 날짜: ${targetDate.toDateString()}`);
+        }
+      }
+    }
+    // "내일", "모레" 등 상대 날짜 (기존)
     else {
       for (const [keyword, days] of Object.entries(this.datePatterns.relative)) {
         if (text.includes(keyword)) {
@@ -235,6 +264,7 @@ export class AdvancedCalendarParser {
           } else {
             targetDate.setDate(today.getDate() + days);
           }
+          console.log(`🔍 상대 날짜 ${keyword}: ${targetDate.toDateString()}`);
           break;
         }
       }
@@ -242,6 +272,8 @@ export class AdvancedCalendarParser {
 
     const date = targetDate.toISOString().split('T')[0];
     const time = this.extractTime(text);
+    
+    console.log(`✅ 최종 파싱 결과: ${date} ${time}`);
     
     if (time) {
       return { date, time };
@@ -285,13 +317,14 @@ export class AdvancedCalendarParser {
   }
 
   /**
-   * 제목 추출 및 정제
+   * 제목 추출 및 정제 (개선된 버전)
    */
   private extractTitle(text: string): string {
     // 시간/날짜 정보 제거
     let title = text
       .replace(/(\d{4})[-.년]\s*(\d{1,2})[-.월]\s*(\d{1,2})[일]?/g, '')
-      .replace(/(오늘|내일|모레|다음주|이번주)/g, '')
+      .replace(/(오늘|내일|모레|다음주|이번주|담주)/g, '')
+      .replace(/(월요일|화요일|수요일|목요일|금요일|토요일|일요일|월|화|수|목|금|토|일)/g, '')
       .replace(/(오전|오후|아침|저녁|밤)\s*\d{1,2}시?\s*\d{0,2}분?/g, '')
       .replace(/\d{1,2}:\d{2}/g, '')
       .replace(/(에서|에|과|와|랑|이랑)/g, '')
@@ -299,12 +332,16 @@ export class AdvancedCalendarParser {
 
     // 불필요한 전치사 제거
     title = title.replace(/^(에서|에|과|와|랑|이랑)\s*/, '');
+    
+    // 연속된 공백 정리
+    title = title.replace(/\s+/g, ' ').trim();
 
     // 기본 제목이 없으면 "회의"로 설정
     if (!title || title.length < 2) {
       title = '회의';
     }
 
+    console.log(`📝 제목 추출: "${text}" → "${title}"`);
     return title;
   }
 
