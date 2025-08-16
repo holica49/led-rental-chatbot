@@ -1,644 +1,649 @@
-// src/tools/lineworks-calendar-mcp.ts (제목 문제 수정)
-import axios from 'axios';
-import { LineWorksAuth } from '../config/lineworks-auth.js';
-import { AdvancedCalendarParser } from '../utils/nlp-calendar-parser.js';
+// src/tools/lineworks-bot.ts (default export 추가)
+import express, { Request, Response } from 'express';
+import { Client } from '@notionhq/client';
 
-interface CalendarEventRequest {
-  userId: string;
-  text: string;
-  userEmail?: string;
+const router = express.Router();
+
+// LINE WORKS Auth는 첫 요청 시 초기화
+let auth: any = null;
+
+// 🆕 프로젝트 관리 서비스
+let projectService: any = null;
+
+// 🆕 대화 컨텍스트 저장 (메모리 기반, 실제로는 Redis 권장)
+const conversationContext = new Map<string, {
+  type: 'PROJECT_CONFIRMATION' | 'PROJECT_UPDATE',
+  data: any,
+  timestamp: number
+}>();
+
+async function getAuth() {
+  if (!auth) {
+    const { LineWorksAuth } = await import('../config/lineworks-auth.js');
+    auth = new LineWorksAuth();
+  }
+  return auth;
 }
 
-interface EnhancedCalendarEvent {
-  eventId?: string;
-  summary: string;
-  description?: string;
-  startDateTime: string;
-  endDateTime: string;
-  location?: string;
-  isAllDay?: boolean;
-  visibility?: 'PUBLIC' | 'PRIVATE';
-  reminder?: {
-    remindBefore: number;
+async function getProjectService() {
+  if (!projectService) {
+    const { ProjectManagementService } = await import('./services/project-management-service.js');
+    projectService = new ProjectManagementService();
+  }
+  return projectService;
+}
+
+// Notion 클라이언트 초기화
+const notion = new Client({
+  auth: process.env.NOTION_API_KEY,
+});
+
+const databaseId = process.env.NOTION_DATABASE_ID!;
+
+// Webhook 메시지 타입
+interface LineWorksMessage {
+  type: string;
+  source: {
+    userId: string;
+    domainId: string;
   };
-  // 고도화된 정보
-  attendees?: string[];
-  meetingType?: 'internal' | 'client' | 'presentation' | 'training' | 'interview' | 'general';
-  priority?: 'high' | 'medium' | 'low';
-  preparation?: string[];
-  isRecurring?: boolean;
-  recurringPattern?: string;
-  confidence?: number;
-  extractedInfo?: string[];
+  issuedTime: string;
+  content?: {
+    type: string;
+    text?: string;
+    postback?: string;
+  };
 }
 
-class LineWorksCalendarMCP {
-  private auth: LineWorksAuth;
-  private parser: AdvancedCalendarParser;
-
-  constructor() {
-    this.auth = new LineWorksAuth();
-    this.parser = new AdvancedCalendarParser();
-  }
-
-  /**
-   * MCP에서 고도화된 캘린더 일정 생성
-   */
-  async createCalendarEvent(args: CalendarEventRequest): Promise<any> {
-    try {
-      console.log('📅 고도화된 MCP 캘린더 일정 생성 시작');
-      console.log('- Request:', args);
-
-      // 1. 고도화된 자연어 파싱
-      const parsed = this.parser.parseCalendarText(args.text);
-      if (!parsed) {
-        return {
-          success: false,
-          message: '일정을 이해할 수 없습니다. 예시: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림"'
-        };
-      }
-
-      console.log('- 고도화된 파싱 결과:', parsed);
-      console.log('- 파싱된 제목:', parsed.title);
-
-      // 2. 파싱 신뢰도 체크
-      if (parsed.confidence < 0.3) {
-        return {
-          success: false,
-          message: `일정 정보가 불명확합니다 (신뢰도: ${Math.round(parsed.confidence * 100)}%).\n\n더 구체적으로 말씀해주세요.\n예시: "내일 오후 2시 김과장과 회의"\n\n🔍 인식된 정보:\n${parsed.extractedInfo?.join('\n• ') || '없음'}`,
-          confidence: parsed.confidence,
-          extractedInfo: parsed.extractedInfo
-        };
-      }
-
-      // 3. 고도화된 캘린더 이벤트 생성
-      const calendarEvent = this.convertToEnhancedCalendarEvent(parsed);
-      console.log('- 고도화된 캘린더 이벤트:', calendarEvent);
-      console.log('- 최종 summary:', calendarEvent.summary);
-
-      // 4. LINE WORKS 캘린더 API 호출
-      const result = await this.createEnhancedEventWithBasicCalendar(args.userId, calendarEvent);
-      
-      if (result.success) {
-        return {
-          success: true,
-          message: this.formatEnhancedSuccessMessage(parsed),
-          eventId: result.eventId,
-          event: calendarEvent,
-          parsedInfo: {
-            confidence: parsed.confidence,
-            extractedInfo: parsed.extractedInfo,
-            attendees: parsed.attendees,
-            meetingType: parsed.meetingType,
-            priority: parsed.priority,
-            preparation: parsed.preparation
-          }
-        };
-      } else {
-        return {
-          success: false,
-          message: 'LINE WORKS 캘린더 일정 생성에 실패했습니다.',
-          error: result.error,
-          parsedInfo: parsed
-        };
-      }
-
-    } catch (error) {
-      console.error('❌ 고도화된 MCP 캘린더 오류:', error);
-      return {
-        success: false,
-        message: '일정 처리 중 오류가 발생했습니다.',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
-   * 고도화된 기본 캘린더에 이벤트 생성
-   */
-  private async createEnhancedEventWithBasicCalendar(userId: string, event: EnhancedCalendarEvent): Promise<{ success: boolean; eventId?: string; error?: any }> {
-    try {
-      console.log('📅 고도화된 MCP 캘린더 일정 생성 시작 (올바른 API 형식)');
-
-      // Service Account 토큰 획득
-      const accessToken = await this.auth.getAccessTokenWithCalendarScope();
-      console.log('✅ LINE WORKS 캘린더 Access Token 발급 성공');
-
-      // 기본 캘린더 엔드포인트
-      const endpoint = `https://www.worksapis.com/v1.0/users/${userId}/calendar/events`;
-      console.log('- API Endpoint:', endpoint);
-      console.log('- User ID:', userId);
-      console.log('- Event Summary (제목):', event.summary);
-
-      // 고도화된 설명 생성
-      const enhancedDescription = this.generateDetailedDescription(event);
-
-      // LINE WORKS API 요청 데이터 (안전한 속성만 사용)
-      const eventData = {
-        eventComponents: [
-          {
-            eventId: `claude-enhanced-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-            summary: event.summary, // 파싱된 실제 제목 사용 (수정)
-            description: enhancedDescription,
-            location: event.location,
-            start: {
-              dateTime: event.startDateTime,
-              timeZone: 'Asia/Seoul'
-            },
-            end: {
-              dateTime: event.endDateTime,
-              timeZone: 'Asia/Seoul'
-            },
-            transparency: 'OPAQUE'
-            // 문제가 되는 속성들은 모두 제거
-          }
-        ]
-        // sendNotification도 제거
-      };
-
-      console.log('- 요청 데이터 summary:', eventData.eventComponents[0].summary);
-      console.log('- 요청 데이터:', JSON.stringify(eventData, null, 2));
-
-      // API 호출
-      const response = await axios.post(endpoint, eventData, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
+// MCP 직접 호출 함수 (기존)
+async function callMCPDirect(toolName: string, args: Record<string, unknown>): Promise<any> {
+  try {
+    console.log('📞 고도화된 MCP 직접 호출:', toolName, args);
+    
+    const { LineWorksCalendarService } = await import('./services/lineworks-calendar-service.js');
+    const calendarService = new LineWorksCalendarService();
+    
+    if (toolName === 'lineworks_calendar') {
+      if (args.action === 'create') {
+        if (!args.text) {
+          throw new Error('일정 내용(text)이 필요합니다.');
         }
-      });
-
-      console.log('✅ 고도화된 LINE WORKS 캘린더 API 성공:', response.data);
-      return {
-        success: true,
-        eventId: response.data.eventComponents?.[0]?.eventId || response.data.returnValue || 'success'
-      };
-
-    } catch (error: any) {
-      console.error('❌ 고도화된 LINE WORKS 캘린더 API 오류:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        headers: error.response?.headers
-      });
-
-      return {
-        success: false,
-        error: error.response?.data || error.message
-      };
+        return calendarService.createCalendarEvent({
+          userId: args.userId as string,
+          text: args.text as string,
+          userEmail: args.userEmail as string | undefined
+        });
+      } else if (args.action === 'get') {
+        return calendarService.getEvents({
+          userId: args.userId as string,
+          userEmail: args.userEmail as string | undefined,
+          range: (args.range as 'today' | 'week') || 'week'
+        });
+      } else {
+        throw new Error('지원되지 않는 액션입니다.');
+      }
+    } else {
+      throw new Error(`지원되지 않는 도구: ${toolName}`);
     }
-  }
-
-  /**
-   * 파싱된 이벤트를 고도화된 캘린더 이벤트로 변환
-   */
-  private convertToEnhancedCalendarEvent(parsed: any): EnhancedCalendarEvent {
-    // 한국 시간으로 Date 객체 생성
-    const startDate = new Date(`${parsed.date}T${parsed.time}:00`);
-    const endDate = new Date(startDate.getTime() + (parsed.duration || 60) * 60000);
     
-    // 시간 포맷팅
-    const formatDateTime = (date: Date) => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
+  } catch (error) {
+    console.error('❌ 고도화된 MCP 직접 호출 오류:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+// 메시지 전송 헬퍼
+async function sendTextMessage(userId: string, text: string) {
+  try {
+    const authInstance = await getAuth();
+    await authInstance.sendMessage(userId, {
+      type: 'text',
+      text: text
+    });
+  } catch (error) {
+    console.error('메시지 전송 실패:', error);
+  }
+}
+
+// 프로젝트 현황 조회 (기존)
+async function getProjectStatus(projectName: string): Promise<string> {
+  try {
+    const response = await notion.databases.query({
+      database_id: databaseId,
+      filter: {
+        property: '행사명',
+        title: {
+          contains: projectName
+        }
+      }
+    });
+    
+    if (response.results.length === 0) {
+      return `"${projectName}" 프로젝트를 찾을 수 없습니다.`;
+    }
+    
+    const project: any = response.results[0];
+    const status = project.properties['행사 상태']?.status?.name || '상태 없음';
+    const customer = project.properties['고객사']?.select?.name || '미정';
+    const eventDate = project.properties['행사 일정']?.rich_text?.[0]?.text?.content || '일정 미정';
+    
+    return `📊 ${projectName} 현황\n` +
+           `상태: ${status}\n` +
+           `고객사: ${customer}\n` +
+           `일정: ${eventDate}`;
+  } catch (error) {
+    console.error('프로젝트 조회 오류:', error);
+    return '프로젝트 조회 중 오류가 발생했습니다.';
+  }
+}
+
+// 일정 조회 (기존)
+async function getSchedule(dateRange: string): Promise<string> {
+  try {
+    const today = new Date();
+    const response = await notion.databases.query({
+      database_id: databaseId,
+      sorts: [
+        {
+          property: '행사 일정',
+          direction: 'ascending'
+        }
+      ]
+    });
+    
+    let filtered = response.results;
+    
+    if (dateRange === '오늘') {
+      filtered = response.results.filter((p: any) => {
+        const eventDate = p.properties['행사 일정']?.rich_text?.[0]?.text?.content;
+        return eventDate && eventDate.includes(today.toISOString().split('T')[0]);
+      });
+    } else if (dateRange === '이번주') {
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - today.getDay());
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
       
-      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-    };
-
-    const event: EnhancedCalendarEvent = {
-      summary: parsed.title, // 파싱된 실제 제목 사용 (수정)
-      startDateTime: formatDateTime(startDate),
-      endDateTime: formatDateTime(endDate),
-      location: parsed.location,
-      isAllDay: false,
-      visibility: this.determineVisibility(parsed.priority, parsed.meetingType),
-      // 고도화된 정보
-      attendees: parsed.attendees,
-      meetingType: parsed.meetingType,
-      priority: parsed.priority,
-      preparation: parsed.preparation,
-      isRecurring: parsed.isRecurring,
-      recurringPattern: parsed.recurringPattern,
-      confidence: parsed.confidence,
-      extractedInfo: parsed.extractedInfo
-    };
-
-    // 알림 설정
-    if (parsed.reminder) {
-      event.reminder = {
-        remindBefore: parsed.reminder
-      };
-    }
-
-    console.log('✅ 변환된 이벤트 summary:', event.summary);
-    return event;
-  }
-
-  /**
-   * 우선순위에 따른 가시성 결정
-   */
-  private determineVisibility(priority?: string, meetingType?: string): 'PUBLIC' | 'PRIVATE' {
-    // 높은 우선순위나 고객 미팅은 공개
-    if (priority === 'high' || meetingType === 'client') {
-      return 'PUBLIC';
-    }
-    return 'PRIVATE';
-  }
-
-  /**
-   * 상세한 설명 생성 (장소 정보 포함)
-   */
-  private generateDetailedDescription(event: EnhancedCalendarEvent): string {
-    let description = '🤖 Claude MCP 고도화된 일정 등록\n\n';
-
-    // 장소 정보 (description에 포함)
-    if (event.location) {
-      description += `📍 장소: ${event.location}\n\n`;
-    }
-
-    // 회의 정보
-    if (event.meetingType) {
-      const typeNames = {
-        internal: '🏢 내부 회의',
-        client: '🤝 고객 미팅',
-        presentation: '📊 프레젠테이션',
-        training: '📚 교육/훈련',
-        interview: '💼 면접',
-        general: '📋 일반 회의'
-      };
-      description += `${typeNames[event.meetingType]}\n`;
-    }
-
-    if (event.priority) {
-      const priorityNames = {
-        high: '🔴 높은 우선순위',
-        medium: '🟡 보통 우선순위',
-        low: '🟢 낮은 우선순위'
-      };
-      description += `${priorityNames[event.priority]}\n`;
-    }
-
-    description += '\n';
-
-    // 참석자 정보
-    if (event.attendees && event.attendees.length > 0) {
-      description += `👥 참석자:\n`;
-      event.attendees.forEach(attendee => {
-        description += `  • ${attendee}\n`;
-      });
-      description += '\n';
-    }
-
-    // 준비물
-    if (event.preparation && event.preparation.length > 0) {
-      description += `📝 준비물:\n`;
-      event.preparation.forEach(item => {
-        description += `  • ${item}\n`;
-      });
-      description += '\n';
-    }
-
-    // 반복 일정
-    if (event.isRecurring && event.recurringPattern) {
-      const recurringNames = {
-        daily: '매일',
-        weekly: '매주',
-        monthly: '매월',
-        yearly: '매년'
-      };
-      description += `🔄 반복: ${recurringNames[event.recurringPattern as keyof typeof recurringNames] || event.recurringPattern}\n\n`;
-    }
-
-    // 알림 정보
-    if (event.reminder) {
-      description += `🔔 알림: ${event.reminder.remindBefore}분 전\n\n`;
-    }
-
-    // 분석 정보
-    if (event.confidence) {
-      description += `📊 AI 분석 신뢰도: ${Math.round(event.confidence * 100)}%\n`;
-    }
-
-    if (event.extractedInfo && event.extractedInfo.length > 0) {
-      description += `\n🔍 인식된 정보:\n`;
-      event.extractedInfo.forEach(info => {
-        description += `  • ${info}\n`;
+      filtered = response.results.filter((p: any) => {
+        const eventDate = p.properties['행사 일정']?.rich_text?.[0]?.text?.content;
+        if (!eventDate) return false;
+        return true;
       });
     }
-
-    description += `\n⏰ 등록 시간: ${new Date().toLocaleString('ko-KR')}`;
-
-    return description;
-  }
-
-  /**
-   * 고도화된 성공 메시지 포맷팅
-   */
-  private formatEnhancedSuccessMessage(parsed: any): string {
-    let message = `✅ 고도화된 AI로 LINE WORKS 캘린더에 일정을 등록했습니다!\n\n`;
     
-    // 기본 정보
-    message += `📅 날짜: ${parsed.date}\n`;
-    message += `⏰ 시간: ${parsed.time}\n`;
-    message += `📌 제목: ${parsed.title}\n`;
-    
-    // 고도화된 정보
-    if (parsed.location) {
-      message += `📍 장소: ${parsed.location}\n`;
+    if (filtered.length === 0) {
+      return `${dateRange} 예정된 일정이 없습니다.`;
     }
     
-    if (parsed.attendees && parsed.attendees.length > 0) {
-      message += `👥 참석자: ${parsed.attendees.join(', ')}\n`;
-    }
-    
-    if (parsed.meetingType && parsed.meetingType !== 'general') {
-      const typeNames = {
-        internal: '내부 회의',
-        client: '고객 미팅', 
-        presentation: '프레젠테이션',
-        training: '교육/훈련',
-        interview: '면접'
-      };
-      message += `📋 유형: ${typeNames[parsed.meetingType as keyof typeof typeNames]}\n`;
-    }
-    
-    if (parsed.priority && parsed.priority !== 'medium') {
-      const priorityNames = {
-        high: '높음 🔴',
-        low: '낮음 🟢'
-      };
-      message += `⚡ 우선순위: ${priorityNames[parsed.priority as keyof typeof priorityNames]}\n`;
-    }
-    
-    if (parsed.reminder) {
-      message += `🔔 알림: ${parsed.reminder}분 전\n`;
-    }
-    
-    if (parsed.preparation && parsed.preparation.length > 0) {
-      message += `📝 준비물: ${parsed.preparation.join(', ')}\n`;
-    }
-    
-    if (parsed.isRecurring) {
-      const recurringNames = {
-        daily: '매일',
-        weekly: '매주',
-        monthly: '매월',
-        yearly: '매년'
-      };
-      message += `🔄 반복: ${recurringNames[parsed.recurringPattern as keyof typeof recurringNames] || parsed.recurringPattern}\n`;
-    }
-
-    // AI 분석 정보
-    message += `\n🤖 AI 분석 결과:`;
-    message += `\n📊 신뢰도: ${Math.round(parsed.confidence * 100)}%`;
-    
-    if (parsed.extractedInfo && parsed.extractedInfo.length > 0) {
-      message += `\n🔍 인식된 정보:\n${parsed.extractedInfo.map((info: string) => `  • ${info}`).join('\n')}`;
-    }
+    let message = `📅 ${dateRange} 일정:\n\n`;
+    filtered.forEach((p: any) => {
+      const name = p.properties['행사명']?.title?.[0]?.text?.content || '제목 없음';
+      const date = p.properties['행사 일정']?.rich_text?.[0]?.text?.content || '일정 미정';
+      const status = p.properties['행사 상태']?.status?.name || '상태 없음';
+      message += `• ${name}\n  ${date} (${status})\n\n`;
+    });
     
     return message;
-  }
-
-  /**
-   * 고도화된 일정 조회
-   */
-  async getEvents(args: { userId: string; userEmail?: string; range: 'today' | 'week' }): Promise<any> {
-    try {
-      const accessToken = await this.auth.getAccessTokenWithCalendarScope();
-      
-      const timeMin = new Date();
-      const timeMax = new Date();
-      
-      if (args.range === 'today') {
-        timeMax.setDate(timeMax.getDate() + 1);
-      } else {
-        timeMax.setDate(timeMax.getDate() + 7);
-      }
-
-      const endpoint = `https://www.worksapis.com/v1.0/users/${args.userId}/calendar/events`;
-      
-      const response = await axios.get(endpoint, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        },
-        params: {
-          timeMin: timeMin.toISOString(),
-          timeMax: timeMax.toISOString(),
-          orderBy: 'startTime'
-        }
-      });
-
-      // 이벤트 고도화 처리
-      const events = response.data.eventComponents || response.data.events || [];
-      const enhancedEvents = this.enhanceRetrievedEvents(events);
-
-      return {
-        success: true,
-        events: enhancedEvents,
-        summary: this.generateEventsSummary(enhancedEvents)
-      };
-
-    } catch (error) {
-      console.error('고도화된 일정 조회 오류:', error);
-      return {
-        success: false,
-        events: [],
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
-   * 조회된 이벤트 고도화
-   */
-  private enhanceRetrievedEvents(events: any[]): any[] {
-    return events.map(event => {
-      // 제목에서 정보 추출
-      const { cleanTitle, priority, meetingType } = this.parseEventTitle(event.summary);
-      
-      // 설명에서 추가 정보 추출
-      const enhancedInfo = this.parseEventDescription(event.description);
-      
-      return {
-        ...event,
-        summary: cleanTitle,
-        originalSummary: event.summary,
-        priority,
-        meetingType,
-        ...enhancedInfo,
-        displaySummary: this.formatEventForDisplay(event, priority, meetingType)
-      };
-    });
-  }
-
-  /**
-   * 이벤트 제목 파싱
-   */
-  private parseEventTitle(title: string): { cleanTitle: string; priority?: string; meetingType?: string } {
-    if (!title) return { cleanTitle: '제목 없음' };
-
-    let cleanTitle = title;
-    let priority: string | undefined;
-    let meetingType: string | undefined;
-
-    // 우선순위 파싱
-    if (title.includes('🔴')) {
-      priority = 'high';
-      cleanTitle = cleanTitle.replace(/🔴\s*/g, '');
-    } else if (title.includes('🟢')) {
-      priority = 'low';
-      cleanTitle = cleanTitle.replace(/🟢\s*/g, '');
-    }
-
-    // 회의 유형 파싱
-    if (title.includes('🤝')) {
-      meetingType = 'client';
-      cleanTitle = cleanTitle.replace(/🤝\s*/g, '');
-    } else if (title.includes('📊')) {
-      meetingType = 'presentation';
-      cleanTitle = cleanTitle.replace(/📊\s*/g, '');
-    } else if (title.includes('📚')) {
-      meetingType = 'training';
-      cleanTitle = cleanTitle.replace(/📚\s*/g, '');
-    } else if (title.includes('💼')) {
-      meetingType = 'interview';
-      cleanTitle = cleanTitle.replace(/💼\s*/g, '');
-    } else if (title.includes('🏢')) {
-      meetingType = 'internal';
-      cleanTitle = cleanTitle.replace(/🏢\s*/g, '');
-    }
-
-    return { cleanTitle: cleanTitle.trim(), priority, meetingType };
-  }
-
-  /**
-   * 이벤트 설명 파싱
-   */
-  private parseEventDescription(description?: string): any {
-    if (!description) return {};
-
-    const info: any = {};
-
-    // 참석자 추출
-    const attendeesMatch = description.match(/👥 참석자:\n((?:\s*•\s*.+\n?)*)/);
-    if (attendeesMatch) {
-      info.attendees = attendeesMatch[1].split('\n').filter(line => line.trim()).map(line => line.replace(/\s*•\s*/, ''));
-    }
-
-    // 준비물 추출
-    const preparationMatch = description.match(/📝 준비물:\n((?:\s*•\s*.+\n?)*)/);
-    if (preparationMatch) {
-      info.preparation = preparationMatch[1].split('\n').filter(line => line.trim()).map(line => line.replace(/\s*•\s*/, ''));
-    }
-
-    // 신뢰도 추출
-    const confidenceMatch = description.match(/📊 AI 분석 신뢰도: (\d+)%/);
-    if (confidenceMatch) {
-      info.confidence = parseInt(confidenceMatch[1]) / 100;
-    }
-
-    return info;
-  }
-
-  /**
-   * 표시용 이벤트 포맷팅
-   */
-  private formatEventForDisplay(event: any, priority?: string, meetingType?: string): string {
-    const startTime = new Date(event.start?.dateTime || event.startDateTime);
-    const timeStr = startTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-    
-    let display = `${timeStr} - ${event.summary}`;
-    
-    if (event.location) {
-      display += ` (📍 ${event.location})`;
-    }
-    
-    if (priority === 'high') {
-      display = `🔴 ${display}`;
-    } else if (priority === 'low') {
-      display = `🟢 ${display}`;
-    }
-    
-    return display;
-  }
-
-  /**
-   * 이벤트 요약 생성
-   */
-  private generateEventsSummary(events: any[]): string {
-    if (events.length === 0) {
-      return '📅 등록된 일정이 없습니다.';
-    }
-
-    const high = events.filter(e => e.priority === 'high').length;
-    const client = events.filter(e => e.meetingType === 'client').length;
-    const internal = events.filter(e => e.meetingType === 'internal').length;
-
-    let summary = `📊 일정 요약: 총 ${events.length}개`;
-    
-    if (high > 0) summary += `, 중요 ${high}개`;
-    if (client > 0) summary += `, 고객미팅 ${client}개`;
-    if (internal > 0) summary += `, 내부회의 ${internal}개`;
-
-    return summary;
+  } catch (error) {
+    console.error('일정 조회 오류:', error);
+    return '일정 조회 중 오류가 발생했습니다.';
   }
 }
 
-// MCP 도구 정의 (고도화된 버전)
-export const lineWorksCalendarTool = {
-  name: 'lineworks_calendar',
-  description: 'LINE WORKS 캘린더에 고도화된 AI 파싱으로 일정을 생성하거나 조회합니다. 자연어로 입력된 복잡한 일정 정보를 분석하여 참석자, 회의유형, 우선순위, 준비물 등을 자동으로 추출하고 저장합니다.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      action: {
-        type: 'string',
-        enum: ['create', 'get'],
-        description: '수행할 작업 (create: 일정 생성, get: 일정 조회)'
-      },
-      userId: {
-        type: 'string',
-        description: 'LINE WORKS 사용자 ID'
-      },
-      text: {
-        type: 'string',
-        description: '자연어로 입력된 일정 내용 (예: "다음 주 화요일 오후 3시에 강남 스타벅스에서 김대리와 중요한 프로젝트 회의, 30분 전 알림")'
-      },
-      userEmail: {
-        type: 'string',
-        description: '사용자 이메일 (선택사항)'
-      },
-      range: {
-        type: 'string',
-        enum: ['today', 'week'],
-        description: '조회 범위 (get 액션용)'
-      }
-    },
-    required: ['action', 'userId']
-  },
-  handler: async (args: Record<string, unknown>) => {
-    const calendarService = new LineWorksCalendarMCP();
-    
-    if (args.action === 'create') {
-      if (!args.text) {
-        throw new Error('일정 내용(text)이 필요합니다.');
-      }
-      return calendarService.createCalendarEvent({
-        userId: args.userId as string,
-        text: args.text as string,
-        userEmail: args.userEmail as string | undefined
-      });
-    } else if (args.action === 'get') {
-      return calendarService.getEvents({
-        userId: args.userId as string,
-        userEmail: args.userEmail as string | undefined,
-        range: (args.range as 'today' | 'week') || 'week'
-      });
-    } else {
-      throw new Error('지원되지 않는 액션입니다.');
+// 🆕 프로젝트 관리 의도 감지
+function isProjectManagementIntent(text: string): { 
+  isProject: boolean; 
+  isCreation: boolean; 
+  isUpdate: boolean; 
+} {
+  const creationPatterns = [
+    /(수주|따냄|맡기|맡아|시작|진행|들어왔).*(?:했어|됐어|완료)/,
+    /(?:렌탈|설치|구축|멤버쉽).*(?:수주|따냄|맡기)/,
+    /(?:프로젝트|건).*(?:새로|시작|맡아)/
+  ];
+
+  const updatePatterns = [
+    /(?:견적|상태|일정|고객).*(?:변경|수정|업데이트|완료|추가)/,
+    /(?:LED|크기|수량).*(?:변경|수정|바꿔)/,
+    /(?:특이사항|메모|참고).*(?:추가|변경)/
+  ];
+
+  const isCreation = creationPatterns.some(pattern => pattern.test(text));
+  const isUpdate = updatePatterns.some(pattern => pattern.test(text));
+  const isProject = isCreation || isUpdate;
+
+  return { isProject, isCreation, isUpdate };
+}
+
+// 🆕 대화 컨텍스트 정리 (5분 후 만료)
+function cleanupContext() {
+  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+  for (const [userId, context] of conversationContext.entries()) {
+    if (context.timestamp < fiveMinutesAgo) {
+      conversationContext.delete(userId);
     }
   }
-}; 
+}
+
+// Webhook 처리 (프로젝트 관리 기능 추가)
+router.post('/callback', async (req: Request, res: Response) => {
+  try {
+    console.log('LINE WORKS Webhook 수신:', JSON.stringify(req.body, null, 2));
+    
+    const message = req.body as LineWorksMessage;
+    
+    // 텍스트 메시지 처리
+    if (message.content?.type === 'text' && message.content.text) {
+      const userId = message.source.userId;
+      const text = message.content.text;
+      const lowerText = text.toLowerCase();
+      
+      let responseText = '';
+
+      // 대화 컨텍스트 정리
+      cleanupContext();
+
+      // 기존 컨텍스트 확인
+      const context = conversationContext.get(userId);
+
+      // 🆕 컨텍스트 기반 응답 처리
+      if (context && context.type === 'PROJECT_CONFIRMATION') {
+        if (lowerText.includes('생성') || lowerText.includes('확인') || lowerText.includes('네') || lowerText.includes('예')) {
+          // 프로젝트 생성 확정
+          try {
+            const projectMgmt = await getProjectService();
+            const result = await projectMgmt.confirmProjectCreation(context.data, userId);
+            
+            responseText = result.message;
+            conversationContext.delete(userId);  // 컨텍스트 정리
+            
+          } catch (error) {
+            console.error('❌ 프로젝트 생성 확정 오류:', error);
+            responseText = '프로젝트 생성 중 오류가 발생했습니다.';
+            conversationContext.delete(userId);
+          }
+        } else if (lowerText.includes('취소') || lowerText.includes('아니') || lowerText.includes('안해')) {
+          responseText = '❌ 프로젝트 생성이 취소되었습니다.';
+          conversationContext.delete(userId);
+        } else {
+          responseText = '✅ "생성" 또는 "확인"을 입력하면 프로젝트가 생성됩니다.\n❌ "취소"를 입력하면 취소됩니다.';
+        }
+      }
+      // 🆕 프로젝트 관리 명령어 처리
+      else {
+        const projectIntent = isProjectManagementIntent(text);
+        
+        if (projectIntent.isProject) {
+          try {
+            const projectMgmt = await getProjectService();
+            
+            if (projectIntent.isCreation) {
+              console.log('🆕 프로젝트 생성 요청 감지');
+              
+              const result = await projectMgmt.createProjectFromNLP(text, userId);
+              
+              if (result.needsConfirmation) {
+                // 확인이 필요한 경우 컨텍스트 저장
+                conversationContext.set(userId, {
+                  type: 'PROJECT_CONFIRMATION',
+                  data: result.parsedInfo,
+                  timestamp: Date.now()
+                });
+              }
+              
+              responseText = result.message;
+              
+            } else if (projectIntent.isUpdate) {
+              console.log('📝 프로젝트 업데이트 요청 감지');
+              
+              const result = await projectMgmt.updateProjectFromNLP(text, userId);
+              responseText = result.message;
+            }
+            
+          } catch (error) {
+            console.error('❌ 프로젝트 관리 오류:', error);
+            responseText = '프로젝트 처리 중 오류가 발생했습니다.';
+          }
+        }
+        // 기존 기능들
+        else if (lowerText.includes('안녕') || lowerText.includes('하이') || lowerText.includes('도움말')) {
+          responseText = '안녕하세요! LED 렌탈 업무봇입니다.\n\n' +
+                        '다음과 같은 기능을 사용할 수 있습니다:\n' +
+                        '📊 프로젝트 조회: "강남LED 현황"\n' +
+                        '📅 일정 조회: "오늘 일정", "이번주 일정"\n' +
+                        '📦 재고 확인: "재고 현황"\n' +
+                        '📝 스마트 일정 등록: "8월 19일 오후 5시에 강남 코엑스에서 메쎄이상 회의"\n' +
+                        '👤 사용자 정보: "내 정보", "정보 갱신"\n' +
+                        '📋 사용자 목록: "사용자 목록" (관리자용)\n' +
+                        '📱 내 캘린더: "내 일정"\n\n' +
+                        '🆕 프로젝트 관리:\n' +
+                        '• 프로젝트 생성: "강남 렌탈 수주했어", "청주오스코 구축 맡기로 했어"\n' +
+                        '• 프로젝트 업데이트: "강남 렌탈 견적 완료했어", "청주오스코 LED 크기 변경"';
+        }
+        // 사용자 정보 조회/갱신 (기존)
+        else if (lowerText.includes('내 정보') || lowerText.includes('사용자 정보') || lowerText.includes('정보 갱신') || lowerText.includes('프로필')) {
+          try {
+            console.log('👤 사용자 정보 조회/갱신 요청');
+            
+            const { userService } = await import('../models/user-model.js');
+            const userProfile = await userService.getUserByLineWorksId(userId, true);
+            
+            if (userProfile && !userProfile.id.startsWith('default-')) {
+              responseText = '👤 사용자 정보 (최신):\n\n' +
+                            `이름: ${userProfile.name}\n` +
+                            `부서: ${userProfile.department}\n` +
+                            `직급: ${userProfile.position}\n` +
+                            `이메일: ${userProfile.email}\n` +
+                            `상태: ${userProfile.isActive ? '✅ 활성' : '❌ 비활성'}\n` +
+                            `등록일: ${userProfile.createdAt}\n\n` +
+                            `💡 정보가 틀렸다면 관리자에게 문의하세요.`;
+            } else {
+              responseText = '❌ 미등록 사용자입니다.\n\n' +
+                            `LINE WORKS ID: ${userId}\n\n` +
+                            `📝 사용자 등록이 필요합니다:\n` +
+                            `1. 관리자에게 사용자 등록 요청\n` +
+                            `2. 또는 직접 등록: ${process.env.APP_URL || 'https://web-production-fa47.up.railway.app'}/api/users/dashboard\n\n` +
+                            `등록 후 "정보 갱신" 명령어로 다시 확인하세요.`;
+            }
+            
+            userService.invalidateUserCache(userId);
+            
+          } catch (error) {
+            console.error('❌ 사용자 정보 조회 오류:', error);
+            responseText = '사용자 정보 조회 중 오류가 발생했습니다.';
+          }
+        }
+        // 사용자 목록 조회 (기존)
+        else if (lowerText.includes('사용자 목록') || lowerText.includes('전체 사용자')) {
+          try {
+            const { userService } = await import('../models/user-model.js');
+            const allUsers = await userService.getAllUsers();
+            
+            if (allUsers.length === 0) {
+              responseText = '📋 등록된 사용자가 없습니다.';
+            } else {
+              responseText = `📋 등록된 사용자 목록 (${allUsers.length}명):\n\n`;
+              
+              const usersByDept = allUsers.reduce((acc: any, user) => {
+                if (!acc[user.department]) acc[user.department] = [];
+                acc[user.department].push(user);
+                return acc;
+              }, {});
+              
+              for (const [dept, users] of Object.entries(usersByDept)) {
+                responseText += `【${dept}】\n`;
+                (users as any[]).forEach(user => {
+                  responseText += `  • ${user.name}${user.position} (${user.email})\n`;
+                });
+                responseText += '\n';
+              }
+              
+              responseText += `💻 웹 대시보드: ${process.env.APP_URL || 'https://web-production-fa47.up.railway.app'}/api/users/dashboard`;
+            }
+          } catch (error) {
+            console.error('❌ 사용자 목록 조회 오류:', error);
+            responseText = '사용자 목록 조회 중 오류가 발생했습니다.';
+          }
+        }
+        // 고도화된 일정 등록 - MCP 호출 (기존)
+        else if (
+          (text.includes('일정') && (text.includes('등록') || text.includes('추가'))) ||
+          (text.includes('시') && (text.includes('오늘') || text.includes('내일') || text.includes('모레') || text.includes('다음') || text.includes('월') && text.includes('일'))) ||
+          (text.includes('요일') && text.includes('시')) ||
+          /\d{1,2}\s*월\s*\d{1,2}\s*일/.test(text) ||
+          /\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/.test(text) ||
+          text.includes('회의') || text.includes('미팅') || text.includes('만남') ||
+          text.includes('약속') || text.includes('면담')
+        ) {
+          try {
+            console.log('📅 고도화된 MCP를 통한 캘린더 일정 등록 시작');
+            
+            const { userService } = await import('../models/user-model.js');
+            const userProfile = await userService.getUserByLineWorksId(userId, true);
+            
+            let notionSuccess = false;
+            
+            const { parseCalendarText } = await import('../utils/nlp-calendar-parser.js');
+            const parsed = parseCalendarText(text);
+            
+            if (parsed) {
+              try {
+                await notion.pages.create({
+                  parent: { database_id: databaseId },
+                  properties: {
+                    '행사명': {
+                      title: [{
+                        text: { content: `[일정] ${parsed.title}` }
+                      }]
+                    },
+                    '행사 일정': {
+                      rich_text: [{
+                        text: { content: `${parsed.date} ${parsed.time}` }
+                      }]
+                    },
+                    '서비스 유형': {
+                      select: { name: '일정' }
+                    },
+                    '행사 상태': {
+                      status: { name: '견적 요청' }
+                    },
+                    '문의요청 사항': {
+                      rich_text: [{
+                        text: { content: `LINE WORKS에서 등록 (${userProfile?.name || userId}): ${text}` }
+                      }]
+                    }
+                  }
+                });
+                notionSuccess = true;
+                console.log('✅ Notion 저장 성공');
+              } catch (error) {
+                console.error('❌ Notion 저장 실패:', error);
+              }
+            }
+            
+            const mcpResult = await callMCPDirect('lineworks_calendar', {
+              action: 'create',
+              userId: userId,
+              text: text
+            });
+            
+            console.log('📅 고도화된 MCP 캘린더 결과:', mcpResult);
+            
+            if (mcpResult.success) {
+              responseText = mcpResult.message + 
+                            `\n\n💾 저장 위치:\n` +
+                            `• Notion: ${notionSuccess ? '✅ 성공' : '❌ 실패'}\n` +
+                            `• LINE WORKS 캘린더: ✅ 성공`;
+              
+              if (userProfile && !userProfile.id.startsWith('default-')) {
+                responseText += `\n\n👤 등록자: ${userProfile.department} ${userProfile.name}${userProfile.position}`;
+              } else {
+                responseText += `\n\n⚠️ 미등록 사용자입니다. "내 정보" 명령어로 사용자 등록을 확인하세요.`;
+              }
+              
+              if (mcpResult.parsedInfo?.confidence && mcpResult.parsedInfo.confidence < 0.7) {
+                responseText += `\n\n⚠️ 파싱 신뢰도가 ${Math.round(mcpResult.parsedInfo.confidence * 100)}%입니다. 일정을 확인해주세요.`;
+              }
+            } else {
+              responseText = `🤖 스마트 일정 등록 결과:\n\n` +
+                            `• Notion: ${notionSuccess ? '✅ 성공' : '❌ 실패'}\n` +
+                            `• LINE WORKS 캘린더: ❌ 실패\n\n` +
+                            `오류: ${mcpResult.message}`;
+              
+              if (userProfile && !userProfile.id.startsWith('default-')) {
+                responseText += `\n\n👤 시도한 사용자: ${userProfile.department} ${userProfile.name}${userProfile.position}`;
+              }
+            }
+            
+          } catch (error) {
+            console.error('❌ 고도화된 일정 등록 전체 오류:', error);
+            responseText = '일정 등록 중 오류가 발생했습니다. 다시 시도해주세요.\n\n💡 예시: "8월 19일 오후 5시에 강남 코엑스에서 메쎄이상 회의"';
+          }
+        }
+        // 내 캘린더 조회 - 고도화된 MCP 호출 (기존)
+        else if (text.includes('내 일정') || text.includes('내일정') || text.includes('캘린더')) {
+          try {
+            const mcpResult = await callMCPDirect('lineworks_calendar', {
+              action: 'get',
+              userId: userId,
+              range: 'week'
+            });
+            
+            if (mcpResult.success && mcpResult.events.length > 0) {
+              responseText = '📅 이번 주 일정:\n\n';
+              
+              if (mcpResult.user) {
+                responseText += `👤 ${mcpResult.user.department} ${mcpResult.user.name}${mcpResult.user.position}\n\n`;
+              }
+              
+              mcpResult.events.forEach((event: any) => {
+                if (event.displaySummary) {
+                  responseText += `${event.displaySummary}\n`;
+                } else {
+                  const start = new Date(event.startDateTime || event.start?.dateTime);
+                  const dateStr = start.toLocaleDateString('ko-KR');
+                  const timeStr = start.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                  responseText += `• ${dateStr} ${timeStr} - ${event.summary}\n`;
+                }
+                
+                if (event.location) {
+                  responseText += `  📍 ${event.location}\n`;
+                }
+                
+                responseText += '\n';
+              });
+            } else {
+              responseText = '이번 주 등록된 일정이 없습니다.';
+            }
+          } catch (error) {
+            console.error('❌ 고도화된 캘린더 조회 오류:', error);
+            responseText = '캘린더 조회 중 오류가 발생했습니다.';
+          }
+        }
+        // 기존 기능들
+        else if (lowerText.includes('현황') && !lowerText.includes('재고')) {
+          const projectName = text.replace(/현황|프로젝트|조회/g, '').trim();
+          if (projectName) {
+            responseText = await getProjectStatus(projectName);
+          } else {
+            responseText = '프로젝트명을 입력해주세요. (예: "강남LED 현황")';
+          }
+        }
+        else if (lowerText.includes('일정') && !text.includes('등록') && !text.includes('내')) {
+          if (lowerText.includes('오늘')) {
+            responseText = await getSchedule('오늘');
+          } else if (lowerText.includes('이번주')) {
+            responseText = await getSchedule('이번주');
+          } else {
+            responseText = '일정 조회 기간을 지정해주세요. (예: "오늘 일정", "이번주 일정")';
+          }
+        }
+        else if (lowerText.includes('재고')) {
+          responseText = '📦 LED 재고 현황:\n\n' +
+                        '• P2.5: 320개 (재고 충분)\n' +
+                        '• P3.0: 150개 (재고 보통)\n' +
+                        '• P4.0: 80개 (재고 부족)\n' +
+                        '• P5.0: 200개 (재고 충분)';
+        }
+        else {
+          responseText = '이해하지 못했습니다. 다음과 같이 말씀해주세요:\n\n' +
+                        '• 프로젝트 조회: "강남LED 현황"\n' +
+                        '• 일정 조회: "오늘 일정"\n' +
+                        '• 재고 확인: "재고 현황"\n' +
+                        '• 스마트 일정 등록: "8월 19일 오후 5시에 강남 코엑스에서 메쎄이상 회의"\n' +
+                        '• 사용자 정보: "내 정보", "정보 갱신"\n' +
+                        '• 내 캘린더: "내 일정"\n\n' +
+                        '🆕 프로젝트 관리:\n' +
+                        '• 프로젝트 생성: "강남 렌탈 수주했어"\n' +
+                        '• 프로젝트 업데이트: "강남 렌탈 견적 완료했어"\n\n' +
+                        '💡 "도움말"을 입력하면 전체 기능을 확인할 수 있습니다.';
+        }
+      }
+      
+      // 응답 전송
+      await sendTextMessage(userId, responseText);
+    }
+    
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook 처리 오류:', error);
+    res.status(500).send('Error');
+  }
+});
+
+// 메시지 전송 테스트 엔드포인트
+router.post('/send-test', async (req: Request, res: Response) => {
+  try {
+    const { userId, message } = req.body;
+    
+    if (!userId || !message) {
+      return res.status(400).json({ error: 'userId와 message가 필요합니다.' });
+    }
+    
+    await sendTextMessage(userId, message);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('메시지 전송 오류:', error);
+    res.status(500).json({ error: '메시지 전송 실패' });
+  }
+});
+
+// 🆕 프로젝트 관리 테스트 엔드포인트
+router.post('/test-project', async (req: Request, res: Response) => {
+  try {
+    const { userId, text, action } = req.body;
+    
+    if (!userId || !text) {
+      return res.status(400).json({ 
+        error: 'userId와 text가 필요합니다.',
+        example: {
+          userId: 'user123',
+          text: '강남 렌탈 수주했어',
+          action: 'create' // 또는 'update'
+        }
+      });
+    }
+    
+    const projectMgmt = await getProjectService();
+    let result;
+    
+    if (action === 'create') {
+      result = await projectMgmt.createProjectFromNLP(text, userId);
+    } else if (action === 'update') {
+      result = await projectMgmt.updateProjectFromNLP(text, userId);
+    } else {
+      // 자동 감지
+      const projectIntent = isProjectManagementIntent(text);
+      if (projectIntent.isCreation) {
+        result = await projectMgmt.createProjectFromNLP(text, userId);
+      } else if (projectIntent.isUpdate) {
+        result = await projectMgmt.updateProjectFromNLP(text, userId);
+      } else {
+        return res.json({
+          success: false,
+          message: '프로젝트 관리 의도를 감지할 수 없습니다.',
+          intent: projectIntent
+        });
+      }
+    }
+    
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('프로젝트 테스트 오류:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// default export 추가
+export default router;
