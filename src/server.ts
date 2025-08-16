@@ -268,4 +268,100 @@ process.on('SIGINT', () => {
   });
 });
 
+// server.ts에 추가할 엔드포인트들
+
+// 🆕 사용자 캐시 수동 무효화 엔드포인트
+app.post('/polling/invalidate-user-cache', async (req: Request, res: Response) => {
+  try {
+    const { lineWorksUserId } = req.body;
+    const pollingService = getPollingService();
+    const result = await pollingService.manualUserCacheInvalidation(lineWorksUserId);
+    
+    res.json({
+      success: true,
+      message: lineWorksUserId 
+        ? `사용자 ${lineWorksUserId}의 캐시가 무효화되었습니다.`
+        : '전체 사용자 캐시가 무효화되었습니다.',
+      result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// 🆕 사용자 관리 폴링 상태 확인 (기존 polling/status 확장)
+app.get('/polling/status', (_req: Request, res: Response) => {
+  const pollingService = getPollingService();
+  const status = pollingService.getPollingStatus();
+  
+  res.json({
+    status: 'OK',
+    polling: {
+      ...status,
+      features: [
+        'Project Status Monitoring',
+        'File Upload Detection', 
+        'User Management Sync', // 🆕
+        'Auto Cache Invalidation' // 🆕
+      ]
+    },
+    timestamp: new Date().toISOString()
+  }); 
+});
+
+// 🆕 사용자 동기화 테스트 엔드포인트
+app.post('/polling/test-user-sync', async (req: Request, res: Response) => {
+  try {
+    const { lineWorksUserId } = req.body;
+    
+    if (!lineWorksUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'lineWorksUserId가 필요합니다.'
+      });
+    }
+
+    // 1. 현재 캐시 상태 확인
+    const { userService } = await import('./models/user-model.js');
+    const userBefore = await userService.getUserByLineWorksId(lineWorksUserId);
+    
+    // 2. 캐시 무효화
+    userService.invalidateUserCache(lineWorksUserId);
+    
+    // 3. 새로운 정보 조회
+    const userAfter = await userService.getUserByLineWorksId(lineWorksUserId, true);
+    
+    res.json({
+      success: true,
+      message: '사용자 동기화 테스트 완료',
+      test: {
+        lineWorksUserId,
+        before: {
+          name: userBefore?.name,
+          email: userBefore?.email,
+          isRegistered: userBefore ? !userBefore.id.startsWith('default-') : false
+        },
+        after: {
+          name: userAfter?.name,
+          email: userAfter?.email,
+          isRegistered: userAfter ? !userAfter.id.startsWith('default-') : false
+        },
+        changed: userBefore?.name !== userAfter?.name || 
+                 userBefore?.email !== userAfter?.email
+      },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 export default app;
