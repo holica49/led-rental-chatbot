@@ -1,4 +1,4 @@
-// src/tools/services/lineworks-calendar-service.ts (완전히 수정된 버전)
+// src/tools/services/lineworks-calendar-service.ts (제목 문제 수정)
 import axios from 'axios';
 import { LineWorksAuth } from '../../config/lineworks-auth.js';
 import { AdvancedCalendarParser } from '../../utils/nlp-calendar-parser.js';
@@ -143,6 +143,7 @@ export class LineWorksCalendarService {
       
       console.log('- API Endpoint:', endpoint);
       console.log('- User Profile:', userProfile.name, userProfile.email);
+      console.log('- Event Summary (원본 제목):', event.summary);
 
       // 사용자 정보가 포함된 고도화된 설명 생성
       const enhancedDescription = await this.generateUserAwareDescription(event, userProfile);
@@ -152,7 +153,7 @@ export class LineWorksCalendarService {
         eventComponents: [
           {
             eventId: `claude-${userProfile.name}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-            summary: event.summary,
+            summary: event.summary, // 파싱된 실제 제목 사용
             description: enhancedDescription,
             location: event.location,
             start: {
@@ -170,7 +171,8 @@ export class LineWorksCalendarService {
         // sendNotification도 제거
       };
 
-      console.log('- 요청 데이터:', JSON.stringify(eventData, null, 2));
+      console.log('- 요청 데이터 summary:', eventData.eventComponents[0].summary);
+      console.log('- 전체 요청 데이터:', JSON.stringify(eventData, null, 2));
 
       // API 호출
       const response = await axios.post(endpoint, eventData, {
@@ -222,7 +224,7 @@ export class LineWorksCalendarService {
     };
 
     const event: EnhancedCalendarEvent = {
-      summary: this.enhanceTitle(parsed.title, parsed.meetingType, parsed.priority),
+      summary: parsed.title, // 파싱된 실제 제목 사용 (수정)
       startDateTime: formatDateTime(startDate),
       endDateTime: formatDateTime(endDate),
       location: parsed.location,
@@ -246,6 +248,7 @@ export class LineWorksCalendarService {
       };
     }
 
+    console.log('✅ 변환된 이벤트 summary:', event.summary);
     return event;
   }
 
@@ -355,41 +358,6 @@ export class LineWorksCalendarService {
     description += `\n🆔 LINE WORKS ID: ${userProfile.lineWorksUserId}`;
 
     return description;
-  }
-
-  /**
-   * 제목 고도화 (회의 유형, 우선순위 반영)
-   */
-  private enhanceTitle(title: string, meetingType?: string, priority?: string): string {
-    let enhancedTitle = title;
-
-    // 우선순위 표시
-    if (priority === 'high') {
-      enhancedTitle = `🔴 ${enhancedTitle}`;
-    } else if (priority === 'low') {
-      enhancedTitle = `🟢 ${enhancedTitle}`;
-    }
-
-    // 회의 유형 표시
-    switch (meetingType) {
-      case 'client':
-        enhancedTitle = `🤝 ${enhancedTitle}`;
-        break;
-      case 'presentation':
-        enhancedTitle = `📊 ${enhancedTitle}`;
-        break;
-      case 'training':
-        enhancedTitle = `📚 ${enhancedTitle}`;
-        break;
-      case 'interview':
-        enhancedTitle = `💼 ${enhancedTitle}`;
-        break;
-      case 'internal':
-        enhancedTitle = `🏢 ${enhancedTitle}`;
-        break;
-    }
-
-    return enhancedTitle;
   }
 
   /**
