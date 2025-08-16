@@ -1,4 +1,4 @@
-// src/tools/lineworks-bot.ts (default export 추가)
+// src/tools/lineworks-bot.ts (Notion 저장 제목 수정)
 import express, { Request, Response } from 'express';
 import { Client } from '@notionhq/client';
 
@@ -388,7 +388,7 @@ router.post('/callback', async (req: Request, res: Response) => {
             responseText = '사용자 목록 조회 중 오류가 발생했습니다.';
           }
         }
-        // 고도화된 일정 등록 - MCP 호출 (기존)
+        // 고도화된 일정 등록 - MCP 호출 (수정됨)
         else if (
           (text.includes('일정') && (text.includes('등록') || text.includes('추가'))) ||
           (text.includes('시') && (text.includes('오늘') || text.includes('내일') || text.includes('모레') || text.includes('다음') || text.includes('월') && text.includes('일'))) ||
@@ -406,17 +406,24 @@ router.post('/callback', async (req: Request, res: Response) => {
             
             let notionSuccess = false;
             
+            // 자연어 파싱 먼저 진행 (수정됨)
             const { parseCalendarText } = await import('../utils/nlp-calendar-parser.js');
             const parsed = parseCalendarText(text);
             
+            console.log('📝 파싱된 일정 정보:', parsed);
+            
             if (parsed) {
               try {
+                // Notion에 저장할 때 파싱된 실제 제목 사용 (수정됨)
+                const notionTitle = parsed.title || '회의'; // 파싱된 제목 사용
+                console.log('💾 Notion 저장 제목:', notionTitle);
+                
                 await notion.pages.create({
                   parent: { database_id: databaseId },
                   properties: {
                     '행사명': {
                       title: [{
-                        text: { content: `[일정] ${parsed.title}` }
+                        text: { content: notionTitle } // 파싱된 실제 제목 사용
                       }]
                     },
                     '행사 일정': {
@@ -438,7 +445,7 @@ router.post('/callback', async (req: Request, res: Response) => {
                   }
                 });
                 notionSuccess = true;
-                console.log('✅ Notion 저장 성공');
+                console.log('✅ Notion 저장 성공 - 제목:', notionTitle);
               } catch (error) {
                 console.error('❌ Notion 저장 실패:', error);
               }

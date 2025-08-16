@@ -1,4 +1,4 @@
-// src/utils/project-nlp-parser.ts (프로젝트 자연어 파싱)
+// src/utils/project-nlp-parser.ts (프로젝트명 추출 수정)
 
 interface ParsedProject {
   // 기본 정보
@@ -99,7 +99,7 @@ export class ProjectNLPParser {
       confidence += 0.3;
       extractedInfo.push(`서비스 유형: ${serviceType}`);
 
-      // 3. 프로젝트명 추출
+      // 3. 프로젝트명 추출 (수정)
       const projectName = this.extractProjectName(text, serviceType);
       extractedInfo.push(`프로젝트명: ${projectName}`);
       confidence += 0.2;
@@ -222,29 +222,63 @@ export class ProjectNLPParser {
   }
 
   /**
-   * 프로젝트명 추출
+   * 프로젝트명 추출 (수정된 버전)
    */
   private extractProjectName(text: string, serviceType: string): string {
-    // 지역명 + 서비스 유형으로 프로젝트명 생성
-    const location = this.extractLocation(text) || '신규';
-    const customer = this.extractCustomer(text);
+    console.log('🔍 프로젝트명 추출 시작:', text, 'serviceType:', serviceType);
     
-    if (customer) {
-      return `${location} ${customer} ${serviceType}`;
-    } else {
-      return `${location} ${serviceType}`;
+    // 서비스 키워드 앞의 모든 텍스트를 프로젝트명 후보로 추출
+    const serviceKeywords = ['설치', '구축', '시공', '공사', '설립', '셋업', '렌탈', '대여', '임대', '빌려', '수주', '멤버쉽', '회원', '메쎄이상', '특가', '할인'];
+    
+    let projectNameCandidate = text;
+    
+    // 서비스 키워드 찾기
+    for (const keyword of serviceKeywords) {
+      const index = text.indexOf(keyword);
+      if (index > 0) {
+        // 서비스 키워드 앞부분을 프로젝트명으로 추출
+        projectNameCandidate = text.substring(0, index).trim();
+        break;
+      }
     }
+    
+    // 동작 키워드 제거
+    const actionKeywords = ['수주했어', '따냄', '맡기', '맡아', '시작', '진행', '들어왔', '했어', '됐어', '완료', '끝났', '마쳤'];
+    for (const action of actionKeywords) {
+      projectNameCandidate = projectNameCandidate.replace(action, '').trim();
+    }
+    
+    // 불필요한 조사/어미 제거
+    projectNameCandidate = projectNameCandidate.replace(/\s*(을|를|이|가|은|는|에서|에|과|와|랑|이랑)\s*$/, '');
+    
+    console.log('📝 추출된 프로젝트명 후보:', projectNameCandidate);
+    
+    // 빈 문자열이면 기본값 사용
+    if (!projectNameCandidate || projectNameCandidate.length === 0) {
+      const location = this.extractLocation(text) || '신규';
+      const customer = this.extractCustomer(text);
+      
+      if (customer) {
+        return `${location} ${customer}`;
+      } else {
+        return location;
+      }
+    }
+    
+    console.log('✅ 최종 프로젝트명:', projectNameCandidate);
+    return projectNameCandidate;
   }
 
   /**
-   * 위치 추출
+   * 위치 추출 (개선된 버전)
    */
   private extractLocation(text: string): string | undefined {
-    // 지역명 패턴 (시/구/동 등)
+    // 지역명 패턴 (기존 + 추가)
     const locationPatterns = [
       /([가-힣]+(?:시|구|군|동|읍|면|리))/g,
-      /([가-힣]+(?:역|대학교|병원|마트|백화점))/g,
-      /(강남|홍대|명동|잠실|여의도|판교|분당|수원|인천|부산|대구|광주|대전|울산|세종)/g
+      /([가-힣]+(?:역|대학교|병원|마트|백화점|센터|빌딩|타워))/g,
+      /(강남|홍대|명동|잠실|여의도|판교|분당|수원|인천|부산|대구|광주|대전|울산|세종|코엑스)/g,
+      /([가-힣A-Za-z0-9]+(?:팝업|매장|스토어|샵|점포))/g // 팝업스토어 등
     ];
 
     for (const pattern of locationPatterns) {
@@ -368,13 +402,13 @@ export class ProjectNLPParser {
   }
 
   /**
-   * 프로젝트 키워드 추출 (업데이트용)
+   * 프로젝트 키워드 추출 (업데이트용) - 개선된 버전
    */
   private extractProjectKeyword(text: string): string | undefined {
     // "강남 렌탈" 패턴으로 프로젝트 식별
     const keywordPatterns = [
       /([가-힣A-Za-z0-9]+)\s*(?:렌탈|설치|멤버쉽|구축|프로젝트)/,
-      /([가-힣A-Za-z0-9]+(?:시|구|군|동|역|대학교))\s*(?:관련|건|거)/
+      /([가-힣A-Za-z0-9]+(?:시|구|군|동|역|대학교|팝업|매장|센터|빌딩))\s*(?:관련|건|거)?/
     ];
 
     for (const pattern of keywordPatterns) {
