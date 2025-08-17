@@ -1,10 +1,10 @@
-// src/tools/lineworks-bot.ts - Claude MCP Server 통합
-
 import express, { Request, Response } from 'express';
 import { Client } from '@notionhq/client';
 import { getMCPClient } from './mcp-client.js';
+import { getConversationManager } from './interactive-conversation.js';
 
 const router = express.Router();
+const conversationManager = getConversationManager();
 
 // LINE WORKS Auth는 첫 요청 시 초기화
 let auth: any = null;
@@ -413,5 +413,263 @@ router.get('/mcp/status', (req: Request, res: Response) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// Webhook 처리 (대화형 기능 통합)
+router.post('/callback', async (req: Request, res: Response) => {
+  try {
+    console.log('LINE WORKS Webhook 수신:', JSON.stringify(req.body, null, 2));
+    
+    const message = req.body as LineWorksMessage;
+    
+    if (message.content?.type === 'text' && message.content.text) {
+      const userId = message.source.userId;
+      const text = message.content.text;
+      const lowerText = text.toLowerCase();
+      
+      let responseText = '';
+
+      // 🆕 진행 중인 대화가 있는지 확인
+      if (conversationManager.hasActiveConversation(userId)) {
+        console.log('📞 진행 중인 대화 감지 - 사용자 응답 처리');
+        
+        const conversationResult = conversationManager.processUserResponse(userId, text);
+        
+        if (conversationResult.error && conversationResult.isComplete) {
+          responseText = conversationResult.error;
+        } else if (conversationResult.needsConfirmation && conversationResult.confirmationMessage) {
+          responseText = conversationResult.confirmationMessage;
+        } else if (conversationResult.isComplete && conversationResult.collectedInfo) {
+          // 수집된 정보로 프로젝트 생성
+          try {
+            const projectCreationText = generateProjectCreationText(conversationResult.collectedInfo);
+            console.log('📋 수집된 정보로 프로젝트 생성:', projectCreationText);
+            
+            const mcpResult = await callClaudeMCP('notion_project', {
+              action: 'create',
+              text: projectCreationText,
+              userId: userId
+            });
+            
+            if (mcpResult?.success) {
+              responseText = '🎉 대화를 통해 프로젝트가 성공적으로 생성되었습니다!\n\n' + mcpResult.message;
+            } else {
+              responseText = '❌ 프로젝트 생성에 실패했습니다: ' + (mcpResult?.message || 'Unknown error');
+            }
+          } catch (error) {
+            console.error('❌ 대화형 프로젝트 생성 오류:', error);
+            responseText = '프로젝트 생성 중 오류가 발생했습니다.';
+          }
+        } else if (conversationResult.nextQuestion) {
+          responseText = conversationResult.nextQuestion;
+        } else {
+          responseText = '죄송합니다. 다시 시도해주세요.';
+        }
+      }
+      // 🆕 Claude MCP를 통한 프로젝트 관리 (대화형 기능 추가)
+      else {
+        const projectIntent = detectProjectIntent(text);
+        
+        if (projectIntent.isProject) {
+          try {
+            let mcpResult;
+            
+            if (projectIntent.isCreation) {
+              console.log('🆕 Claude MCP 프로젝트 생성 요청');
+              mcpResult = await callClaudeMCP('notion_project', {
+                action: 'create',
+                text: text,
+                userId: userId
+              });
+              
+              // 🔄 프로젝트 생성 시 추가 정보 필요한지 확인
+              if (mcpResult?.success) {
+                const missingInfo = checkMissingProjectInfo(text);
+                if (missingInfo.length > 0) {
+                  console.log('❓ 추가 정보 필요:', missingInfo);
+                  
+                  const interactionResult = conversationManager.startInteractiveCollection(
+                    userId, 
+                    missingInfo, 
+                    extractExistingInfo(text)
+                  );
+                  
+                  if (interactionResult.needsInteraction && interactionResult.firstQuestion) {
+                    responseText = mcpResult.message + 
+                                  '\n\n📝 더 정확한 견적을 위해 추가 정보가 필요합니다:\n\n' + 
+                                  interactionResult.firstQuestion;
+                  } else {
+                    responseText = mcpResult.message;
+                  }
+                } else {
+                  responseText = mcpResult.message;
+                }
+              } else {
+                responseText = mcpResult?.message || '프로젝트 생성 중 오류가 발생했습니다.';
+              }
+              
+            } else if (projectIntent.isAdvancedUpdate || projectIntent.isUpdate) {
+              console.log('📝 Claude MCP 프로젝트 업데이트 요청');
+              mcpResult = await callClaudeMCP('notion_project', {
+                action: 'update',
+                text: text,
+                userId: userId
+              });
+              
+              if (mcpResult?.success) {
+                responseText = mcpResult.message;
+                
+                if (projectIntent.isAdvancedUpdate) {
+                  responseText += '\n\n🚀 Claude AI가 복합 정보를 자동으로 파싱하여 처리했습니다!';
+                }
+              } else {
+                responseText = mcpResult?.message || '프로젝트 업데이트 중 오류가 발생했습니다.';
+              }
+            }
+            
+          } catch (error) {
+            console.error('❌ Claude MCP 프로젝트 관리 오류:', error);
+            responseText = 'Claude AI 프로젝트 처리 중 오류가 발생했습니다. 다시 시도해주세요.';
+          }
+        }
+        // 기존 다른 기능들...
+        else if (lowerText.includes('안녕') || lowerText.includes('하이') || lowerText.includes('도움말')) {
+          responseText = '안녕하세요! LED 렌탈 업무봇입니다.\n\n' +
+                        '🚀 Claude AI를 통한 기능들:\n' +
+                        '📊 프로젝트 조회: "강남LED 현황"\n' +
+                        '📅 일정 조회: "오늘 일정", "이번주 일정"\n' +
+                        '📦 재고 확인: "재고 현황"\n' +
+                        '📝 스마트 일정 등록: "8월 19일 오후 5시에 강남 코엑스에서 메쎄이상 회의"\n' +
+                        '👤 사용자 정보: "내 정보", "정보 갱신"\n' +
+                        '📋 사용자 목록: "사용자 목록" (관리자용)\n' +
+                        '📱 내 캘린더: "내 일정"\n\n' +
+                        '🤖 Claude AI 프로젝트 관리 (대화형):\n' +
+                        '• 프로젝트 생성: "코엑스팝업 구축 수주했어"\n' +
+                        '• 대화형 정보 수집: 부족한 정보는 자동으로 질문합니다\n' +
+                        '• 프로젝트 업데이트: "코엑스팝업 견적 완료했어"\n' +
+                        '• 복합 정보 업데이트: "코엑스팝업은 2개소이고, LED크기는 6000x3000, 4000x2500이야"\n' +
+                        '• 일정 변경: "코엑스팝업 일정 8월 25일로 변경"\n\n' +
+                        '💬 대화 중 언제든 "취소"라고 하면 중단됩니다!\n' +
+                        '💡 모든 프로젝트 관리는 Claude AI가 자동으로 처리하고 필요시 추가 질문합니다!';
+        }
+        // ... 기존 다른 기능들 유지
+        else {
+          responseText = '이해하지 못했습니다. 다음과 같이 말씀해주세요:\n\n' +
+                        '🤖 Claude AI 프로젝트 관리 (대화형):\n' +
+                        '• 프로젝트 생성: "코엑스팝업 구축 수주했어"\n' +
+                        '• 프로젝트 업데이트: "코엑스팝업 견적 완료했어"\n' +
+                        '• 복합 정보 업데이트: "코엑스팝업은 2개소이고, LED크기는 6000x3000, 4000x2500이야"\n\n' +
+                        '📋 기본 기능:\n' +
+                        '• 프로젝트 조회: "강남LED 현황"\n' +
+                        '• 일정 조회: "오늘 일정"\n' +
+                        '• 재고 확인: "재고 현황"\n' +
+                        '• 캘린더 일정: "8월 19일 오후 5시에 강남 코엑스에서 회의"\n' +
+                        '• 사용자 정보: "내 정보"\n\n' +
+                        '💬 프로젝트 생성 시 부족한 정보는 대화를 통해 자동으로 수집합니다!\n' +
+                        '💡 모든 요청은 Claude AI가 자동으로 분석하여 처리합니다!';
+        }
+      }
+      
+      // 응답 전송
+      await sendTextMessage(userId, responseText);
+    }
+    
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook 처리 오류:', error);
+    res.status(500).send('Error');
+  }
+});
+
+/**
+ * 수집된 정보로 프로젝트 생성 텍스트 생성
+ */
+function generateProjectCreationText(info: Record<string, any>): string {
+  let text = `${info.projectName || '신규 프로젝트'} ${info.serviceType || '렌탈'} 수주했어`;
+  
+  if (info.customer) text += `. 고객사는 ${info.customer}`;
+  if (info.location) text += `. 장소는 ${info.location}`;
+  if (info.eventDate) text += `. 일정은 ${info.eventDate}`;
+  
+  if (info.ledInfo && info.ledInfo.ledInfos) {
+    text += `. LED는 ${info.ledInfo.count}개소이고 크기는 `;
+    const sizes = info.ledInfo.ledInfos.map((led: any) => led.size).join(', ');
+    text += sizes;
+    
+    if (info.ledInfo.ledInfos[0]?.stageHeight) {
+      text += `. 무대높이는 모두 ${info.ledInfo.ledInfos[0].stageHeight}mm`;
+    }
+  } else {
+    if (info.led1Size) {
+      text += `. LED1 크기는 ${info.led1Size}`;
+      if (info.led1StageHeight) text += `, 무대높이 ${info.led1StageHeight}mm`;
+    }
+    if (info.led2Size) {
+      text += `. LED2 크기는 ${info.led2Size}`;
+      if (info.led2StageHeight) text += `, 무대높이 ${info.led2StageHeight}mm`;
+    }
+  }
+  
+  return text;
+}
+
+/**
+ * 프로젝트에서 부족한 정보 확인
+ */
+function checkMissingProjectInfo(text: string): string[] {
+  const missing: string[] = [];
+  
+  // 기본 체크
+  if (!/(고객사|고객|회사)/.test(text)) missing.push('customer');
+  if (!/(장소|위치|코엑스|킨텍스|강남|홍대)/.test(text)) missing.push('location');
+  if (!/(일정|날짜|\d+월\s*\d+일)/.test(text)) missing.push('eventDate');
+  
+  // LED 정보 체크
+  const hasLEDSize = /\d+\s*[x×X]\s*\d+/.test(text);
+  const hasLEDCount = /\d+\s*개소/.test(text);
+  
+  if (!hasLEDSize && !hasLEDCount) {
+    missing.push('ledInfo');
+  } else if (hasLEDCount && !hasLEDSize) {
+    const countMatch = text.match(/(\d+)\s*개소/);
+    const count = countMatch ? parseInt(countMatch[1]) : 1;
+    
+    for (let i = 1; i <= count; i++) {
+      missing.push(`led${i}Size`);
+      missing.push(`led${i}StageHeight`);
+    }
+  }
+  
+  return missing;
+}
+
+/**
+ * 기존 정보 추출
+ */
+function extractExistingInfo(text: string): Record<string, any> {
+  const info: Record<string, any> = {};
+  
+  // 프로젝트명
+  const serviceKeywords = ['설치', '구축', '렌탈', '멤버쉽', '수주'];
+  for (const keyword of serviceKeywords) {
+    const index = text.indexOf(keyword);
+    if (index > 0) {
+      info.projectName = text.substring(0, index).trim();
+      info.serviceType = keyword === '수주' ? '렌탈' : keyword;
+      break;
+    }
+  }
+  
+  // 고객사
+  const customerMatch = text.match(/(?:고객사|고객|회사)는?\s*([가-힣A-Za-z0-9]+)/);
+  if (customerMatch) info.customer = customerMatch[1];
+  
+  // 장소
+  const locationMatch = text.match(/(?:장소|위치)는?\s*([가-힣A-Za-z0-9]+)/);
+  if (locationMatch) info.location = locationMatch[1];
+  
+  return info;
+}
+
+// ... 기존 다른 함수들 유지
 
 export default router;
