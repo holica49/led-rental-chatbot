@@ -1,4 +1,4 @@
-// src/tools/notion-project-mcp.ts (Notion 프로젝트 관리 MCP 도구)
+// src/tools/notion-project-mcp.ts - 고도화된 복수 LED 지원 버전
 import { Client } from '@notionhq/client';
 
 interface NotionProjectRequest {
@@ -14,6 +14,34 @@ interface NotionProjectResult {
   projects?: any[];
   project?: any;
   error?: string;
+}
+
+interface LEDInfo {
+  size: string;
+  stageHeight?: number;
+  count?: number;
+}
+
+interface ProjectInfo {
+  name: string;
+  serviceType: '설치' | '렌탈' | '멤버쉽';
+  status?: string;
+  location?: string;
+  customer?: string;
+  eventDate?: string;
+  ledInfos?: LEDInfo[];
+  specialNotes?: string;
+  confidence: number;
+  extractedInfo: string[];
+}
+
+interface ProjectUpdate {
+  projectKeyword: string;
+  updateType: 'STATUS' | 'TECH' | 'SCHEDULE' | 'NOTES' | 'CUSTOMER';
+  newValue: string;
+  ledInfos?: LEDInfo[];
+  confidence: number;
+  extractedInfo: string[];
 }
 
 export class NotionProjectMCP {
@@ -101,63 +129,14 @@ export class NotionProjectMCP {
       }
 
       // Notion 페이지 생성
-      const properties: any = {
-        '행사명': {
-          title: [{ text: { content: projectInfo.name } }]
-        },
-        '서비스 유형': {
-          select: { name: projectInfo.serviceType }
-        },
-        '행사 상태': {
-          status: { name: projectInfo.status || '견적 요청' }
-        },
-        '문의요청 사항': {
-          rich_text: [{
-            text: { content: `LINE WORKS에서 생성 (${userProfile?.name || 'Unknown'}): ${text}` }
-          }]
-        }
-      };
-
-      // 선택적 정보 추가
-      if (projectInfo.customer) {
-        properties['고객사'] = {
-          select: { name: projectInfo.customer }
+      const response = await this.createNotionPage(projectInfo, userProfile);
+      
+      if (!response) {
+        return {
+          success: false,
+          message: 'Notion 페이지 생성에 실패했습니다.'
         };
       }
-
-      if (projectInfo.location) {
-        properties['행사장'] = {
-          rich_text: [{ text: { content: projectInfo.location } }]
-        };
-      }
-
-      if (projectInfo.eventDate) {
-        properties['행사 일정'] = {
-          rich_text: [{ text: { content: projectInfo.eventDate } }]
-        };
-      }
-
-      if (projectInfo.ledSize) {
-        properties['LED 크기 (가로x세로)'] = {
-          rich_text: [{ text: { content: projectInfo.ledSize } }]
-        };
-      }
-
-      const response = await this.notion.pages.create({
-        parent: { database_id: this.databaseId },
-        properties
-      });
-
-      // 생성 완료 댓글 추가
-      await this.notion.comments.create({
-        parent: { page_id: response.id },
-        rich_text: [{
-          type: 'text',
-          text: { 
-            content: `🤖 LINE WORKS 봇에서 MCP를 통해 자동 생성\n등록자: ${userProfile?.department || ''} ${userProfile?.name || 'Unknown'}\n생성 시간: ${new Date().toLocaleString('ko-KR')}\n원본 텍스트: "${text}"` 
-          }
-        }]
-      });
 
       const notionUrl = `https://www.notion.so/${response.id.replace(/-/g, '')}`;
 
@@ -166,7 +145,8 @@ export class NotionProjectMCP {
         message: `✅ "${projectInfo.name}" 프로젝트가 생성되었습니다!\n\n` +
                  `🔧 서비스: ${projectInfo.serviceType}\n` +
                  `📊 상태: ${projectInfo.status || '견적 요청'}\n` +
-                 `👤 등록자: ${userProfile?.department || ''} ${userProfile?.name || 'Unknown'}\n\n` +
+                 `👤 등록자: ${userProfile?.department || ''} ${userProfile?.name || 'Unknown'}\n` +
+                 `🤖 AI 신뢰도: ${Math.round(projectInfo.confidence * 100)}%\n\n` +
                  `🔗 Notion에서 확인: ${notionUrl}\n\n` +
                  `💡 이제 "${projectInfo.name} 견적 완료했어" 같은 방식으로 업데이트할 수 있습니다.`,
         project: {
@@ -214,7 +194,7 @@ export class NotionProjectMCP {
         };
       }
 
-      const targetProject = projects[0]; // 가장 유사한 프로젝트
+      const targetProject = projects[0];
       console.log('🎯 업데이트 대상:', targetProject.name);
 
       // 업데이트 실행
@@ -234,6 +214,7 @@ export class NotionProjectMCP {
         message: `✅ "${targetProject.name}" 프로젝트가 업데이트되었습니다!\n\n` +
                  `📝 변경 내용: ${updateResult.description}\n` +
                  `👤 수정자: ${userProfile?.department || ''} ${userProfile?.name || 'Unknown'}\n` +
+                 `🤖 AI 신뢰도: ${Math.round(updateInfo.confidence * 100)}%\n` +
                  `⏰ 수정 시간: ${new Date().toLocaleString('ko-KR')}\n\n` +
                  `🔗 Notion에서 확인: ${notionUrl}`,
         project: {
@@ -254,7 +235,464 @@ export class NotionProjectMCP {
   }
 
   /**
-   * 프로젝트 검색
+   * 자연어에서 프로젝트 정보 추출 (고도화된 버전)
+   */
+  private parseProjectFromText(text: string): ProjectInfo {
+    const extractedInfo: string[] = [];
+    let confidence = 0;
+
+    // 1. 서비스 유형 추출
+    let serviceType: '설치' | '렌탈' | '멤버쉽' = '렌탈';
+    if (/(설치|구축|시공|공사)/.test(text)) {
+      serviceType = '설치';
+      confidence += 0.3;
+      extractedInfo.push('서비스: 설치');
+    } else if (/(멤버쉽|회원|메쎄이상)/.test(text)) {
+      serviceType = '멤버쉽';
+      confidence += 0.3;
+      extractedInfo.push('서비스: 멤버쉽');
+    } else if (/(렌탈|대여|임대)/.test(text)) {
+      serviceType = '렌탈';
+      confidence += 0.3;
+      extractedInfo.push('서비스: 렌탈');
+    }
+
+    // 2. 프로젝트명 추출
+    let projectName = '';
+    for (const keyword of ['설치', '구축', '시공', '렌탈', '대여', '수주', '멤버쉽']) {
+      const index = text.indexOf(keyword);
+      if (index > 0) {
+        projectName = text.substring(0, index).trim();
+        break;
+      }
+    }
+    
+    if (!projectName) {
+      projectName = text.split(/\s+/)[0] || '신규 프로젝트';
+    }
+    
+    // 동작 키워드 제거
+    projectName = projectName.replace(/(수주했어|따냄|맡기|했어|됐어|완료)/, '').trim();
+    extractedInfo.push(`프로젝트명: ${projectName}`);
+    confidence += 0.2;
+
+    // 3. LED 정보 추출
+    const ledInfos = this.extractLEDInfos(text);
+    if (ledInfos.length > 0) {
+      extractedInfo.push(`LED 정보: ${ledInfos.length}개소`);
+      confidence += 0.2;
+    }
+
+    // 4. 기타 정보 추출
+    const location = this.extractLocation(text);
+    if (location) {
+      extractedInfo.push(`위치: ${location}`);
+      confidence += 0.1;
+    }
+
+    const customer = this.extractCustomer(text);
+    if (customer) {
+      extractedInfo.push(`고객: ${customer}`);
+      confidence += 0.1;
+    }
+
+    const eventDate = this.extractEventDate(text);
+    if (eventDate) {
+      extractedInfo.push(`일정: ${eventDate}`);
+      confidence += 0.1;
+    }
+
+    return {
+      name: projectName,
+      serviceType,
+      status: '견적 요청',
+      location,
+      customer,
+      eventDate,
+      ledInfos,
+      confidence: Math.min(confidence, 1.0),
+      extractedInfo
+    };
+  }
+
+  /**
+   * 복수 LED 정보 추출
+   */
+  private extractLEDInfos(text: string): LEDInfo[] {
+    const ledInfos: LEDInfo[] = [];
+    
+    // "2개소이고" 패턴
+    const countMatch = text.match(/(\d+)\s*개소/);
+    const expectedCount = countMatch ? parseInt(countMatch[1]) : 1;
+
+    // LED 크기 추출: "6000x3500, 4000x2000"
+    const sizePattern = /(\d+)\s*(?:x|×|X)\s*(\d+)/g;
+    let sizeMatch;
+    while ((sizeMatch = sizePattern.exec(text)) !== null) {
+      ledInfos.push({
+        size: `${sizeMatch[1]}x${sizeMatch[2]}`,
+        count: 1
+      });
+    }
+
+    // 무대높이 추출
+    const stageHeights = this.extractStageHeights(text, ledInfos.length);
+    ledInfos.forEach((led, index) => {
+      if (stageHeights[index] !== undefined) {
+        led.stageHeight = stageHeights[index];
+      }
+    });
+
+    // LED가 없으면 개수만큼 빈 객체 생성
+    if (ledInfos.length === 0 && expectedCount > 0) {
+      for (let i = 0; i < expectedCount; i++) {
+        ledInfos.push({ size: '', count: 1 });
+      }
+    }
+
+    return ledInfos;
+  }
+
+  /**
+   * 무대높이 추출
+   */
+  private extractStageHeights(text: string, ledCount: number): number[] {
+    const heights: number[] = [];
+
+    // "둘 다 600mm" 패턴
+    const allSameMatch = text.match(/(?:둘|모두|전부|다)\s*(?:다|모두)?\s*(\d+)\s*(?:mm|밀리)?/);
+    if (allSameMatch) {
+      const height = parseInt(allSameMatch[1]);
+      return new Array(ledCount).fill(height);
+    }
+
+    // 개별 높이: "600mm, 800mm"
+    const heightPattern = /(\d+)\s*(?:mm|밀리)/g;
+    let heightMatch;
+    while ((heightMatch = heightPattern.exec(text)) !== null) {
+      heights.push(parseInt(heightMatch[1]));
+    }
+
+    return heights;
+  }
+
+  /**
+   * 업데이트 정보 파싱
+   */
+  private parseUpdateFromText(text: string): ProjectUpdate {
+    const extractedInfo: string[] = [];
+    let confidence = 0;
+
+    // 프로젝트 키워드 추출
+    const projectKeyword = text.match(/^([가-힣A-Za-z0-9]+)/)?.[1] || '';
+    if (projectKeyword) {
+      extractedInfo.push(`프로젝트: ${projectKeyword}`);
+      confidence += 0.3;
+    }
+
+    // 복수 LED 정보 업데이트 감지
+    const ledInfos = this.extractLEDInfos(text);
+    if (ledInfos.length > 0) {
+      return {
+        projectKeyword,
+        updateType: 'TECH',
+        newValue: '복수 LED 정보',
+        ledInfos,
+        confidence: confidence + 0.4,
+        extractedInfo: [...extractedInfo, `LED 정보: ${ledInfos.length}개소`]
+      };
+    }
+
+    // 단일 업데이트 감지
+    let updateType: ProjectUpdate['updateType'] = 'NOTES';
+    let newValue = '';
+
+    // 상태 업데이트
+    if (/(견적|승인|확정|완료|진행|시작|철거)/.test(text)) {
+      updateType = 'STATUS';
+      if (/(견적.*완료|견적.*승인)/.test(text)) {
+        newValue = '견적 승인';
+      } else if (/(승인|확정|결정)/.test(text)) {
+        newValue = '견적 승인';
+      } else if (/(완료|끝|마침)/.test(text)) {
+        newValue = '완료';
+      } else if (/(설치.*시작|구축.*시작|진행)/.test(text)) {
+        newValue = '설치 중';
+      } else if (/(철거)/.test(text)) {
+        newValue = '철거 중';
+      } else {
+        newValue = '견적 검토';
+      }
+      confidence += 0.4;
+    }
+    // LED 크기 업데이트
+    else if (/(\d+)\s*(?:x|×|X)\s*(\d+)/.test(text)) {
+      updateType = 'TECH';
+      const match = text.match(/(\d+)\s*(?:x|×|X)\s*(\d+)/);
+      newValue = `${match![1]}x${match![2]}`;
+      confidence += 0.4;
+    }
+    // 일정 업데이트
+    else if (/(일정|날짜)/.test(text)) {
+      updateType = 'SCHEDULE';
+      const dateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) || 
+                       text.match(/(\d{4})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})/);
+      if (dateMatch) {
+        if (dateMatch.length === 3) {
+          const currentYear = new Date().getFullYear();
+          newValue = `${currentYear}-${dateMatch[1].padStart(2, '0')}-${dateMatch[2].padStart(2, '0')}`;
+        } else {
+          newValue = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
+        }
+        confidence += 0.3;
+      }
+    }
+
+    extractedInfo.push(`업데이트 유형: ${updateType}`);
+    extractedInfo.push(`새 값: ${newValue}`);
+
+    return {
+      projectKeyword,
+      updateType,
+      newValue,
+      confidence: Math.min(confidence, 1.0),
+      extractedInfo
+    };
+  }
+
+  /**
+   * 업데이트 실행 (복수 LED 지원)
+   */
+  private async executeUpdate(projectId: string, updateInfo: ProjectUpdate, userProfile: any, originalText: string): Promise<{ success: boolean; description?: string; error?: string }> {
+    try {
+      const properties: any = {};
+      let description = '';
+
+      if (updateInfo.updateType === 'TECH' && updateInfo.ledInfos && updateInfo.ledInfos.length > 0) {
+        // 복수 LED 정보 업데이트
+        updateInfo.ledInfos.forEach((led, index) => {
+          const ledNumber = index + 1;
+          
+          if (led.size) {
+            properties[`LED${ledNumber} 크기`] = {
+              rich_text: [{ text: { content: led.size } }]
+            };
+          }
+          
+          if (led.stageHeight !== undefined) {
+            properties[`LED${ledNumber} 무대 높이`] = {
+              number: led.stageHeight
+            };
+          }
+          
+          // 모듈 수량 자동 계산
+          if (led.size) {
+            const [width, height] = led.size.split('x').map(s => parseInt(s.replace(/mm/g, '')));
+            const moduleCount = (width / 500) * (height / 500);
+            properties[`LED${ledNumber} 모듈 수량`] = {
+              number: Math.ceil(moduleCount)
+            };
+          }
+        });
+        
+        description = `${updateInfo.ledInfos.length}개소 LED 정보 업데이트`;
+        
+      } else {
+        // 단일 업데이트
+        switch (updateInfo.updateType) {
+          case 'STATUS':
+            properties['행사 상태'] = {
+              status: { name: updateInfo.newValue }
+            };
+            description = `상태를 "${updateInfo.newValue}"로 변경`;
+            break;
+
+          case 'TECH':
+            properties['LED1 크기'] = {
+              rich_text: [{ text: { content: updateInfo.newValue } }]
+            };
+            description = `LED1 크기를 "${updateInfo.newValue}"로 변경`;
+            break;
+
+          case 'SCHEDULE':
+            properties['행사 일정'] = {
+              rich_text: [{ text: { content: updateInfo.newValue } }]
+            };
+            description = `일정을 "${updateInfo.newValue}"로 변경`;
+            break;
+
+          case 'CUSTOMER':
+            properties['고객명'] = {
+              rich_text: [{ text: { content: updateInfo.newValue } }]
+            };
+            description = `고객 정보를 "${updateInfo.newValue}"로 변경`;
+            break;
+
+          case 'NOTES':
+            properties['문의요청 사항'] = {
+              rich_text: [{ text: { content: updateInfo.newValue } }]
+            };
+            description = `특이사항을 "${updateInfo.newValue}"로 변경`;
+            break;
+
+          default:
+            return {
+              success: false,
+              error: '지원되지 않는 업데이트 유형입니다.'
+            };
+        }
+      }
+
+      await this.notion.pages.update({
+        page_id: projectId,
+        properties
+      });
+
+      // 업데이트 댓글 추가
+      await this.notion.comments.create({
+        parent: { page_id: projectId },
+        rich_text: [{
+          type: 'text',
+          text: { 
+            content: `📝 LINE WORKS에서 MCP를 통해 업데이트\n수정자: ${userProfile?.department || ''} ${userProfile?.name || 'Unknown'}\n수정 내용: ${description}\n수정 시간: ${new Date().toLocaleString('ko-KR')}\n원본 텍스트: "${originalText}"` 
+          }
+        }]
+      });
+
+      return {
+        success: true,
+        description
+      };
+
+    } catch (error) {
+      console.error('업데이트 실행 오류:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Notion 페이지 생성
+   */
+  private async createNotionPage(projectInfo: ProjectInfo, userProfile: any): Promise<any> {
+    try {
+      const properties: any = {
+        '행사명': {
+          title: [{ text: { content: projectInfo.name } }]
+        },
+        '서비스 유형': {
+          select: { name: projectInfo.serviceType }
+        },
+        '행사 상태': {
+          status: { name: projectInfo.status || '견적 요청' }
+        },
+        '문의요청 사항': {
+          rich_text: [{
+            text: { content: `LINE WORKS에서 생성 (${userProfile?.name || 'Unknown'})` }
+          }]
+        }
+      };
+
+      // 선택적 정보 추가
+      if (projectInfo.customer) {
+        properties['고객사'] = {
+          select: { name: projectInfo.customer }
+        };
+      }
+
+      if (projectInfo.location) {
+        properties['행사장'] = {
+          rich_text: [{ text: { content: projectInfo.location } }]
+        };
+      }
+
+      if (projectInfo.eventDate) {
+        properties['행사 일정'] = {
+          rich_text: [{ text: { content: projectInfo.eventDate } }]
+        };
+      }
+
+      // LED 정보 추가
+      if (projectInfo.ledInfos && projectInfo.ledInfos.length > 0) {
+        projectInfo.ledInfos.forEach((led, index) => {
+          const ledNumber = index + 1;
+          
+          if (led.size) {
+            properties[`LED${ledNumber} 크기`] = {
+              rich_text: [{ text: { content: led.size } }]
+            };
+            
+            // 모듈 수량 자동 계산
+            const [width, height] = led.size.split('x').map(s => parseInt(s.replace(/mm/g, '')));
+            const moduleCount = (width / 500) * (height / 500);
+            properties[`LED${ledNumber} 모듈 수량`] = {
+              number: Math.ceil(moduleCount)
+            };
+          }
+          
+          if (led.stageHeight !== undefined) {
+            properties[`LED${ledNumber} 무대 높이`] = {
+              number: led.stageHeight
+            };
+          }
+        });
+      }
+
+      const response = await this.notion.pages.create({
+        parent: { database_id: this.databaseId },
+        properties
+      });
+
+      // 생성 완료 댓글 추가
+      await this.notion.comments.create({
+        parent: { page_id: response.id },
+        rich_text: [{
+          type: 'text',
+          text: { 
+            content: `🤖 LINE WORKS 봇에서 MCP를 통해 자동 생성\n등록자: ${userProfile?.department || ''} ${userProfile?.name || 'Unknown'}\n생성 시간: ${new Date().toLocaleString('ko-KR')}\nAI 신뢰도: ${Math.round(projectInfo.confidence * 100)}%\n추출 정보: ${projectInfo.extractedInfo.join(', ')}` 
+          }
+        }]
+      });
+
+      return response;
+
+    } catch (error) {
+      console.error('Notion 페이지 생성 오류:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 기타 추출 함수들
+   */
+  private extractLocation(text: string): string | undefined {
+    const locationMatch = text.match(/([가-힣]+(?:시|구|군|동|역|센터|빌딩|타워|코엑스|킨텍스))/);
+    return locationMatch ? locationMatch[1] : undefined;
+  }
+
+  private extractCustomer(text: string): string | undefined {
+    const customerMatch = text.match(/([가-힣A-Za-z0-9]+(?:주식회사|회사|㈜|기업|그룹|센터))/);
+    return customerMatch ? customerMatch[1] : undefined;
+  }
+
+  private extractEventDate(text: string): string | undefined {
+    const dateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) || 
+                     text.match(/(\d{4})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})/);
+    if (dateMatch) {
+      if (dateMatch.length === 3) {
+        const currentYear = new Date().getFullYear();
+        return `${currentYear}-${dateMatch[1].padStart(2, '0')}-${dateMatch[2].padStart(2, '0')}`;
+      } else {
+        return `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * 프로젝트 검색 관련 함수들
    */
   private async searchProjects(query: string): Promise<NotionProjectResult> {
     try {
@@ -294,299 +732,6 @@ export class NotionProjectMCP {
     }
   }
 
-  /**
-   * 프로젝트 상세 조회
-   */
-  private async getProject(projectIdOrName: string): Promise<NotionProjectResult> {
-    try {
-      let project;
-      
-      if (projectIdOrName.length === 36 && projectIdOrName.includes('-')) {
-        // UUID 형식이면 직접 조회
-        const response = await this.notion.pages.retrieve({ page_id: projectIdOrName });
-        project = this.formatProjectFromNotionPage(response);
-      } else {
-        // 이름으로 검색
-        const projects = await this.searchProjectsByName(projectIdOrName);
-        if (projects.length === 0) {
-          return {
-            success: false,
-            message: `"${projectIdOrName}" 프로젝트를 찾을 수 없습니다.`
-          };
-        }
-        project = projects[0];
-      }
-
-      const notionUrl = `https://www.notion.so/${project.id.replace(/-/g, '')}`;
-
-      let message = `📋 프로젝트 상세 정보\n\n`;
-      message += `🏷️ 이름: ${project.name}\n`;
-      message += `🔧 서비스: ${project.serviceType}\n`;
-      message += `📊 상태: ${project.status}\n`;
-      
-      if (project.customer) {
-        message += `🏢 고객: ${project.customer}\n`;
-      }
-      if (project.location) {
-        message += `📍 장소: ${project.location}\n`;
-      }
-      if (project.eventDate) {
-        message += `📅 일정: ${project.eventDate}\n`;
-      }
-      if (project.ledSize) {
-        message += `📺 LED: ${project.ledSize}\n`;
-      }
-      
-      message += `\n🔗 Notion: ${notionUrl}`;
-
-      return {
-        success: true,
-        message,
-        project
-      };
-
-    } catch (error) {
-      console.error('프로젝트 조회 오류:', error);
-      return {
-        success: false,
-        message: '프로젝트 조회에 실패했습니다.',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
-   * 자연어에서 프로젝트 정보 추출
-   */
-  private parseProjectFromText(text: string): any {
-    const info: any = {};
-
-    // 서비스 유형 추출
-    if (/(설치|구축|시공|공사)/.test(text)) {
-      info.serviceType = '설치';
-    } else if (/(렌탈|대여|임대|수주)/.test(text)) {
-      info.serviceType = '렌탈';
-    } else if (/(멤버쉽|회원|메쎄이상)/.test(text)) {
-      info.serviceType = '멤버쉽';
-    }
-
-    // 프로젝트명 추출 (서비스 키워드 앞부분)
-    const serviceKeywords = ['설치', '구축', '시공', '렌탈', '대여', '수주', '멤버쉽'];
-    for (const keyword of serviceKeywords) {
-      const index = text.indexOf(keyword);
-      if (index > 0) {
-        info.name = text.substring(0, index).trim();
-        break;
-      }
-    }
-
-    // 동작 키워드 제거
-    if (info.name) {
-      info.name = info.name.replace(/(수주했어|따냄|맡기|했어|됐어|완료)/, '').trim();
-    }
-
-    // 상태 추출
-    if (/(견적|문의|요청)/.test(text)) {
-      info.status = '견적 요청';
-    } else if (/(승인|확정|결정)/.test(text)) {
-      info.status = '견적 승인';
-    } else if (/(완료|끝|마침)/.test(text)) {
-      info.status = '완료';
-    }
-
-    // 고객사 추출
-    const customerMatch = text.match(/([가-힣A-Za-z0-9]+(?:주식회사|회사|㈜|기업|그룹|센터))/);
-    if (customerMatch) {
-      info.customer = customerMatch[1];
-    }
-
-    // 장소 추출
-    const locationMatch = text.match(/([가-힣]+(?:시|구|동|역|센터|빌딩|타워))/);
-    if (locationMatch) {
-      info.location = locationMatch[1];
-    }
-
-    // LED 크기 추출
-    const ledSizeMatch = text.match(/(\d+)\s*(?:x|×|X)\s*(\d+)\s*(?:mm)?/);
-    if (ledSizeMatch) {
-      info.ledSize = `${ledSizeMatch[1]}x${ledSizeMatch[2]}mm`;
-    }
-
-    // 날짜 추출
-    const dateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) || 
-                     text.match(/(\d{4})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})/);
-    if (dateMatch) {
-      if (dateMatch.length === 3) {
-        // 월일 형식
-        const currentYear = new Date().getFullYear();
-        info.eventDate = `${currentYear}-${dateMatch[1].padStart(2, '0')}-${dateMatch[2].padStart(2, '0')}`;
-      } else {
-        // 년월일 형식
-        info.eventDate = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
-      }
-    }
-
-    console.log('📋 파싱된 프로젝트 정보:', info);
-    return info;
-  }
-
-  /**
-   * 자연어에서 업데이트 정보 추출
-   */
-  private parseUpdateFromText(text: string): any {
-    const info: any = {};
-
-    // 프로젝트 키워드 추출 (첫 번째 단어)
-    const projectKeywordMatch = text.match(/^([가-힣A-Za-z0-9]+)/);
-    if (projectKeywordMatch) {
-      info.projectKeyword = projectKeywordMatch[1];
-    }
-
-    // 업데이트 유형 및 값 추출
-    if (/(견적|승인|확정|완료|진행|시작|철거)/.test(text)) {
-      info.type = 'status';
-      if (/(견적.*완료|견적.*승인)/.test(text)) {
-        info.value = '견적 승인';
-      } else if (/(승인|확정|결정)/.test(text)) {
-        info.value = '견적 승인';
-      } else if (/(완료|끝|마침)/.test(text)) {
-        info.value = '완료';
-      } else if (/(설치.*시작|구축.*시작|진행)/.test(text)) {
-        info.value = '설치 중';
-      } else if (/(철거)/.test(text)) {
-        info.value = '철거 중';
-      } else {
-        info.value = '견적 검토';
-      }
-    }
-
-    // LED 크기 업데이트
-    const ledSizeMatch = text.match(/(\d+)\s*(?:x|×|X)\s*(\d+)\s*(?:mm)?/);
-    if (ledSizeMatch) {
-      info.type = 'tech';
-      info.value = `${ledSizeMatch[1]}x${ledSizeMatch[2]}mm`;
-      info.field = 'LED 크기 (가로x세로)';
-    }
-
-    // 날짜 업데이트
-    const dateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) || 
-                     text.match(/(\d{4})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})/);
-    if (dateMatch && /(일정|날짜|변경)/.test(text)) {
-      info.type = 'schedule';
-      if (dateMatch.length === 3) {
-        const currentYear = new Date().getFullYear();
-        info.value = `${currentYear}-${dateMatch[1].padStart(2, '0')}-${dateMatch[2].padStart(2, '0')}`;
-      } else {
-        info.value = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
-      }
-    }
-
-    // 고객 정보 업데이트
-    if (/(고객|연락처|담당자)/.test(text)) {
-      info.type = 'customer';
-      const emailMatch = text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-      const phoneMatch = text.match(/(\d{2,3}-\d{3,4}-\d{4})/);
-      const nameMatch = text.match(/([가-힣]{2,4})\s*(?:님|씨|대리|과장|부장|팀장)/);
-      
-      if (emailMatch) {
-        info.value = emailMatch[1];
-        info.field = '고객 연락처';
-      } else if (phoneMatch) {
-        info.value = phoneMatch[1];
-        info.field = '고객 연락처';
-      } else if (nameMatch) {
-        info.value = nameMatch[1];
-        info.field = '고객명';
-      }
-    }
-
-    console.log('📝 파싱된 업데이트 정보:', info);
-    return info;
-  }
-
-  /**
-   * 업데이트 실행
-   */
-  private async executeUpdate(projectId: string, updateInfo: any, userProfile: any, originalText: string): Promise<{ success: boolean; description?: string; error?: string }> {
-    try {
-      const properties: any = {};
-      let description = '';
-
-      switch (updateInfo.type) {
-        case 'status':
-          properties['행사 상태'] = {
-            status: { name: updateInfo.value }
-          };
-          description = `상태를 "${updateInfo.value}"로 변경`;
-          break;
-
-        case 'tech':
-          properties[updateInfo.field] = {
-            rich_text: [{ text: { content: updateInfo.value } }]
-          };
-          description = `${updateInfo.field}를 "${updateInfo.value}"로 변경`;
-          break;
-
-        case 'schedule':
-          properties['행사 일정'] = {
-            rich_text: [{ text: { content: updateInfo.value } }]
-          };
-          description = `일정을 "${updateInfo.value}"로 변경`;
-          break;
-
-        case 'customer':
-          if (updateInfo.field === '고객 연락처') {
-            properties['고객 연락처'] = {
-              phone_number: updateInfo.value
-            };
-          } else {
-            properties[updateInfo.field] = {
-              rich_text: [{ text: { content: updateInfo.value } }]
-            };
-          }
-          description = `${updateInfo.field}를 "${updateInfo.value}"로 변경`;
-          break;
-
-        default:
-          return {
-            success: false,
-            error: '지원되지 않는 업데이트 유형입니다.'
-          };
-      }
-
-      await this.notion.pages.update({
-        page_id: projectId,
-        properties
-      });
-
-      // 업데이트 댓글 추가
-      await this.notion.comments.create({
-        parent: { page_id: projectId },
-        rich_text: [{
-          type: 'text',
-          text: { 
-            content: `📝 LINE WORKS에서 MCP를 통해 업데이트\n수정자: ${userProfile?.department || ''} ${userProfile?.name || 'Unknown'}\n수정 내용: ${description}\n수정 시간: ${new Date().toLocaleString('ko-KR')}\n원본 텍스트: "${originalText}"` 
-          }
-        }]
-      });
-
-      return {
-        success: true,
-        description
-      };
-
-    } catch (error) {
-      console.error('업데이트 실행 오류:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
-   * 프로젝트 이름으로 검색
-   */
   private async searchProjectsByName(keyword: string): Promise<any[]> {
     try {
       const response = await this.notion.databases.query({
@@ -613,9 +758,59 @@ export class NotionProjectMCP {
     }
   }
 
-  /**
-   * Notion 페이지를 프로젝트 객체로 변환
-   */
+  private async getProject(projectIdOrName: string): Promise<NotionProjectResult> {
+    try {
+      let project;
+      
+      if (projectIdOrName.length === 36 && projectIdOrName.includes('-')) {
+        const response = await this.notion.pages.retrieve({ page_id: projectIdOrName });
+        project = this.formatProjectFromNotionPage(response);
+      } else {
+        const projects = await this.searchProjectsByName(projectIdOrName);
+        if (projects.length === 0) {
+          return {
+            success: false,
+            message: `"${projectIdOrName}" 프로젝트를 찾을 수 없습니다.`
+          };
+        }
+        project = projects[0];
+      }
+
+      const notionUrl = `https://www.notion.so/${project.id.replace(/-/g, '')}`;
+
+      let message = `📋 프로젝트 상세 정보\n\n`;
+      message += `🏷️ 이름: ${project.name}\n`;
+      message += `🔧 서비스: ${project.serviceType}\n`;
+      message += `📊 상태: ${project.status}\n`;
+      
+      if (project.customer) {
+        message += `🏢 고객: ${project.customer}\n`;
+      }
+      if (project.location) {
+        message += `📍 장소: ${project.location}\n`;
+      }
+      if (project.eventDate) {
+        message += `📅 일정: ${project.eventDate}\n`;
+      }
+      
+      message += `\n🔗 Notion: ${notionUrl}`;
+
+      return {
+        success: true,
+        message,
+        project
+      };
+
+    } catch (error) {
+      console.error('프로젝트 조회 오류:', error);
+      return {
+        success: false,
+        message: '프로젝트 조회에 실패했습니다.',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
   private formatProjectFromNotionPage(page: any): any {
     const properties = page.properties;
     
@@ -627,7 +822,6 @@ export class NotionProjectMCP {
       customer: properties['고객사']?.select?.name || '',
       location: properties['행사장']?.rich_text?.[0]?.text?.content || '',
       eventDate: properties['행사 일정']?.rich_text?.[0]?.text?.content || '',
-      ledSize: properties['LED 크기 (가로x세로)']?.rich_text?.[0]?.text?.content || '',
       createdTime: page.created_time,
       lastEditedTime: page.last_edited_time
     };
@@ -637,7 +831,7 @@ export class NotionProjectMCP {
 // MCP 도구 정의
 export const notionProjectTool = {
   name: 'notion_project',
-  description: 'Notion 데이터베이스에서 LED 렌탈/설치 프로젝트를 생성, 업데이트, 검색합니다. 자연어로 입력된 프로젝트 정보를 자동으로 파싱하여 적절한 Notion 필드에 저장하고 업데이트합니다.',
+  description: 'Notion 데이터베이스에서 LED 렌탈/설치 프로젝트를 생성, 업데이트, 검색합니다. 복수 LED 정보를 자동으로 파싱하여 적절한 LED1, LED2 필드에 저장하고 업데이트합니다.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -648,7 +842,7 @@ export const notionProjectTool = {
       },
       text: {
         type: 'string',
-        description: '자연어로 입력된 프로젝트 내용 (예: "코엑스팝업 구축 수주했어", "코엑스팝업 견적 완료했어")'
+        description: '자연어로 입력된 프로젝트 내용 (예: "킨텍스 팝업은 2개소이고, LED크기는 6000x3500, 4000x2000이야")'
       },
       userId: {
         type: 'string',
