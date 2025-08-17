@@ -23,6 +23,87 @@ export class InteractiveConversationManager {
   private conversations: Map<string, ConversationState> = new Map();
   private readonly CONVERSATION_TIMEOUT = 10 * 60 * 1000; // 10분
 
+  private questionTemplates: Record<string, QuestionTemplate> = {
+    customer: {
+      field: 'customer',
+      question: '📢 고객사명을 알려주세요.\n예시: "삼성전자", "LG전자", "현대자동차"',
+      validation: (answer) => answer.length > 1,
+      required: true
+    },
+    location: {
+      field: 'location',
+      question: '📍 행사 장소를 알려주세요.\n예시: "코엑스", "킨텍스", "강남역", "홍대입구"',
+      validation: (answer) => answer.length > 1,
+      required: true
+    },
+    eventDate: {
+      field: 'eventDate',
+      question: '📅 행사 일정을 알려주세요.\n예시: "8월 25일", "2025-08-25", "다음 주 화요일"',
+      validation: (answer) => /\d+/.test(answer),
+      required: true
+    },
+    ledInfo: {
+      field: 'ledInfo',
+      question: '📺 LED 정보를 알려주세요.\n\n다음 중 선택하세요:\n1️⃣ LED 개수: "2개소", "3개소"\n2️⃣ LED 크기: "6000x3500", "4000x2000"\n3️⃣ 둘 다: "2개소, 크기는 6000x3500, 4000x2000"',
+      validation: (answer) => /\d+/.test(answer),
+      required: true
+    },
+    led1Size: {
+      field: 'led1Size',
+      question: '📺 LED1의 크기를 알려주세요.\n예시: "6000x3500", "4000x2000", "3000x2000"',
+      validation: (answer) => /\d+\s*[x×X]\s*\d+/.test(answer),
+      required: true
+    },
+    led1StageHeight: {
+      field: 'led1StageHeight',
+      question: '📏 LED1의 무대 높이를 알려주세요.\n예시: "600mm", "800", "1000밀리" (0mm도 가능합니다)',
+      validation: (answer) => /\d+/.test(answer),
+      required: false
+    },
+    led2Size: {
+      field: 'led2Size',
+      question: '📺 LED2의 크기를 알려주세요.\n예시: "4000x2000", "3000x2000", "5000x3000"',
+      validation: (answer) => /\d+\s*[x×X]\s*\d+/.test(answer),
+      required: true
+    },
+    led2StageHeight: {
+      field: 'led2StageHeight',
+      question: '📏 LED2의 무대 높이를 알려주세요.\n예시: "600mm", "800", "1000밀리" (0mm도 가능합니다)',
+      validation: (answer) => /\d+/.test(answer),
+      required: false
+    },
+    led3Size: {
+      field: 'led3Size',
+      question: '📺 LED3의 크기를 알려주세요.\n예시: "4000x2000", "3000x2000", "5000x3000"',
+      validation: (answer) => /\d+\s*[x×X]\s*\d+/.test(answer),
+      required: true
+    },
+    led3StageHeight: {
+      field: 'led3StageHeight',
+      question: '📏 LED3의 무대 높이를 알려주세요.\n예시: "600mm", "800", "1000밀리" (0mm도 가능합니다)',
+      validation: (answer) => /\d+/.test(answer),
+      required: false
+    },
+    installEnvironment: {
+      field: 'installEnvironment',
+      question: '🏢 설치 환경을 알려주세요.\n예시: "실내", "실외", "반야외", "옥상"',
+      validation: (answer) => answer.length > 1,
+      required: true
+    },
+    installSpace: {
+      field: 'installSpace',
+      question: '📐 설치 공간 정보를 알려주세요.\n예시: "10평", "100㎡", "넓은 공간", "좁은 공간"',
+      validation: (answer) => answer.length > 1,
+      required: true
+    },
+    installBudget: {
+      field: 'installBudget',
+      question: '💰 예산 범위를 알려주세요.\n예시: "1000만원", "3000-5000만원", "예산 무관"',
+      validation: (answer) => answer.length > 1,
+      required: false
+    }
+  };
+
   /**
    * 프로젝트 생성 시 추가 정보가 필요한지 확인
    */
@@ -93,6 +174,8 @@ export class InteractiveConversationManager {
     // 첫 번째 질문 생성
     const firstQuestion = this.generateNextQuestion(userId);
     
+    console.log('📝 대화형 수집 시작:', { userId, missingInfo, firstQuestion });
+    
     return {
       needsInteraction: true,
       firstQuestion
@@ -115,16 +198,18 @@ export class InteractiveConversationManager {
     if (!conversation) {
       return {
         isComplete: false,
-        error: '진행 중인 대화를 찾을 수 없습니다. 처음부터 다시 시도해주세요.'
+        error: '진행 중인 대화를 찾을 수 없습니다. "신규 프로젝트"로 다시 시작해주세요.'
       };
     }
 
-    // 취소 요청 처리
+    console.log('📞 사용자 응답 처리:', { userId, response, step: conversation.step });
+
+    // 취소 요청 확인
     if (this.isCancelRequest(response)) {
       this.conversations.delete(userId);
       return {
         isComplete: true,
-        error: '정보 수집이 취소되었습니다.'
+        error: '대화가 취소되었습니다. 언제든 다시 시작할 수 있습니다.'
       };
     }
 
@@ -133,46 +218,124 @@ export class InteractiveConversationManager {
       return this.processConfirmationResponse(userId, response);
     }
 
-    // 현재 질문에 대한 답변 처리
-    const currentField = conversation.missingInfo[0];
-    const validationResult = this.validateAndStoreResponse(userId, currentField, response);
-
-    if (!validationResult.valid) {
-      conversation.attempts++;
-      if (conversation.attempts >= 3) {
-        // 3번 실패 시 해당 항목 스킵
-        conversation.missingInfo.shift();
-        conversation.attempts = 0;
-        
-        if (conversation.missingInfo.length === 0) {
-          return this.prepareConfirmation(userId);
-        }
-        
-        return {
-          isComplete: false,
-          nextQuestion: `해당 정보는 나중에 입력하겠습니다.\n\n${this.generateNextQuestion(userId)}`
-        };
-      }
-      
-      return {
-        isComplete: false,
-        nextQuestion: `${validationResult.error}\n\n${conversation.lastQuestion}`,
-        error: validationResult.error
-      };
-    }
-
-    // 다음 질문으로 진행
-    conversation.missingInfo.shift();
-    conversation.attempts = 0;
-
-    if (conversation.missingInfo.length === 0) {
-      return this.prepareConfirmation(userId);
+    // 정보 수집 단계 처리
+    if (conversation.step === 'collecting') {
+      return this.processCollectionResponse(userId, response);
     }
 
     return {
       isComplete: false,
-      nextQuestion: this.generateNextQuestion(userId)
+      error: '알 수 없는 상태입니다. 다시 시도해주세요.'
     };
+  }
+
+  /**
+   * 정보 수집 응답 처리
+   */
+  private processCollectionResponse(userId: string, response: string): any {
+    const conversation = this.conversations.get(userId);
+    if (!conversation) return { isComplete: false };
+
+    const currentField = conversation.missingInfo[0];
+    const template = this.questionTemplates[currentField];
+
+    if (!template) {
+      console.error('❌ 알 수 없는 필드:', currentField);
+      conversation.missingInfo.shift(); // 문제가 있는 필드 제거
+      
+      if (conversation.missingInfo.length === 0) {
+        return this.proceedToConfirmation(userId);
+      }
+      
+      return {
+        isComplete: false,
+        nextQuestion: this.generateNextQuestion(userId)
+      };
+    }
+
+    // 유효성 검사
+    if (template.validation && !template.validation(response)) {
+      conversation.attempts++;
+      
+      if (conversation.attempts >= 3) {
+        // 3번 실패 시 스킵 또는 기본값 사용
+        if (!template.required) {
+          console.log('📝 선택적 필드 스킵:', currentField);
+          conversation.missingInfo.shift();
+          conversation.attempts = 0;
+          
+          if (conversation.missingInfo.length === 0) {
+            return this.proceedToConfirmation(userId);
+          }
+          
+          return {
+            isComplete: false,
+            nextQuestion: this.generateNextQuestion(userId)
+          };
+        } else {
+          return {
+            isComplete: false,
+            nextQuestion: `❌ 3번 입력이 잘못되었습니다. 다시 한번 정확히 입력해주세요:\n\n${template.question}\n\n💡 "취소"라고 하면 대화를 중단할 수 있습니다.`
+          };
+        }
+      }
+      
+      return {
+        isComplete: false,
+        nextQuestion: `❌ 입력 형식이 올바르지 않습니다. (${conversation.attempts}/3)\n\n${template.question}`
+      };
+    }
+
+    // 성공적으로 수집
+    conversation.collectedInfo[currentField] = this.parseResponse(currentField, response);
+    conversation.missingInfo.shift();
+    conversation.attempts = 0;
+
+    console.log('✅ 정보 수집 성공:', { field: currentField, value: conversation.collectedInfo[currentField] });
+
+    // 더 필요한 정보가 있는지 확인
+    if (conversation.missingInfo.length > 0) {
+      return {
+        isComplete: false,
+        nextQuestion: this.generateNextQuestion(userId)
+      };
+    }
+
+    // 모든 정보 수집 완료 - 확인 단계로
+    return this.proceedToConfirmation(userId);
+  }
+
+  /**
+   * 응답 파싱
+   */
+  private parseResponse(field: string, response: string): any {
+    switch (field) {
+      case 'led1StageHeight':
+      case 'led2StageHeight':
+      case 'led3StageHeight':
+        const heightMatch = response.match(/(\d+)/);
+        return heightMatch ? parseInt(heightMatch[1]) : 0;
+      
+      case 'led1Size':
+      case 'led2Size':
+      case 'led3Size':
+        const sizeMatch = response.match(/(\d+)\s*[x×X]\s*(\d+)/);
+        return sizeMatch ? `${sizeMatch[1]}x${sizeMatch[2]}` : response;
+      
+      case 'eventDate':
+        // 날짜 형식 정규화
+        if (/\d{1,2}\s*월\s*\d{1,2}\s*일/.test(response)) {
+          const match = response.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+          if (match) {
+            const currentYear = new Date().getFullYear();
+            return `${currentYear}-${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`;
+          }
+        }
+        return response;
+      
+      default:
+        return response.trim();
+    }
   }
 
   /**
@@ -181,289 +344,72 @@ export class InteractiveConversationManager {
   private generateNextQuestion(userId: string): string {
     const conversation = this.conversations.get(userId);
     if (!conversation || conversation.missingInfo.length === 0) {
-      return '';
+      return '모든 정보가 수집되었습니다.';
     }
 
-    const field = conversation.missingInfo[0];
-    const template = this.getQuestionTemplate(field);
+    const currentField = conversation.missingInfo[0];
+    const template = this.questionTemplates[currentField];
     
-    let question = `[${conversation.missingInfo.length}개 남음] ${template.question}`;
-    
-    if (template.suggestions && template.suggestions.length > 0) {
-      question += `\n\n💡 예시: ${template.suggestions.join(', ')}`;
+    if (!template) {
+      console.error('❌ 알 수 없는 필드 템플릿:', currentField);
+      return '정보를 수집하는 중 오류가 발생했습니다.';
     }
+
+    const progressInfo = `[${conversation.missingInfo.length > 5 ? conversation.missingInfo.length - 5 + 1 : conversation.missingInfo.length}/${conversation.missingInfo.length > 5 ? 6 : conversation.missingInfo.length}]`;
     
-    // 스킵 옵션 추가
-    if (!template.required) {
-      question += `\n\n"스킵"이라고 입력하면 이 항목을 건너뜁니다.`;
-    }
-    
-    conversation.lastQuestion = question;
-    return question;
+    conversation.lastQuestion = template.question;
+    conversation.timestamp = Date.now();
+
+    return `${progressInfo} ${template.question}\n\n💬 "취소"라고 하면 언제든 중단할 수 있습니다.`;
   }
 
   /**
-   * 질문 템플릿 가져오기
+   * 확인 단계로 전환
    */
-  private getQuestionTemplate(field: string): QuestionTemplate {
-    const templates: Record<string, QuestionTemplate> = {
-      customer: {
-        field: 'customer',
-        question: '🏢 고객사명을 알려주세요.',
-        suggestions: ['삼성전자', '현대모터스', '롯데그룹'],
-        required: true,
-        validation: (answer) => answer.length > 1
-      },
-      
-      location: {
-        field: 'location',
-        question: '📍 행사 장소를 알려주세요.',
-        suggestions: ['코엑스', '킨텍스', '강남역', '홍대'],
-        required: true,
-        validation: (answer) => answer.length > 1
-      },
-      
-      eventDate: {
-        field: 'eventDate',
-        question: '📅 행사 날짜를 알려주세요.',
-        suggestions: ['8월 25일', '2025-08-25', '다음 주 월요일'],
-        required: true,
-        validation: (answer) => /\d/.test(answer)
-      },
-      
-      ledInfo: {
-        field: 'ledInfo',
-        question: '📺 LED 개수와 크기를 알려주세요.',
-        suggestions: ['2개소, 6000x3500과 4000x2000', '1개소 5000x3000'],
-        required: true,
-        validation: (answer) => /\d/.test(answer)
-      },
-      
-      led1Size: {
-        field: 'led1Size',
-        question: '📺 첫 번째 LED 크기를 알려주세요.',
-        suggestions: ['6000x3500', '5000x3000', '4000x2500'],
-        required: true,
-        validation: (answer) => /\d+\s*[x×X]\s*\d+/.test(answer)
-      },
-      
-      led1StageHeight: {
-        field: 'led1StageHeight',
-        question: '🏗️ 첫 번째 LED 무대높이를 알려주세요.',
-        suggestions: ['600mm', '800mm', '1000mm', '0mm'],
-        required: false,
-        validation: (answer) => /\d+/.test(answer)
-      },
-      
-      led2Size: {
-        field: 'led2Size',
-        question: '📺 두 번째 LED 크기를 알려주세요.',
-        suggestions: ['4000x2500', '3000x2000', '6000x3000'],
-        required: true,
-        validation: (answer) => /\d+\s*[x×X]\s*\d+/.test(answer)
-      },
-      
-      led2StageHeight: {
-        field: 'led2StageHeight',
-        question: '🏗️두 번째 LED 무대높이를 알려주세요.',
-        suggestions: ['600mm', '800mm', '1000mm', '0mm'],
-        required: false,
-        validation: (answer) => /\d+/.test(answer)
-      },
-      
-      installEnvironment: {
-        field: 'installEnvironment',
-        question: '🏠 설치 환경을 알려주세요.',
-        suggestions: ['실내', '실외'],
-        required: true,
-        validation: (answer) => ['실내', '실외'].includes(answer)
-      },
-      
-      installSpace: {
-        field: 'installSpace',
-        question: '🏢 설치 공간 유형을 알려주세요.',
-        suggestions: ['기업', '상가', '병원', '공공시설', '숙박시설'],
-        required: true,
-        validation: (answer) => answer.length > 1
-      },
-      
-      installBudget: {
-        field: 'installBudget',
-        question: '💰 설치 예산 범위를 알려주세요.',
-        suggestions: ['1억 미만', '1-3억', '3-5억', '5억 이상'],
-        required: false,
-        validation: (answer) => answer.length > 1
-      }
-    };
-
-    return templates[field] || {
-      field,
-      question: `${field} 정보를 알려주세요.`,
-      required: false,
-      validation: () => true
-    };
-  }
-
-  /**
-   * 응답 검증 및 저장
-   */
-  private validateAndStoreResponse(userId: string, field: string, response: string): {
-    valid: boolean;
-    error?: string;
-  } {
-    const conversation = this.conversations.get(userId);
-    if (!conversation) {
-      return { valid: false, error: '대화 상태를 찾을 수 없습니다.' };
-    }
-
-    const template = this.getQuestionTemplate(field);
-    
-    // 스킵 처리
-    if (response.toLowerCase().includes('스킵') && !template.required) {
-      return { valid: true };
-    }
-
-    // 검증
-    if (template.validation && !template.validation(response)) {
-      return { 
-        valid: false, 
-        error: '올바른 형식으로 입력해주세요.' 
-      };
-    }
-
-    // 저장
-    conversation.collectedInfo[field] = this.parseFieldValue(field, response);
-    return { valid: true };
-  }
-
-  /**
-   * 필드 값 파싱
-   */
-  private parseFieldValue(field: string, response: string): any {
-    switch (field) {
-      case 'eventDate':
-        // 날짜 파싱 로직
-        const dateMatch = response.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) ||
-                         response.match(/(\d{4})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})/);
-        if (dateMatch) {
-          if (dateMatch.length === 3) {
-            const currentYear = new Date().getFullYear();
-            return `${currentYear}-${dateMatch[1].padStart(2, '0')}-${dateMatch[2].padStart(2, '0')}`;
-          } else {
-            return `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
-          }
-        }
-        return response;
-
-      case 'led1StageHeight':
-      case 'led2StageHeight':
-        const heightMatch = response.match(/(\d+)/);
-        return heightMatch ? parseInt(heightMatch[1]) : 0;
-
-      case 'led1Size':
-      case 'led2Size':
-        const sizeMatch = response.match(/(\d+)\s*[x×X]\s*(\d+)/);
-        return sizeMatch ? `${sizeMatch[1]}x${sizeMatch[2]}` : response;
-
-      case 'ledInfo':
-        // 복합 LED 정보 파싱
-        return this.parseLEDInfo(response);
-
-      default:
-        return response.trim();
-    }
-  }
-
-  /**
-   * LED 정보 파싱
-   */
-  private parseLEDInfo(response: string): any {
-    const ledInfos: any[] = [];
-    
-    // 개수 추출
-    const countMatch = response.match(/(\d+)\s*개소/);
-    const count = countMatch ? parseInt(countMatch[1]) : 1;
-
-    // 크기 추출
-    const sizePattern = /(\d+)\s*[x×X]\s*(\d+)/g;
-    let sizeMatch;
-    while ((sizeMatch = sizePattern.exec(response)) !== null) {
-      ledInfos.push({
-        size: `${sizeMatch[1]}x${sizeMatch[2]}`
-      });
-    }
-
-    // 무대높이 추출
-    const heightMatch = response.match(/(?:둘|모두|전부)?\s*(?:다|모두)?\s*(\d+)\s*(?:mm|밀리)?/);
-    if (heightMatch) {
-      const height = parseInt(heightMatch[1]);
-      ledInfos.forEach(led => led.stageHeight = height);
-    }
-
-    return {
-      count,
-      ledInfos
-    };
-  }
-
-  /**
-   * 확인 단계 준비
-   */
-  private prepareConfirmation(userId: string): any {
+  private proceedToConfirmation(userId: string): any {
     const conversation = this.conversations.get(userId);
     if (!conversation) return { isComplete: false };
 
     conversation.step = 'confirming';
     
-    const confirmationMessage = this.generateConfirmationMessage(conversation.collectedInfo);
+    let message = '📋 수집된 정보를 확인해주세요:\n\n';
+    
+    Object.entries(conversation.collectedInfo).forEach(([key, value]) => {
+      const label = this.getFieldLabel(key);
+      message += `${label}: ${value}\n`;
+    });
+    
+    message += '\n✅ 정보가 맞다면 "확인" 또는 "맞아요"';
+    message += '\n❌ "수정" 또는 "다시"를 입력하면 수정할 수 있습니다.';
+    message += '\n🚫 "취소"를 입력하면 취소됩니다.';
     
     return {
       isComplete: false,
       needsConfirmation: true,
-      confirmationMessage
+      confirmationMessage: message
     };
   }
 
   /**
-   * 확인 메시지 생성
+   * 필드 라벨 변환
    */
-  private generateConfirmationMessage(info: Record<string, any>): string {
-    let message = '📋 수집된 정보를 확인해주세요:\n\n';
+  private getFieldLabel(field: string): string {
+    const labels: Record<string, string> = {
+      customer: '🏢 고객사',
+      location: '📍 장소',
+      eventDate: '📅 일정',
+      led1Size: '📺 LED1 크기',
+      led1StageHeight: '📏 LED1 무대높이',
+      led2Size: '📺 LED2 크기', 
+      led2StageHeight: '📏 LED2 무대높이',
+      led3Size: '📺 LED3 크기',
+      led3StageHeight: '📏 LED3 무대높이',
+      installEnvironment: '🏢 설치환경',
+      installSpace: '📐 설치공간',
+      installBudget: '💰 예산'
+    };
     
-    if (info.customer) message += `🏢 고객사: ${info.customer}\n`;
-    if (info.location) message += `📍 장소: ${info.location}\n`;
-    if (info.eventDate) message += `📅 일정: ${info.eventDate}\n`;
-    
-    if (info.ledInfo) {
-      message += `📺 LED 정보: ${info.ledInfo.count}개소\n`;
-      info.ledInfo.ledInfos?.forEach((led: any, index: number) => {
-        message += `  • LED${index + 1}: ${led.size}`;
-        if (led.stageHeight) message += ` (높이: ${led.stageHeight}mm)`;
-        message += '\n';
-      });
-    }
-    
-    if (info.led1Size) {
-      message += `📺 LED1: ${info.led1Size}`;
-      if (info.led1StageHeight) message += ` (높이: ${info.led1StageHeight}mm)`;
-      message += '\n';
-    }
-    
-    if (info.led2Size) {
-      message += `📺 LED2: ${info.led2Size}`;
-      if (info.led2StageHeight) message += ` (높이: ${info.led2StageHeight}mm)`;
-      message += '\n';
-    }
-    
-    if (info.installEnvironment) message += `🏠 환경: ${info.installEnvironment}\n`;
-    if (info.installSpace) message += `🏢 공간: ${info.installSpace}\n`;
-    if (info.installBudget) message += `💰 예산: ${info.installBudget}\n`;
-    
-    message += '\n✅ "확인" 또는 "맞습니다"를 입력하면 프로젝트를 생성합니다.';
-    message += '\n❌ "수정" 또는 "다시"를 입력하면 수정할 수 있습니다.';
-    message += '\n🚫 "취소"를 입력하면 취소됩니다.';
-    
-    return message;
+    return labels[field] || field;
   }
 
   /**
@@ -522,6 +468,7 @@ export class InteractiveConversationManager {
     const now = Date.now();
     for (const [userId, conversation] of this.conversations.entries()) {
       if (now - conversation.timestamp > this.CONVERSATION_TIMEOUT) {
+        console.log('🧹 만료된 대화 정리:', userId);
         this.conversations.delete(userId);
       }
     }
@@ -540,6 +487,14 @@ export class InteractiveConversationManager {
    */
   getConversationState(userId: string): ConversationState | undefined {
     return this.conversations.get(userId);
+  }
+
+  /**
+   * 대화 강제 종료
+   */
+  endConversation(userId: string): void {
+    this.conversations.delete(userId);
+    console.log('🔚 대화 강제 종료:', userId);
   }
 }
 
