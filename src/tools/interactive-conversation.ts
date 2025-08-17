@@ -496,6 +496,46 @@ export class InteractiveConversationManager {
     this.conversations.delete(userId);
     console.log('🔚 대화 강제 종료:', userId);
   }
+
+  /**
+   * 수집된 정보로 프로젝트 생성 텍스트 생성 (대화형 전용)
+   */
+  generateProjectCreationText(info: Record<string, any>): string {
+    // 프로젝트명 결정 (고객사 기반으로 생성)
+    const projectName = info.customer ? `${info.customer} 프로젝트` : (info.projectName || '신규 프로젝트');
+    const serviceType = info.serviceType || '렌탈';
+    
+    let text = `${projectName} ${serviceType} 수주했어`;
+    
+    if (info.customer && !projectName.includes(info.customer)) {
+      text += `. 고객사는 ${info.customer}`;
+    }
+    if (info.location) text += `. 장소는 ${info.location}`;
+    if (info.eventDate) text += `. 일정은 ${info.eventDate}`;
+    
+    // LED 정보 추가
+    if (info.led1Size) {
+      text += `. LED1 크기는 ${info.led1Size}`;
+      if (info.led1StageHeight !== undefined) text += `, 무대높이 ${info.led1StageHeight}mm`;
+    }
+    if (info.led2Size) {
+      text += `. LED2 크기는 ${info.led2Size}`;
+      if (info.led2StageHeight !== undefined) text += `, 무대높이 ${info.led2StageHeight}mm`;
+    }
+    if (info.led3Size) {
+      text += `. LED3 크기는 ${info.led3Size}`;
+      if (info.led3StageHeight !== undefined) text += `, 무대높이 ${info.led3StageHeight}mm`;
+    }
+    
+    // 설치 관련 정보
+    if (info.installEnvironment) text += `. 설치환경은 ${info.installEnvironment}`;
+    if (info.installSpace) text += `. 설치공간은 ${info.installSpace}`;
+    if (info.installBudget) text += `. 예산은 ${info.installBudget}`;
+    
+    console.log('📋 대화형 프로젝트 생성 텍스트:', text);
+    
+    return text;
+  }
 }
 
 // 싱글톤 인스턴스

@@ -141,20 +141,28 @@ async function getProjectStatus(projectName: string): Promise<string> {
   }
 }
 
-// 🆕 프로젝트 관리 의도 감지 (개선된 버전)
+// 🆕 프로젝트 관리 의도 감지 (대화형 모드 분리)
 function detectProjectIntent(text: string): { 
   isProject: boolean; 
   isCreation: boolean; 
   isUpdate: boolean; 
   isAdvancedUpdate: boolean;
+  isInteractiveMode: boolean;
 } {
+  // 🔥 대화형 모드 키워드 (즉시 생성하지 않음)
+  const interactiveModePatterns = [
+    /^신규.*프로젝트$/,
+    /^새.*프로젝트$/,
+    /^프로젝트.*생성$/,
+    /^프로젝트.*만들기$/,
+    /^대화형.*프로젝트$/
+  ];
+
   const creationPatterns = [
     /(수주|따냄|맡기|맡아|시작|진행|들어왔).*(?:했어|됐어|완료)/,
     /(?:렌탈|설치|구축|멤버쉽).*(?:수주|따냄|맡기)/,
     /(?:프로젝트|건).*(?:새로|시작|맡아)/,
-    /신규.*프로젝트/,
-    /새.*프로젝트/,
-    /프로젝트.*생성/
+    /[가-힣A-Za-z0-9]+\s*(?:렌탈|설치|구축|멤버쉽).*(?:수주|맡기|시작)/
   ];
 
   const updatePatterns = [
@@ -174,46 +182,15 @@ function detectProjectIntent(text: string): {
     /친절한\s*설명/
   ];
 
-  const isCreation = creationPatterns.some(pattern => pattern.test(text));
+  const isInteractiveMode = interactiveModePatterns.some(pattern => pattern.test(text.trim()));
+  const isCreation = !isInteractiveMode && creationPatterns.some(pattern => pattern.test(text));
   const isUpdate = updatePatterns.some(pattern => pattern.test(text));
   const isAdvancedUpdate = advancedUpdatePatterns.some(pattern => pattern.test(text));
-  const isProject = isCreation || isUpdate || isAdvancedUpdate;
+  const isProject = isCreation || isUpdate || isAdvancedUpdate || isInteractiveMode;
 
-  console.log('🔍 의도 감지 결과:', { text, isProject, isCreation, isUpdate, isAdvancedUpdate });
+  console.log('🔍 의도 감지 결과:', { text, isProject, isCreation, isUpdate, isAdvancedUpdate, isInteractiveMode });
 
-  return { isProject, isCreation, isUpdate, isAdvancedUpdate };
-}
-
-/**
- * 수집된 정보로 프로젝트 생성 텍스트 생성
- */
-function generateProjectCreationText(info: Record<string, any>): string {
-  let text = `${info.projectName || '신규 프로젝트'} ${info.serviceType || '렌탈'} 수주했어`;
-  
-  if (info.customer) text += `. 고객사는 ${info.customer}`;
-  if (info.location) text += `. 장소는 ${info.location}`;
-  if (info.eventDate) text += `. 일정은 ${info.eventDate}`;
-  
-  if (info.ledInfo && info.ledInfo.ledInfos) {
-    text += `. LED는 ${info.ledInfo.count}개소이고 크기는 `;
-    const sizes = info.ledInfo.ledInfos.map((led: any) => led.size).join(', ');
-    text += sizes;
-    
-    if (info.ledInfo.ledInfos[0]?.stageHeight) {
-      text += `. 무대높이는 모두 ${info.ledInfo.ledInfos[0].stageHeight}mm`;
-    }
-  } else {
-    if (info.led1Size) {
-      text += `. LED1 크기는 ${info.led1Size}`;
-      if (info.led1StageHeight) text += `, 무대높이 ${info.led1StageHeight}mm`;
-    }
-    if (info.led2Size) {
-      text += `. LED2 크기는 ${info.led2Size}`;
-      if (info.led2StageHeight) text += `, 무대높이 ${info.led2StageHeight}mm`;
-    }
-  }
-  
-  return text;
+  return { isProject, isCreation, isUpdate, isAdvancedUpdate, isInteractiveMode };
 }
 
 /**
@@ -301,7 +278,7 @@ router.post('/callback', async (req: Request, res: Response) => {
         } else if (conversationResult.isComplete && conversationResult.collectedInfo) {
           // 수집된 정보로 프로젝트 생성
           try {
-            const projectCreationText = generateProjectCreationText(conversationResult.collectedInfo);
+            const projectCreationText = conversationManager.generateProjectCreationText(conversationResult.collectedInfo);
             console.log('📋 수집된 정보로 프로젝트 생성:', projectCreationText);
             
             const mcpResult = await callClaudeMCP('notion_project', {
@@ -329,7 +306,33 @@ router.post('/callback', async (req: Request, res: Response) => {
       else {
         const projectIntent = detectProjectIntent(text);
         
-        if (projectIntent.isProject) {
+        // 🔥 대화형 모드 처리 (즉시 생성하지 않음)
+        if (projectIntent.isInteractiveMode) {
+          console.log('💬 대화형 프로젝트 생성 모드 시작');
+          
+          // 기본 정보로 대화형 모드 시작
+          const defaultMissingInfo = ['customer', 'location', 'eventDate', 'ledInfo'];
+          const defaultExistingInfo = {
+            projectName: '신규 프로젝트',
+            serviceType: '렌탈'
+          };
+          
+          const interactionResult = conversationManager.startInteractiveCollection(
+            userId, 
+            defaultMissingInfo, 
+            defaultExistingInfo
+          );
+          
+          if (interactionResult.needsInteraction && interactionResult.firstQuestion) {
+            responseText = '💬 대화형 프로젝트 생성을 시작합니다!\n\n' + 
+                          '📝 필요한 정보를 순서대로 질문드리겠습니다.\n\n' +
+                          interactionResult.firstQuestion;
+          } else {
+            responseText = '대화형 모드 시작에 실패했습니다. 다시 시도해주세요.';
+          }
+        }
+        // 기존 프로젝트 관리 로직
+        else if (projectIntent.isProject) {
           try {
             let mcpResult;
             
