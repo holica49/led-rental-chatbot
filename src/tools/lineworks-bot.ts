@@ -87,7 +87,7 @@ async function callProjectMCP(toolName: string, args: Record<string, unknown>): 
     
     if (toolName === 'notion_project') {
       return projectService.handleProjectRequest({
-        action: args.action as string,
+        action: args.action as 'create' | 'update' | 'search' | 'get',
         text: args.text as string,
         userId: args.userId as string,
         projectId: args.projectId as string | undefined
