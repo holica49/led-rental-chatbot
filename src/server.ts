@@ -1,4 +1,4 @@
-// src/server.ts - MCP 클라이언트 통합
+// src/server.ts - 수정된 버전
 
 import express, { Request, Response, NextFunction } from 'express/index.js';
 import dotenv from 'dotenv';
@@ -8,16 +8,12 @@ import { startSchedulerService, getSchedulerService } from './tools/notion-sched
 import lineWorksRouter from './tools/lineworks-bot.js';
 import oauthRoutes from './tools/oauth-routes.js';
 import userAdminRoutes from './routes/user-admin.js';
-import { getMCPClient } from './tools/mcp-client.js';
 
 // 환경 변수 로드
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// MCP 클라이언트 가져오기
-const mcpClient = getMCPClient();
 
 // 미들웨어
 app.use(express.json());
@@ -48,8 +44,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // 헬스 체크 엔드포인트
 app.get('/', (_req: Request, res: Response) => {
-  const mcpStatus = mcpClient.getConnectionStatus();
-  
   res.json({ 
     status: 'OK',
     service: 'LED Rental System with Claude MCP Integration',
@@ -63,7 +57,6 @@ app.get('/', (_req: Request, res: Response) => {
       'Notion Integration'
     ],
     mcp: {
-      connected: mcpStatus,
       description: 'Claude AI를 통한 자연어 프로젝트 관리'
     },
     timestamp: new Date().toISOString()
@@ -71,23 +64,38 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 // 🆕 MCP 관련 엔드포인트
-app.get('/mcp/status', (_req: Request, res: Response) => {
-  const status = mcpClient.getConnectionStatus();
-  res.json({
-    connected: status,
-    server: 'Claude MCP Server',
-    tools: [
-      'notion_project - 프로젝트 생성/업데이트/검색',
-      'lineworks_calendar - 캘린더 관리',
-      'create_notion_estimate - 견적 생성'
-    ],
-    timestamp: new Date().toISOString()
-  });
+app.get('/mcp/status', async (_req: Request, res: Response) => {
+  try {
+    // 동적 import로 MCP 클라이언트 가져오기
+    const { getMCPClient } = await import('./tools/mcp-client.js');
+    const mcpClient = getMCPClient();
+    const status = mcpClient.getConnectionStatus();
+    
+    res.json({
+      connected: status,
+      server: 'Claude MCP Server',
+      tools: [
+        'notion_project - 프로젝트 생성/업데이트/검색',
+        'lineworks_calendar - 캘린더 관리',
+        'create_notion_estimate - 견적 생성'
+      ],
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.json({
+      connected: false,
+      error: 'MCP 클라이언트를 로드할 수 없습니다.',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 app.post('/mcp/connect', async (_req: Request, res: Response) => {
   try {
+    const { getMCPClient } = await import('./tools/mcp-client.js');
+    const mcpClient = getMCPClient();
     await mcpClient.connect();
+    
     res.json({
       success: true,
       message: 'Claude MCP Server 연결 성공',
@@ -97,24 +105,6 @@ app.post('/mcp/connect', async (_req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Claude MCP Server 연결 실패',
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-app.post('/mcp/disconnect', async (_req: Request, res: Response) => {
-  try {
-    await mcpClient.disconnect();
-    res.json({
-      success: true,
-      message: 'Claude MCP Server 연결 해제',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Claude MCP Server 연결 해제 실패',
       error: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString()
     });
@@ -169,6 +159,15 @@ app.get('/system/status', async (_req: Request, res: Response) => {
     const registeredUsers = users.filter(u => !u.id.startsWith('default-'));
     const unregisteredUsers = users.filter(u => u.id.startsWith('default-'));
 
+    let mcpStatus = false;
+    try {
+      const { getMCPClient } = await import('./tools/mcp-client.js');
+      const mcpClient = getMCPClient();
+      mcpStatus = mcpClient.getConnectionStatus();
+    } catch {
+      mcpStatus = false;
+    }
+
     res.json({
       status: 'OK',
       system: {
@@ -182,7 +181,7 @@ app.get('/system/status', async (_req: Request, res: Response) => {
           calendarEnabled: !!process.env.LINEWORKS_PRIVATE_KEY
         },
         mcp: {
-          connected: mcpClient.getConnectionStatus(),
+          connected: mcpStatus,
           server: 'Claude MCP Server',
           description: 'Claude AI 자연어 처리 서버'
         },
@@ -212,7 +211,6 @@ app.use((_req: Request, res: Response) => {
       '/ - Health check (MCP 상태 포함)',
       '/mcp/status - MCP 연결 상태',
       '/mcp/connect - MCP 서버 연결',
-      '/mcp/disconnect - MCP 서버 연결 해제',
       '/api/users/dashboard - User management dashboard',
       '/api/users - User management API',
       '/kakao/skill - Kakao chatbot webhook',
@@ -289,14 +287,16 @@ const server = app.listen(PORT, async () => {
     console.log('✅ User management database configured');
   }
 
-  // 🆕 Claude MCP 서버 연결 시도
-  console.log('🤖 Starting Claude MCP Server connection...');
+  // 🆕 Claude MCP 클라이언트 연결 시도
+  console.log('🤖 Starting Claude MCP Client connection...');
   try {
+    const { getMCPClient } = await import('./tools/mcp-client.js');
+    const mcpClient = getMCPClient();
     await mcpClient.connect();
-    console.log('✅ Claude MCP Server connected successfully');
+    console.log('✅ Claude MCP Client connected successfully');
     console.log('🎯 Ready for AI-powered project management!');
   } catch (error) {
-    console.error('❌ Failed to connect to Claude MCP Server:', error);
+    console.error('❌ Failed to connect to Claude MCP Client:', error);
     console.log('⚠️  프로젝트 관리 기능이 제한될 수 있습니다.');
   }
 });
@@ -310,7 +310,13 @@ process.on('SIGTERM', async () => {
   schedulerService.stopScheduler();
   
   // MCP 클라이언트 연결 해제
-  await mcpClient.disconnect();
+  try {
+    const { getMCPClient } = await import('./tools/mcp-client.js');
+    const mcpClient = getMCPClient();
+    await mcpClient.disconnect();
+  } catch {
+    // MCP 클라이언트 연결 해제 실패 시 무시
+  }
   
   server.close(() => {
     process.exit(0);
@@ -325,7 +331,13 @@ process.on('SIGINT', async () => {
   schedulerService.stopScheduler();
   
   // MCP 클라이언트 연결 해제
-  await mcpClient.disconnect();
+  try {
+    const { getMCPClient } = await import('./tools/mcp-client.js');
+    const mcpClient = getMCPClient();
+    await mcpClient.disconnect();
+  } catch {
+    // MCP 클라이언트 연결 해제 실패 시 무시
+  }
   
   server.close(() => {
     process.exit(0);

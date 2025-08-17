@@ -1,6 +1,4 @@
-// src/tools/mcp-client.ts - Claude MCP Server와 통신하는 클라이언트
-
-import { spawn } from 'child_process';
+// src/tools/mcp-client.ts - 간단한 MCP 클라이언트 구현
 
 interface MCPRequest {
   tool: string;
@@ -14,89 +12,65 @@ interface MCPResponse {
 }
 
 export class MCPClient {
-  private mcpProcess: any = null;
   private isConnected: boolean = false;
 
   /**
-   * MCP 서버 시작
+   * MCP 서버 연결 (임시 구현)
    */
   async connect(): Promise<void> {
-    if (this.isConnected) {
-      return;
-    }
-
-    try {
-      console.log('🚀 Claude MCP Server 연결 시작...');
-      
-      // MCP 서버 프로세스 시작
-      this.mcpProcess = spawn('node', ['dist/index.js'], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        cwd: process.cwd()
-      });
-
-      this.mcpProcess.stderr.on('data', (data: Buffer) => {
-        const message = data.toString();
-        console.log('[MCP Server]', message);
-      });
-
-      this.mcpProcess.on('error', (error: Error) => {
-        console.error('❌ MCP Server 프로세스 오류:', error);
-        this.isConnected = false;
-      });
-
-      this.mcpProcess.on('close', (code: number) => {
-        console.log(`MCP Server 프로세스 종료, 코드: ${code}`);
-        this.isConnected = false;
-      });
-
-      // 초기화 대기
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      this.isConnected = true;
-      
-      console.log('✅ Claude MCP Server 연결 완료');
-    } catch (error) {
-      console.error('❌ MCP Server 연결 실패:', error);
-      throw error;
-    }
+    console.log('🚀 MCP 클라이언트 연결 시뮬레이션...');
+    
+    // 임시로 항상 성공으로 처리
+    this.isConnected = true;
+    console.log('✅ MCP 클라이언트 연결 완료 (시뮬레이션)');
   }
 
   /**
-   * MCP 도구 호출
+   * MCP 도구 호출 (임시 구현 - 직접 호출)
    */
   async callTool(request: MCPRequest): Promise<MCPResponse> {
-    if (!this.isConnected) {
-      await this.connect();
-    }
-
     try {
-      console.log('📞 MCP 도구 호출:', request);
+      console.log('📞 MCP 도구 호출 (직접):', request);
 
-      // MCP 요청 메시지 생성
-      const mcpMessage = {
-        jsonrpc: '2.0',
-        id: Date.now(),
-        method: 'tools/call',
-        params: {
-          name: request.tool,
-          arguments: request.arguments
-        }
-      };
-
-      // MCP 서버로 요청 전송
-      const response = await this.sendMCPRequest(mcpMessage);
-      
-      console.log('📨 MCP 응답 수신:', response);
-
-      if (response.error) {
+      // notion_project 도구 직접 호출
+      if (request.tool === 'notion_project') {
+        const { notionProjectTool } = await import('./notion-project-mcp.js');
+        const result = await notionProjectTool.handler(request.arguments);
+        
         return {
-          success: false,
-          error: response.error.message || 'MCP 요청 실패'
+          success: true,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+              }
+            ]
+          }
+        };
+      }
+
+      // lineworks_calendar 도구 직접 호출
+      if (request.tool === 'lineworks_calendar') {
+        const { lineWorksCalendarTool } = await import('./lineworks-calendar-mcp.js');
+        const result = await lineWorksCalendarTool.handler(request.arguments);
+        
+        return {
+          success: true,
+          result: {
+            content: [
+              {
+                type: 'text', 
+                text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+              }
+            ]
+          }
         };
       }
 
       return {
-        success: true,
-        result: response.result
+        success: false,
+        error: `지원되지 않는 도구: ${request.tool}`
       };
 
     } catch (error) {
@@ -109,51 +83,11 @@ export class MCPClient {
   }
 
   /**
-   * MCP 서버로 요청 전송 및 응답 수신
-   */
-  private async sendMCPRequest(message: any): Promise<any> {
-    return new Promise((resolve, reject) => {
-      if (!this.mcpProcess || !this.mcpProcess.stdin) {
-        reject(new Error('MCP 프로세스가 준비되지 않았습니다.'));
-        return;
-      }
-
-      const messageStr = JSON.stringify(message) + '\n';
-      
-      // 응답 리스너 설정
-      const responseHandler = (data: Buffer) => {
-        try {
-          const response = JSON.parse(data.toString().trim());
-          this.mcpProcess.stdout.removeListener('data', responseHandler);
-          resolve(response);
-        } catch (error) {
-          // JSON 파싱 실패 시 계속 대기
-        }
-      };
-
-      this.mcpProcess.stdout.on('data', responseHandler);
-
-      // 요청 전송
-      this.mcpProcess.stdin.write(messageStr);
-
-      // 타임아웃 설정 (10초)
-      setTimeout(() => {
-        this.mcpProcess.stdout.removeListener('data', responseHandler);
-        reject(new Error('MCP 요청 타임아웃'));
-      }, 10000);
-    });
-  }
-
-  /**
    * 연결 해제
    */
   async disconnect(): Promise<void> {
-    if (this.mcpProcess) {
-      this.mcpProcess.kill();
-      this.mcpProcess = null;
-    }
     this.isConnected = false;
-    console.log('🔌 MCP Server 연결 해제');
+    console.log('🔌 MCP 클라이언트 연결 해제');
   }
 
   /**
