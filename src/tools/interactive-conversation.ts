@@ -24,6 +24,12 @@ export class InteractiveConversationManager {
   private readonly CONVERSATION_TIMEOUT = 10 * 60 * 1000; // 10분
 
   private questionTemplates: Record<string, QuestionTemplate> = {
+    projectName: {
+      field: 'projectName',
+      question: '📋 프로젝트명을 알려주세요.\n예시: "코엑스 팝업", "삼성전자 전시회", "강남 LED 설치"',
+      validation: (answer) => answer.length > 1,
+      required: true
+    },
     customer: {
       field: 'customer',
       question: '📢 고객사명을 알려주세요.\n예시: "삼성전자", "LG전자", "현대자동차"',
@@ -444,6 +450,7 @@ export class InteractiveConversationManager {
    */
   private getFieldLabel(field: string): string {
     const labels: Record<string, string> = {
+      projectName: '📋 프로젝트명',
       customer: '🏢 고객사',
       location: '📍 장소',
       eventDate: '📅 일정',
@@ -551,14 +558,14 @@ export class InteractiveConversationManager {
    * 수집된 정보로 프로젝트 생성 텍스트 생성 (Notion 필드 정확 매핑)
    */
   generateProjectCreationText(info: Record<string, any>): string {
-    // 프로젝트명 결정 (고객사 기반으로 생성)
-    const projectName = info.customer ? `${info.customer} 프로젝트` : (info.projectName || '신규 프로젝트');
+    // 프로젝트명 직접 사용 (대화형에서 수집)
+    const projectName = info.projectName || (info.customer ? `${info.customer} 프로젝트` : '신규 프로젝트');
     const serviceType = info.serviceType || '렌탈';
     
     let text = `${projectName} ${serviceType} 수주했어`;
     
     // 기본 정보 추가
-    if (info.customer && !projectName.includes(info.customer)) {
+    if (info.customer) {
       text += `. 고객사는 ${info.customer}`;
     }
     if (info.location) text += `. 장소는 ${info.location}`;
@@ -594,7 +601,7 @@ export class InteractiveConversationManager {
       text += `. 특이사항: ${info.additionalRequests}`;
     }
     
-    console.log('📋 대화형 프로젝트 생성 텍스트 (Notion 매핑용):', text);
+    console.log('📋 대화형 프로젝트 생성 텍스트 (프로젝트명 포함):', text);
     
     return text;
   }
