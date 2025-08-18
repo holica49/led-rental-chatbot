@@ -1,4 +1,4 @@
-// src/tools/notion-project-mcp.ts - 고도화된 복수 LED 지원 버전
+// src/tools/notion-project-mcp.ts - 고도화된 날짜 처리 버전
 import { Client } from '@notionhq/client';
 
 interface NotionProjectRequest {
@@ -302,6 +302,15 @@ export class NotionProjectMCP {
       confidence += 0.1;
     }
 
+    // 5. 🔥 추가 정보 추출 (문의요청사항용)
+    const additionalInfo = this.extractAdditionalInfo(text);
+    let specialNotes = '';
+    if (additionalInfo.length > 0) {
+      specialNotes = additionalInfo.join(', ');
+      extractedInfo.push(`특이사항: ${specialNotes}`);
+      confidence += 0.05;
+    }
+
     return {
       name: projectName,
       serviceType,
@@ -310,9 +319,140 @@ export class NotionProjectMCP {
       customer,
       eventDate,
       ledInfos,
+      specialNotes,
       confidence: Math.min(confidence, 1.0),
       extractedInfo
     };
+  }
+
+  /**
+   * 🔥 고도화된 날짜 추출 (Phase 1 - 코드 수정)
+   */
+  private extractEventDate(text: string): string | undefined {
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1; // 1-based
+    
+    // 1. 상대적 날짜 표현 처리
+    const relativePatterns = [
+      // 월 기준 표현
+      { pattern: /(\d{1,2})\s*월\s*말쯤?/, handler: (match: RegExpMatchArray) => {
+        const month = parseInt(match[1]);
+        return `${currentYear}-${month.toString().padStart(2, '0')}-25 ~ ${currentYear}-${month.toString().padStart(2, '0')}-${this.getLastDayOfMonth(currentYear, month)} (추정)`;
+      }},
+      { pattern: /(\d{1,2})\s*월\s*중순?/, handler: (match: RegExpMatchArray) => {
+        const month = parseInt(match[1]);
+        return `${currentYear}-${month.toString().padStart(2, '0')}-15 ~ ${currentYear}-${month.toString().padStart(2, '0')}-20`;
+      }},
+      { pattern: /(\d{1,2})\s*월\s*초/, handler: (match: RegExpMatchArray) => {
+        const month = parseInt(match[1]);
+        return `${currentYear}-${month.toString().padStart(2, '0')}-01 ~ ${currentYear}-${month.toString().padStart(2, '0')}-07`;
+      }},
+      
+      // 현재/다음달 기준 표현
+      { pattern: /이번\s*달?\s*말/, handler: () => {
+        const lastDay = this.getLastDayOfMonth(currentYear, currentMonth);
+        return `${currentYear}-${currentMonth.toString().padStart(2, '0')}-25 ~ ${currentYear}-${currentMonth.toString().padStart(2, '0')}-${lastDay}`;
+      }},
+      { pattern: /이번\s*달?\s*중순/, handler: () => {
+        return `${currentYear}-${currentMonth.toString().padStart(2, '0')}-15 ~ ${currentYear}-${currentMonth.toString().padStart(2, '0')}-20`;
+      }},
+      { pattern: /다음\s*달?\s*초/, handler: () => {
+        const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+        const year = currentMonth === 12 ? currentYear + 1 : currentYear;
+        return `${year}-${nextMonth.toString().padStart(2, '0')}-01 ~ ${year}-${nextMonth.toString().padStart(2, '0')}-07`;
+      }},
+      { pattern: /다음\s*달?\s*중순/, handler: () => {
+        const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+        const year = currentMonth === 12 ? currentYear + 1 : currentYear;
+        return `${year}-${nextMonth.toString().padStart(2, '0')}-15 ~ ${year}-${nextMonth.toString().padStart(2, '0')}-20`;
+      }},
+      { pattern: /다음\s*달?\s*말/, handler: () => {
+        const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+        const year = currentMonth === 12 ? currentYear + 1 : currentYear;
+        const lastDay = this.getLastDayOfMonth(year, nextMonth);
+        return `${year}-${nextMonth.toString().padStart(2, '0')}-25 ~ ${year}-${nextMonth.toString().padStart(2, '0')}-${lastDay}`;
+      }},
+      
+      // 계절/연도 표현
+      { pattern: /연말/, handler: () => `${currentYear}-12-25 ~ ${currentYear}-12-31` },
+      { pattern: /연초/, handler: () => `${currentYear}-01-01 ~ ${currentYear}-01-15` },
+      { pattern: /내년\s*초/, handler: () => `${currentYear + 1}-01-01 ~ ${currentYear + 1}-01-15` },
+      { pattern: /가을쯤?/, handler: () => `${currentYear}-10-01 ~ ${currentYear}-11-30` },
+      { pattern: /겨울/, handler: () => `${currentYear}-12-01 ~ ${currentYear + 1}-02-28` },
+      
+      // 주 단위 표현
+      { pattern: /(\d{1,2})\s*월\s*첫째?\s*주/, handler: (match: RegExpMatchArray) => {
+        const month = parseInt(match[1]);
+        return `${currentYear}-${month.toString().padStart(2, '0')}-01 ~ ${currentYear}-${month.toString().padStart(2, '0')}-07`;
+      }},
+      { pattern: /(\d{1,2})\s*월\s*둘째\s*주/, handler: (match: RegExpMatchArray) => {
+        const month = parseInt(match[1]);
+        return `${currentYear}-${month.toString().padStart(2, '0')}-08 ~ ${currentYear}-${month.toString().padStart(2, '0')}-14`;
+      }},
+      
+      // 모호한 단일 날짜
+      { pattern: /(\d{1,2})\s*일\s*쯤/, handler: (match: RegExpMatchArray) => {
+        const day = parseInt(match[1]);
+        return `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      }}
+    ];
+
+    // 상대적 패턴 먼저 확인
+    for (const { pattern, handler } of relativePatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        console.log('🔥 상대적 날짜 패턴 감지:', match[0]);
+        return handler(match);
+      }
+    }
+
+    // 2. 기존 날짜 범위 패턴들
+    const rangePatterns = [
+      /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*[~-]\s*(\d{1,2})\s*일/,           // 8월25일~29일
+      /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*[~-]\s*\d{1,2}\s*월\s*(\d{1,2})\s*일/, // 8월25일~8월29일
+      /(\d{1,2})\s*일\s*부터\s*(\d{1,2})\s*일\s*까지/,                      // 25일부터 29일까지
+      /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*부터\s*(\d{1,2})\s*일\s*까지/      // 8월25일부터 29일까지
+    ];
+
+    for (const pattern of rangePatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        console.log('🔥 날짜 범위 패턴 감지:', match[0]);
+        if (match.length === 4) { // 8월25일~29일 형태
+          const month = match[1];
+          const startDay = match[2];
+          const endDay = match[3];
+          return `${currentYear}-${month.padStart(2, '0')}-${startDay.padStart(2, '0')} ~ ${currentYear}-${month.padStart(2, '0')}-${endDay.padStart(2, '0')}`;
+        } else if (match.length === 5) { // 8월25일부터 29일까지 형태
+          const month = match[1];
+          const startDay = match[2];
+          const endDay = match[3];
+          return `${currentYear}-${month.padStart(2, '0')}-${startDay.padStart(2, '0')} ~ ${currentYear}-${month.padStart(2, '0')}-${endDay.padStart(2, '0')}`;
+        }
+      }
+    }
+
+    // 3. 단일 날짜 패턴
+    const singleDateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+    if (singleDateMatch) {
+      return `${currentYear}-${singleDateMatch[1].padStart(2, '0')}-${singleDateMatch[2].padStart(2, '0')}`;
+    }
+
+    // 4. ISO 형식이나 기타 형식은 그대로 반환
+    const isoMatch = text.match(/(\d{4})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})/);
+    if (isoMatch) {
+      return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 월의 마지막 날 계산
+   */
+  private getLastDayOfMonth(year: number, month: number): string {
+    const lastDay = new Date(year, month, 0).getDate();
+    return lastDay.toString().padStart(2, '0');
   }
 
   /**
@@ -377,6 +517,68 @@ export class NotionProjectMCP {
   }
 
   /**
+   * 🔥 추가 정보 추출 (문의요청사항용)
+   */
+  private extractAdditionalInfo(text: string): string[] {
+    const additionalInfo: string[] = [];
+    
+    // 감정이나 상황을 나타내는 표현들
+    const patterns = [
+      /처음\s*(?:써보는|사용하는|해보는)/,
+      /친절한?\s*설명/,
+      /급하게?\s*필요/,
+      /예산이?\s*(?:빠듯|부족|타이트)/,
+      /시간이?\s*(?:촉박|부족|없어)/,
+      /경험이?\s*없어/,
+      /잘\s*몰라/,
+      /도움이?\s*필요/,
+      /문의\s*드려요?/,
+      /상담\s*받고?\s*싶어/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        additionalInfo.push(match[0]);
+      }
+    }
+    
+    // 특정 키워드들
+    const keywords = ['처음', '급함', '빠듯', '상담', '도움', '설명'];
+    for (const keyword of keywords) {
+      if (text.includes(keyword) && !additionalInfo.some(info => info.includes(keyword))) {
+        // 키워드 주변 문맥 추출
+        const context = this.extractContext(text, keyword);
+        if (context) {
+          additionalInfo.push(context);
+        }
+      }
+    }
+    
+    return additionalInfo;
+  }
+
+  /**
+   * 키워드 주변 문맥 추출
+   */
+  private extractContext(text: string, keyword: string): string | null {
+    const index = text.indexOf(keyword);
+    if (index === -1) return null;
+    
+    // 키워드 앞뒤 10글자씩 추출하여 의미있는 구문 만들기
+    const start = Math.max(0, index - 10);
+    const end = Math.min(text.length, index + keyword.length + 10);
+    const context = text.substring(start, end).trim();
+    
+    // 너무 짧거나 의미없는 경우 제외
+    if (context.length < 5 || /^[0-9x×X\s]+$/.test(context)) {
+      return null;
+    }
+    
+    return context;
+  }
+
+  /**
    * 업데이트 정보 파싱
    */
   private parseUpdateFromText(text: string): ProjectUpdate {
@@ -432,18 +634,12 @@ export class NotionProjectMCP {
       newValue = `${match![1]}x${match![2]}`;
       confidence += 0.4;
     }
-    // 일정 업데이트
+    // 일정 업데이트 (고도화된 날짜 파싱 사용)
     else if (/(일정|날짜)/.test(text)) {
       updateType = 'SCHEDULE';
-      const dateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) || 
-                       text.match(/(\d{4})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})/);
-      if (dateMatch) {
-        if (dateMatch.length === 3) {
-          const currentYear = new Date().getFullYear();
-          newValue = `${currentYear}-${dateMatch[1].padStart(2, '0')}-${dateMatch[2].padStart(2, '0')}`;
-        } else {
-          newValue = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
-        }
+      const dateValue = this.extractEventDate(text);
+      if (dateValue) {
+        newValue = dateValue;
         confidence += 0.3;
       }
     }
@@ -574,7 +770,7 @@ export class NotionProjectMCP {
   }
 
   /**
-   * Notion 페이지 생성
+   * Notion 페이지 생성 (개선된 필드 매핑)
    */
   private async createNotionPage(projectInfo: ProjectInfo, userProfile: any): Promise<any> {
     try {
@@ -587,12 +783,20 @@ export class NotionProjectMCP {
         },
         '행사 상태': {
           status: { name: projectInfo.status || '견적 요청' }
-        },
-        '문의요청 사항': {
-          rich_text: [{
-            text: { content: `LINE WORKS에서 생성 (${userProfile?.name || 'Unknown'})` }
-          }]
         }
+      };
+
+      // 🔥 문의요청사항 필드에 추가 정보 저장
+      let requestDetails = `LINE WORKS에서 생성 (${userProfile?.name || 'Unknown'})`;
+      if (projectInfo.specialNotes) {
+        requestDetails += `\n특이사항: ${projectInfo.specialNotes}`;
+      }
+      if (projectInfo.extractedInfo && projectInfo.extractedInfo.length > 0) {
+        requestDetails += `\nAI 추출 정보: ${projectInfo.extractedInfo.join(', ')}`;
+      }
+      
+      properties['문의요청 사항'] = {
+        rich_text: [{ text: { content: requestDetails } }]
       };
 
       // 선택적 정보 추가
@@ -614,7 +818,7 @@ export class NotionProjectMCP {
         };
       }
 
-      // LED 정보 추가
+      // LED 정보 추가 (정확한 Notion 필드명 사용)
       if (projectInfo.ledInfos && projectInfo.ledInfos.length > 0) {
         projectInfo.ledInfos.forEach((led, index) => {
           const ledNumber = index + 1;
@@ -626,10 +830,12 @@ export class NotionProjectMCP {
             
             // 모듈 수량 자동 계산
             const [width, height] = led.size.split('x').map(s => parseInt(s.replace(/mm/g, '')));
-            const moduleCount = (width / 500) * (height / 500);
-            properties[`LED${ledNumber} 모듈 수량`] = {
-              number: Math.ceil(moduleCount)
-            };
+            if (width && height) {
+              const moduleCount = (width / 500) * (height / 500);
+              properties[`LED${ledNumber} 모듈 수량`] = {
+                number: Math.ceil(moduleCount)
+              };
+            }
           }
           
           if (led.stageHeight !== undefined) {
@@ -651,7 +857,7 @@ export class NotionProjectMCP {
         rich_text: [{
           type: 'text',
           text: { 
-            content: `🤖 LINE WORKS 봇에서 MCP를 통해 자동 생성\n등록자: ${userProfile?.department || ''} ${userProfile?.name || 'Unknown'}\n생성 시간: ${new Date().toLocaleString('ko-KR')}\nAI 신뢰도: ${Math.round(projectInfo.confidence * 100)}%\n추출 정보: ${projectInfo.extractedInfo.join(', ')}` 
+            content: `🤖 LINE WORKS 봇에서 MCP를 통해 자동 생성\n등록자: ${userProfile?.department || ''} ${userProfile?.name || 'Unknown'}\n생성 시간: ${new Date().toLocaleString('ko-KR')}\nAI 신뢰도: ${Math.round(projectInfo.confidence * 100)}%\n추출 정보: ${projectInfo.extractedInfo.join(', ')}\n특이사항: ${projectInfo.specialNotes || '없음'}` 
           }
         }]
       });
@@ -675,20 +881,6 @@ export class NotionProjectMCP {
   private extractCustomer(text: string): string | undefined {
     const customerMatch = text.match(/([가-힣A-Za-z0-9]+(?:주식회사|회사|㈜|기업|그룹|센터))/);
     return customerMatch ? customerMatch[1] : undefined;
-  }
-
-  private extractEventDate(text: string): string | undefined {
-    const dateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) || 
-                     text.match(/(\d{4})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})/);
-    if (dateMatch) {
-      if (dateMatch.length === 3) {
-        const currentYear = new Date().getFullYear();
-        return `${currentYear}-${dateMatch[1].padStart(2, '0')}-${dateMatch[2].padStart(2, '0')}`;
-      } else {
-        return `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
-      }
-    }
-    return undefined;
   }
 
   /**
@@ -831,7 +1023,7 @@ export class NotionProjectMCP {
 // MCP 도구 정의
 export const notionProjectTool = {
   name: 'notion_project',
-  description: 'Notion 데이터베이스에서 LED 렌탈/설치 프로젝트를 생성, 업데이트, 검색합니다. 복수 LED 정보를 자동으로 파싱하여 적절한 LED1, LED2 필드에 저장하고 업데이트합니다.',
+  description: 'Notion 데이터베이스에서 LED 렌탈/설치 프로젝트를 생성, 업데이트, 검색합니다. 복수 LED 정보를 자동으로 파싱하여 적절한 LED1, LED2 필드에 저장하고 업데이트합니다. 🔥 고도화된 날짜 범위 처리를 지원합니다.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -842,7 +1034,7 @@ export const notionProjectTool = {
       },
       text: {
         type: 'string',
-        description: '자연어로 입력된 프로젝트 내용 (예: "킨텍스 팝업은 2개소이고, LED크기는 6000x3500, 4000x2000이야")'
+        description: '자연어로 입력된 프로젝트 내용 (예: "킨텍스 팝업은 2개소이고, LED크기는 6000x3500, 4000x2000이야", "8월 말쯤 행사야")'
       },
       userId: {
         type: 'string',
