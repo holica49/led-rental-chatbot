@@ -38,7 +38,7 @@ export class InteractiveConversationManager {
     },
     eventDate: {
       field: 'eventDate',
-      question: '📅 행사 일정을 알려주세요.\n예시: "8월 25일", "2025-08-25", "다음 주 화요일"',
+      question: '📅 행사 일정을 알려주세요.\n예시: "8월 25일", "8월25일~29일", "2025-08-25", "다음 주 화요일"',
       validation: (answer) => /\d+/.test(answer),
       required: true
     },
@@ -101,6 +101,12 @@ export class InteractiveConversationManager {
       question: '💰 예산 범위를 알려주세요.\n예시: "1000만원", "3000-5000만원", "예산 무관"',
       validation: (answer) => answer.length > 1,
       required: false
+    },
+    additionalRequests: {
+      field: 'additionalRequests',
+      question: '📝 추가 요청사항이나 특이사항이 있다면 알려주세요.\n예시: "처음 사용해서 친절한 설명 부탁", "예산이 빠듯해요", "급하게 필요해요"\n\n💡 없으면 "없음" 또는 "없어요"라고 입력하세요.',
+      validation: (answer) => answer.length > 0,
+      required: false
     }
   };
 
@@ -136,6 +142,9 @@ export class InteractiveConversationManager {
         if (!projectInfo.installBudget) missing.push('installBudget');
         break;
     }
+
+    // 추가 요청사항은 항상 질문 (선택 사항)
+    missing.push('additionalRequests');
 
     return missing;
   }
@@ -323,19 +332,59 @@ export class InteractiveConversationManager {
         return sizeMatch ? `${sizeMatch[1]}x${sizeMatch[2]}` : response;
       
       case 'eventDate':
-        // 날짜 형식 정규화
-        if (/\d{1,2}\s*월\s*\d{1,2}\s*일/.test(response)) {
-          const match = response.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-          if (match) {
-            const currentYear = new Date().getFullYear();
-            return `${currentYear}-${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`;
-          }
+        return this.parseDateRange(response);
+      
+      case 'additionalRequests':
+        // "없음", "없어요" 등은 빈 문자열로 처리
+        if (/^(없음|없어요?|없습니다?|안?해요?|필요없어요?)$/i.test(response.trim())) {
+          return '';
         }
-        return response;
+        return response.trim();
       
       default:
         return response.trim();
     }
+  }
+
+  /**
+   * 날짜 범위 파싱 (개선된 버전)
+   */
+  private parseDateRange(response: string): string {
+    const currentYear = new Date().getFullYear();
+    
+    // 날짜 범위 패턴: "8월25일~29일", "8월25일~8월29일", "25일부터 29일까지"
+    const rangePatterns = [
+      /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*[~-]\s*(\d{1,2})\s*일/,           // 8월25일~29일
+      /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*[~-]\s*\d{1,2}\s*월\s*(\d{1,2})\s*일/, // 8월25일~8월29일
+      /(\d{1,2})\s*일\s*부터\s*(\d{1,2})\s*일\s*까지/,                      // 25일부터 29일까지
+      /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*부터\s*(\d{1,2})\s*일\s*까지/      // 8월25일부터 29일까지
+    ];
+
+    for (const pattern of rangePatterns) {
+      const match = response.match(pattern);
+      if (match) {
+        if (match.length === 4) { // 8월25일~29일 형태
+          const month = match[1];
+          const startDay = match[2];
+          const endDay = match[3];
+          return `${currentYear}-${month.padStart(2, '0')}-${startDay.padStart(2, '0')} ~ ${currentYear}-${month.padStart(2, '0')}-${endDay.padStart(2, '0')}`;
+        } else if (match.length === 5) { // 8월25일부터 29일까지 형태
+          const month = match[1];
+          const startDay = match[2];
+          const endDay = match[3];
+          return `${currentYear}-${month.padStart(2, '0')}-${startDay.padStart(2, '0')} ~ ${currentYear}-${month.padStart(2, '0')}-${endDay.padStart(2, '0')}`;
+        }
+      }
+    }
+
+    // 단일 날짜 패턴
+    const singleDateMatch = response.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+    if (singleDateMatch) {
+      return `${currentYear}-${singleDateMatch[1].padStart(2, '0')}-${singleDateMatch[2].padStart(2, '0')}`;
+    }
+
+    // ISO 형식이나 기타 형식은 그대로 반환
+    return response.trim();
   }
 
   /**
@@ -406,7 +455,8 @@ export class InteractiveConversationManager {
       led3StageHeight: '📏 LED3 무대높이',
       installEnvironment: '🏢 설치환경',
       installSpace: '📐 설치공간',
-      installBudget: '💰 예산'
+      installBudget: '💰 예산',
+      additionalRequests: '📝 추가요청사항'
     };
     
     return labels[field] || field;
@@ -498,7 +548,7 @@ export class InteractiveConversationManager {
   }
 
   /**
-   * 수집된 정보로 프로젝트 생성 텍스트 생성 (대화형 전용)
+   * 수집된 정보로 프로젝트 생성 텍스트 생성 (Notion 필드 정확 매핑)
    */
   generateProjectCreationText(info: Record<string, any>): string {
     // 프로젝트명 결정 (고객사 기반으로 생성)
@@ -507,24 +557,31 @@ export class InteractiveConversationManager {
     
     let text = `${projectName} ${serviceType} 수주했어`;
     
+    // 기본 정보 추가
     if (info.customer && !projectName.includes(info.customer)) {
       text += `. 고객사는 ${info.customer}`;
     }
     if (info.location) text += `. 장소는 ${info.location}`;
     if (info.eventDate) text += `. 일정은 ${info.eventDate}`;
     
-    // LED 정보 추가
+    // LED 정보 추가 (Notion 필드명과 정확히 매칭)
     if (info.led1Size) {
       text += `. LED1 크기는 ${info.led1Size}`;
-      if (info.led1StageHeight !== undefined) text += `, 무대높이 ${info.led1StageHeight}mm`;
+      if (info.led1StageHeight !== undefined && info.led1StageHeight !== '') {
+        text += `, 무대높이 ${info.led1StageHeight}mm`;
+      }
     }
     if (info.led2Size) {
       text += `. LED2 크기는 ${info.led2Size}`;
-      if (info.led2StageHeight !== undefined) text += `, 무대높이 ${info.led2StageHeight}mm`;
+      if (info.led2StageHeight !== undefined && info.led2StageHeight !== '') {
+        text += `, 무대높이 ${info.led2StageHeight}mm`;
+      }
     }
     if (info.led3Size) {
       text += `. LED3 크기는 ${info.led3Size}`;
-      if (info.led3StageHeight !== undefined) text += `, 무대높이 ${info.led3StageHeight}mm`;
+      if (info.led3StageHeight !== undefined && info.led3StageHeight !== '') {
+        text += `, 무대높이 ${info.led3StageHeight}mm`;
+      }
     }
     
     // 설치 관련 정보
@@ -532,7 +589,12 @@ export class InteractiveConversationManager {
     if (info.installSpace) text += `. 설치공간은 ${info.installSpace}`;
     if (info.installBudget) text += `. 예산은 ${info.installBudget}`;
     
-    console.log('📋 대화형 프로젝트 생성 텍스트:', text);
+    // 추가 요청사항 (문의요청사항으로 저장될 정보)
+    if (info.additionalRequests && info.additionalRequests.trim()) {
+      text += `. 특이사항: ${info.additionalRequests}`;
+    }
+    
+    console.log('📋 대화형 프로젝트 생성 텍스트 (Notion 매핑용):', text);
     
     return text;
   }

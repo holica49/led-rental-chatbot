@@ -310,10 +310,9 @@ router.post('/callback', async (req: Request, res: Response) => {
         if (projectIntent.isInteractiveMode) {
           console.log('💬 대화형 프로젝트 생성 모드 시작');
           
-          // 기본 정보로 대화형 모드 시작
-          const defaultMissingInfo = ['customer', 'location', 'eventDate', 'ledInfo'];
+          // 기본 정보로 대화형 모드 시작 (프로젝트명 질문 추가)
+          const defaultMissingInfo = ['projectName', 'customer', 'location', 'eventDate', 'ledInfo', 'additionalRequests'];
           const defaultExistingInfo = {
-            projectName: '신규 프로젝트',
             serviceType: '렌탈'
           };
           
